@@ -192,7 +192,7 @@ function knownAgenda(world: VillageState, actorId: string, now: Date) {
   const player = continuityActor(world, "player");
   if (!resident || !player) throw notFound("That villager does not live here.");
   const actor = { id: actorId, incarnation: resident.incarnation };
-  const pending: (AgendaAppointmentOffer & { booked: boolean })[] = [];
+  const pending: (AgendaAppointmentOffer & { booked: boolean; termsVersionId: string })[] = [];
   const known = continuityViews(
     world.continuity,
     player,
@@ -225,23 +225,34 @@ function knownAgenda(world: VillageState, actorId: string, now: Date) {
       )
     )
       return [];
-    const booked = world.residentPlans.appointments?.some(
+    const reservation = world.residentPlans.appointments?.find(
       (appointment) =>
         appointment.id === row.id &&
         appointment.playerIncarnation === player.incarnation &&
         appointment.resident.id === actor.id &&
-        appointment.resident.incarnation === actor.incarnation,
+        appointment.resident.incarnation === actor.incarnation &&
+        memoryHash(appointment.time) === memoryHash(fact.time) &&
+        appointment.activity === fact.activity,
     );
+    if (reservation?.cancelled && (!reservation.termsVersionId || reservation.termsVersionId === offer.termsVersionId))
+      return [];
+    const booked = !!reservation && !reservation.cancelled;
     const venue = findLocation(world, fact.time.venueId);
     const zone = venue && resolveVenueZone(venue, fact.time.zoneId ?? "exterior");
-    if (venue && zone && calendarAt(dateAt(world, now), fact.time.date, fact.time.startMinute) > now)
+    if (
+      (fact.confirmable || booked) &&
+      venue &&
+      zone &&
+      calendarAt(dateAt(world, now), fact.time.date, fact.time.startMinute) > now
+    )
       pending.push({
         id: row.id,
         token: memoryHash([villageWorldScope(world), player, actor, offer.termsVersionId, fact.time, fact.activity]),
         time: fact.time,
         activity: fact.activity,
         place: zone.kind === "exterior" ? venue.name : `${venue.name}, ${zone.name}`,
-        booked: booked === true,
+        booked,
+        termsVersionId: offer.termsVersionId,
       });
     return booked ? [{ ...fact, id: row.id, source: "agreed" as const }] : [];
   });
@@ -255,14 +266,38 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
     (latestRelationshipScores(world.continuity).get(relationshipKey(actor, player))?.relationshipScore ?? 0) >=
       AGENDA_SHARED_WARMTH;
   const at = dateAt(world, now);
+  const confirmed = currentAppointments(world, at)
+    .filter(
+      (entry) =>
+        !entry.cancelled &&
+        entry.resident.id === actor.id &&
+        entry.resident.incarnation === actor.incarnation &&
+        entry.playerIncarnation === player.incarnation,
+    )
+    .map((entry) => {
+      const control = { id: entry.id, token: appointmentCancellationToken(world, entry) };
+      if (!known.some(({ id, source }) => id === entry.id && source === "agreed"))
+        return { ...control, activity: "Booked appointment" };
+      const venue = findLocation(world, entry.time.venueId);
+      const zone = venue && resolveVenueZone(venue, entry.time.zoneId ?? "exterior");
+      return venue && zone
+        ? {
+            ...control,
+            time: entry.time,
+            activity: entry.activity,
+            place: zone.kind === "exterior" ? venue.name : `${venue.name}, ${zone.name}`,
+          }
+        : { ...control, activity: "Booked appointment" };
+    });
   return {
+    ...(confirmed.length ? { confirmed } : {}),
     visibility: inspect ? "inspect" : shared ? "shared" : "known",
     ...(pending.some((offer) => !offer.booked)
       ? {
           pending: pending
             .filter((offer) => !offer.booked)
             .slice(-12)
-            .map(({ booked: _booked, ...offer }) => offer),
+            .map(({ booked: _booked, termsVersionId: _terms, ...offer }) => offer),
         }
       : {}),
     days: Array.from({ length: 7 }, (_, offset) => {
@@ -466,7 +501,7 @@ export function applySceneAppointment(
   const now = dateAt(world, new Date(instant));
   if (!write.closeOffer) return false;
   const rows = currentAppointments(world, now);
-  if (!rows.some((row) => row.id === root)) return false;
+  if (!rows.some((row) => row.id === root && !row.cancelled)) return false;
   world.residentPlans.appointments = rows.filter((row) => row.id !== root);
   projectAgendaReservations(world);
   return true;
@@ -486,18 +521,47 @@ function currentAppointments(world: VillageState, now: ZonedDate) {
   });
 }
 
+function appointmentCancellationToken(
+  world: VillageState,
+  entry: NonNullable<VillageState["residentPlans"]["appointments"]>[number],
+) {
+  return memoryHash(["cancel-appointment", villageWorldScope(world), entry]);
+}
+
+export function cancelAgendaAppointment(world: VillageState, actorId: string, token: string, instant: Date) {
+  const resident = world.villagers.find((row) => row.characterId === actorId);
+  const player = continuityActor(world, "player");
+  const rows = currentAppointments(world, dateAt(world, instant));
+  const selected = rows.find(
+    (row) =>
+      !row.cancelled &&
+      row.resident.id === actorId &&
+      row.resident.incarnation === resident?.incarnation &&
+      row.playerIncarnation === player?.incarnation &&
+      appointmentCancellationToken(world, row) === token,
+  );
+  if (!selected) throw conflict("That appointment changed. Refresh the Agenda.", "APPOINTMENT_CHANGED");
+  world.residentPlans.appointments = rows.map((row) => (row.id === selected.id ? { ...row, cancelled: true } : row));
+  projectAgendaReservations(world);
+}
+
 export function confirmAgendaAppointment(world: VillageState, actorId: string, token: string, instant: Date) {
   const { pending, resident: live, actor: resident, player } = knownAgenda(world, actorId, instant);
   const selected = pending.find((offer) => offer.token === token);
   if (!selected) throw conflict("That appointment changed. Refresh the Agenda.", "APPOINTMENT_CHANGED");
   const now = dateAt(world, instant);
   const rows = currentAppointments(world, now);
-  const { time, activity, id } = selected;
-  if (rows.some((row) => row.id === id)) return false;
+  const { time, activity, id, termsVersionId } = selected;
+  const previous = rows.find((row) => row.id === id);
+  if (previous && !previous.cancelled) {
+    if (previous.activity !== activity || memoryHash(previous.time) !== memoryHash(time))
+      throw conflict("That appointment was already booked with a different slot.", "APPOINTMENT_CHANGED");
+    return false;
+  }
   const start = calendarAt(now, time.date, time.startMinute);
   const end = calendarAt(now, time.date, time.endMinute);
   if (!(
-    rows.length < 64 &&
+    (rows.length < 64 || !!previous) &&
     live?.agenda &&
     start.getTime() > now.getTime() &&
     end.getTime() - start.getTime() === (time.endMinute - time.startMinute) * 60_000 &&
@@ -515,6 +579,7 @@ export function confirmAgendaAppointment(world: VillageState, actorId: string, t
     ) &&
     !rows.some(
       (row) =>
+        !row.cancelled &&
         (row.playerIncarnation === player.incarnation || row.resident.id === resident.id) &&
         row.time.date === time.date &&
         row.time.startMinute < time.endMinute &&
@@ -532,11 +597,12 @@ export function confirmAgendaAppointment(world: VillageState, actorId: string, t
     throw conflict("That resident is already committed during this appointment", "APPOINTMENT_UNAVAILABLE");
   }
   world.residentPlans.appointments = [
-    ...rows,
+    ...rows.filter((row) => row.id !== id),
     {
       id,
       resident,
       playerIncarnation: player.incarnation,
+      termsVersionId,
       time: structuredClone(time),
       activity,
     },

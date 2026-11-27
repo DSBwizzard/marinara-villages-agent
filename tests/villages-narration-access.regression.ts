@@ -54,7 +54,15 @@ await runCase("narration-access/doorway-after-hours", () => {
   scene.sceneAttendance!.layout = captureSceneLayout(venue);
   const input = "I knock and wait at the entrance.";
   assert.deepEqual(zoneEventScene(scene, venue, { message: "I quietly wait." }).contactGeneration?.actorIds, []);
-  const admitted = zoneEventScene(scene, venue, { message: input });
+  assert.equal(
+    zoneEventScene(scene, venue, { message: "I don't knock." }).contactGeneration?.doorwayVoiceIds,
+    undefined,
+  );
+  const admitted = zoneEventScene(scene, venue, {
+    message: "I rap on the door.",
+    contactKind: "knock",
+    zoneId: zone.id,
+  });
   assert.deepEqual(admitted.contactGeneration?.doorwayVoiceIds, [f.actorId]);
   const prep = narrationContinuityContext(f.state, admitted, venue, "doorway", input, at, true);
   const readset = {

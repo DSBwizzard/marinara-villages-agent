@@ -9,13 +9,7 @@ import {
 } from "./continuity.js";
 import { episodeSpeechEvidence, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import {
-  asksForPastExchange,
-  asksForRecallQuote,
-  recallTerms,
-  sceneQuoteScore,
-  sceneQuoteTerms,
-} from "./text-recall.js";
+import { asksForRecallQuote, recallTerms, sceneQuoteScore, sceneQuoteTerms } from "./text-recall.js";
 import { assertMailHistory, episodeMailEvidence } from "./mail-evidence.js";
 
 export const emptyEpisodes = (): EpisodeCollection => ({ format: 1, revision: 0, records: [] });
@@ -437,14 +431,13 @@ export function selectEpisodeHistory(
     const cue =
       /(?:^\s*about\b|\b(?:remember|earlier|before|yesterday|last time|previously|promis(?:e|ed)|(?:you|we) (?:said|talked|agreed)|told me)\b)/giu;
     const quote = asksForRecallQuote(query);
-    const explicit = quote || asksForPastExchange(query) || new RegExp(cue.source, "iu").test(query);
     const queryTerms = quote
       ? sceneQuoteTerms(query)
       : [...new Set(recallTerms(query.replace(cue, " ")))].filter((term) => term.length >= 3);
     // shortcut: match eligible prose locally; add semantic recall only if players miss specific callbacks.
     const recalled = candidates
       .map((row) => {
-        const { gmPrivateInput, groundedInput, segments, letters } = row.view;
+        const { groundedInput, segments, letters } = row.view;
         if (quote)
           return {
             row,
@@ -461,10 +454,9 @@ export function selectEpisodeHistory(
             ),
           };
         const prose = [
-          "text" in gmPrivateInput ? gmPrivateInput.text : "",
           ...groundedInput.map((source) => source.text),
           ...segments.flatMap((segment) => [
-            "text" in segment ? segment.text : "gmOnlyText" in segment ? segment.gmOnlyText : "",
+            "text" in segment ? segment.text : "",
             ...segment.projections.map((projection) => projection.text),
           ]),
           ...(letters ?? []).map((letter) => letter.text),
@@ -472,7 +464,7 @@ export function selectEpisodeHistory(
         const words = new Set(recallTerms(prose));
         return { row, matches: queryTerms.filter((term) => words.has(term)).length };
       })
-      .filter(({ matches }) => matches >= (explicit ? 1 : 3))
+      .filter(({ matches }) => matches > 0)
       .sort((a, b) => b.matches - a.matches || b.row.index - a.row.index)
       .map(({ row }) => row);
     // On arrival, offer the latest eligible shared exchange even before anyone asks for a callback.

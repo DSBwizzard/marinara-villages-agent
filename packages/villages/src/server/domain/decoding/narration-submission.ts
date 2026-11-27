@@ -93,6 +93,7 @@ const saved = z
     message: z.string().max(4000),
     mode: z.enum(["chat", "contact", "leave"]),
     targetId: z.string().max(200),
+    rememberFor: id.optional(),
     requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
     at,
     acceptance: z

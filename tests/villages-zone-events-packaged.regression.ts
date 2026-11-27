@@ -252,7 +252,7 @@ const model = {
     assert.equal(messages.at(-2)?.role, "user");
     lastInput = messages.at(-2)!.content;
     if (lastInput === contactMessage) {
-      assert.match(prompt, /Native changes use commands/u);
+      assert.match(prompt, /Put native actions on separate \[command\] lines/u);
       assert.match(prompt, /Contact context: .*"boundaryZoneId":"kitchen"/u);
       assert.doesNotMatch(prompt, /"kind":"knock"|doorway contact/iu);
     }
@@ -353,8 +353,11 @@ const submit = (id: string, message = "I watch the water.") => ({
   expectedSceneRevision: savedScene().sceneRevision,
 });
 const provide = (raw: object) => (answer = { content: JSON.stringify(raw), finishReason: "stop" });
-async function turn(id: string, raw: object, message?: string) {
-  const payload = submit(id, message);
+async function turn(id: string, raw: object, message?: string, contacted?: string) {
+  const payload = {
+    ...submit(id, message),
+    ...(contacted ? { mode: "contact", contact: { kind: "call", boundaryZoneId: contacted } } : {}),
+  };
   provide(raw);
   const before = completions;
   const result = await request("/rooms/turn", payload);
@@ -455,7 +458,8 @@ try {
         { kind: "dialogue", speakerId: "neighbor", text: "I can hear you from the Kitchen.", delivery: "shout" },
       ],
     },
-    "I call out to Neighbor.",
+    "Anyone there?",
+    "kitchen",
   );
   const doorwayPublic = JSON.stringify(await history(scope));
   assert.match(doorwayPublic, /I can hear you from the Kitchen/);
@@ -511,6 +515,7 @@ try {
       ],
     },
     "I ask Neighbor to come onto the Terrace.",
+    "kitchen",
   );
   const moved = episodeOf("crossing")!;
   assert(!moved.segments[0].heardBy.includes("player"));

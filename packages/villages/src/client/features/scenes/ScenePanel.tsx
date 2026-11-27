@@ -195,6 +195,7 @@ export function RoomPanel({
   sprites,
   onDraft,
   onSend,
+  onRemember,
   onRetryReply,
   retryPending,
   sendOnEnter,
@@ -247,6 +248,7 @@ export function RoomPanel({
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
   onSend: () => void;
+  onRemember?: (recipientId: string) => void;
   onRetryReply?: () => void;
   retryPending?: boolean;
   sendOnEnter: boolean;
@@ -611,7 +613,9 @@ export function RoomPanel({
   const canCompose = canDraft && !historyOpen && (!canReadNext || busy || !!error || !!turnRecovery);
   const canRetryReply = canCompose && !canReadNext && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
   const canSend = canCompose && !historyOpen && !busy && !contactRecovery;
-  const sendLabel = busy ? "Sending" : "Send";
+  const retryingReminder =
+    room.operation?.input?.rememberFor && (room.operation.status !== "complete" || room.operation.error);
+  const sendLabel = busy ? "Sending" : retryingReminder ? "Send reminder" : "Send";
   const travel = room.travel;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
@@ -1372,6 +1376,16 @@ export function RoomPanel({
                   Review latest saved action
                 </button>
               </div>
+            ) : null}
+            {onRemember && activeParticipants.length && canSend && draft.trim() ? (
+              <details>
+                <summary>Whisper a reminder</summary>
+                {activeParticipants.map(({ characterId, name }) => (
+                  <button key={characterId} type="button" onClick={() => onRemember(characterId)}>
+                    Remind {name}
+                  </button>
+                ))}
+              </details>
             ) : null}
             <div className={`${ELEMENT_TAG}-composer-row`}>
               <span className={`${ELEMENT_TAG}-chat-input`}>

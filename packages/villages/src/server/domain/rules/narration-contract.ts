@@ -68,6 +68,8 @@ const segment = z.discriminatedUnion("kind", [
       kind: z.literal("dialogue"),
       speakerId: id,
       speakerLabel: z.unknown().optional(),
+      introduceName: z.literal(true).optional(),
+      offerAppointment: z.literal(true).optional(),
       text: segmentText,
       id: label.optional(),
       delivery: z

@@ -194,7 +194,7 @@ export function createSceneCommands({
     return state.seed === scene.villageSeed ? visibleSceneNotices(state, events) : [];
   }
   const requestFingerprint = (
-    input: Pick<VenueTurnInput, "mode" | "targetId" | "message" | "contact" | "trespassReaction">,
+    input: Pick<VenueTurnInput, "mode" | "targetId" | "message" | "contact" | "trespassReaction" | "rememberFor">,
   ) =>
     memoryHash([
       input.mode,
@@ -202,6 +202,7 @@ export function createSceneCommands({
       input.contact ?? null,
       input.message,
       ...(input.trespassReaction ? [input.trespassReaction] : []),
+      ...(input.rememberFor ? [{ rememberFor: input.rememberFor }] : []),
     ]);
   async function publishNarration(
     scene: VenueScene,
@@ -219,7 +220,7 @@ export function createSceneCommands({
       if (prior.requestFingerprint !== requestFingerprint(input))
         throw conflict("This submission ID belongs to different input.");
     } else {
-      const generated = await generate(scene, input.message, mode, signal, trace, undefined, fresh);
+      const generated = await generate(scene, input.message, mode, signal, trace, undefined, fresh, input.rememberFor);
       if (fresh) transient = generated;
       assertVenueOwnership();
       signal?.throwIfAborted();
@@ -239,6 +240,7 @@ export function createSceneCommands({
           message: input.message,
           mode: input.mode,
           targetId: input.targetId,
+          ...(input.rememberFor ? { rememberFor: input.rememberFor } : {}),
           requestFingerprint: requestFingerprint(input),
           at: generated.readset.capturedAt,
           acceptance: { status: "pending", rejected: [] },
@@ -1266,6 +1268,7 @@ export function createSceneCommands({
     message: string;
     mode: "chat" | "leave" | "contact";
     contact?: ContactIntent;
+    rememberFor?: string;
     targetId: string;
     submissionId: string;
     expectedSceneRevision?: number;
@@ -1283,6 +1286,7 @@ export function createSceneCommands({
       mode: input.mode,
       targetId: input.targetId,
       ...(input.contact ? { contact: input.contact } : {}),
+      ...(input.rememberFor ? { rememberFor: input.rememberFor } : {}),
     };
   }
   async function abandonFailedRequest(
@@ -1522,8 +1526,9 @@ export function createSceneCommands({
       : zoneEventScene(scene, location!, {
           ...(input.trespassReaction ? { priorityIds: scene.trespassReaction?.witnesses } : {}),
           message: input.message,
-          targetId: input.targetId,
+          targetId: input.rememberFor || input.targetId,
           zoneId: input.contact?.boundaryZoneId,
+          contactKind: input.contact?.kind,
         });
     if (input.trespassReaction && !prior) {
       const reaction = admitted.trespassReaction;

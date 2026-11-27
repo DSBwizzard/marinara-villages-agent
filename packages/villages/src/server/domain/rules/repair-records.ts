@@ -671,7 +671,6 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
       const npc = state.worldPlaces.npcs[id];
       if (!npc) throw conflict("This supporting character changed.");
       if (str("name") !== npc.name) assertDistinctNpcName(state, str("name"), npc.id);
-      if (str("label") !== npc.label) assertDistinctNpcName(state, str("label"), npc.id);
       if (str("mapId") && !state.maps.some((map) => map.id === str("mapId"))) throw badRequest("Choose a saved Map.");
       const associations = npc.associations.flatMap((_row, index) => {
         const placeId = str("association-place:" + index);

@@ -6,7 +6,12 @@ import type { readNarrationReply } from "./narration-contract.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import type { ContactMove } from "./venue-contact.js";
 import { routeZoneEvents } from "./zone-events.js";
-import { fenceIntroductionWitnesses, npcNameInText, revealsNpcName } from "./npc-participation.js";
+import {
+  fenceIntroductionWitnesses,
+  npcNameInText,
+  playerHeardNpcSpeech,
+  revealsNpcName,
+} from "./npc-participation.js";
 import { settleSceneSpriteCues, type SpriteSelectionContext } from "./sprite-expressions.js";
 
 /** Bind labels, routing and presentation once, before any source fingerprint or saved episode is authored. */
@@ -19,7 +24,10 @@ export function narrationLines(
   playerMoves: { zoneId: string; segment: number }[] = [],
   presentation?: SpriteSelectionContext,
   npcIdentity?: (id: string) => Pick<NpcIdentity, "name" | "label"> | undefined,
-  nameFormat: Pick<NarrationReadset, "taggedSceneReply" | "npcSpeakerNames"> = {},
+  nameFormat: Pick<
+    NarrationReadset,
+    "taggedSceneReply" | "npcSpeakerNames" | "explicitNpcIntroduction" | "explicitSceneEvidence"
+  > = {},
   onExpressionRejected?: () => void,
 ) {
   memoryRequire(scene.contactGeneration?.venue, "narration needs its captured routing scope");
@@ -30,7 +38,9 @@ export function narrationLines(
       : {
           kind: row.delivery === "whisper" ? "whisper" : row.presentation === "aside" ? "side" : "dialogue",
           speakerId: row.speakerId,
-          content: row.text,
+          content: row.offerAppointment
+            ? "I can make the time shown in my Agenda. Confirm it there if it works for you."
+            : row.text,
           heardBy: [],
           staging: row.staging,
           ...(row.delivery ? { delivery: row.delivery } : {}),
@@ -38,7 +48,7 @@ export function narrationLines(
           ...(row.targetId ? { targetId: row.targetId } : {}),
         },
   );
-  routeZoneEvents(reply.segments, scene, lines, moves, playerMoves);
+  routeZoneEvents(reply.segments, scene, lines, moves, playerMoves, nameFormat.explicitSceneEvidence);
   if (scene.pendingNpcAdmissions?.length) fenceIntroductionWitnesses(lines, scene.pendingNpcAdmissions);
   if (settleSceneSpriteCues(lines, presentation, episodeId)) onExpressionRejected?.();
   const cast = [
@@ -68,14 +78,16 @@ export function narrationLines(
         row.kind === "dialogue" &&
         npc.label !== npc.name &&
         !publicNames.has(line.speakerId) &&
-        revealsNpcName(
-          line,
-          npc.name,
-          !!firstAtAdmission,
-          row.speakerLabel,
-          !nameFromHeader && nameFormat.taggedSceneReply === true,
-        ) &&
-        (!nameFromHeader || npcNameInText(line.content, npc.name))
+        (nameFormat.explicitNpcIntroduction
+          ? row.introduceName === true && playerHeardNpcSpeech(line)
+          : revealsNpcName(
+              line,
+              npc.name,
+              !!firstAtAdmission,
+              row.speakerLabel,
+              !nameFromHeader && nameFormat.taggedSceneReply === true,
+            ) &&
+            (!nameFromHeader || npcNameInText(line.content, npc.name)))
       ) {
         publicNames.set(line.speakerId, npc.name);
         nameReveals.set(index, npc.name);

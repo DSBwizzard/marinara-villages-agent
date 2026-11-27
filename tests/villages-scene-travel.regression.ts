@@ -186,7 +186,10 @@ for (const scenario of [
       if (follow) {
         const prompt = messages.map(({ content }) => content).join("\n");
         const speakerIds = calls < 3 ? '["ella","mara"]' : '["ella"]';
-        assert(prompt.includes('"dialogueSpeakers":' + speakerIds), "The fitted cast matches the current exchange");
+        assert(
+          prompt.includes('"dialogueSpeakers":' + speakerIds),
+          "The fitted cast matches the current exchange " + prompt.match(/"dialogueSpeakers":\[[^\]]*\]/u)?.[0],
+        );
         assert.equal(messages.at(-2)?.content, [invitation, afterMoveInput, waitInKitchen][calls - 1]);
         const segments =
           calls === 1
@@ -850,8 +853,9 @@ await runCase("scene-travel/doorway-after-hours", async () => {
   const world = () => createVillageRepository(() => host.documents as never).readAuthority();
   const input = () => ({
     sessionId: "browser",
-    mode: "chat",
-    targetId: "",
+    mode: "contact",
+    targetId: "mara",
+    contact: { kind: "call", boundaryZoneId: "common" },
     message: 'I call, "Mara, may I come in?"',
     expectedSceneRevision: host.scene().sceneRevision,
   });

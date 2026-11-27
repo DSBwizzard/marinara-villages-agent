@@ -1,4 +1,5 @@
 import { asRecord } from "./coerce.js";
+import { npcNameKey } from "./npc-index.js";
 import { NARRATION_SEGMENT_CHARACTERS, readNarrationReply } from "./narration-contract.js";
 import { parseSceneObject } from "./scene-json-syntax.js";
 import { MODEL_JSON_MAX_CHARACTERS, modelJsonWithinBounds } from "./json-reply.js";
@@ -20,12 +21,17 @@ const isEffectLabel = (value: unknown): value is string =>
 const controlPrefix = /^\s*!?\s*(keep|command|visit|halt|cue)(?:[\s:\]]|$)/iu;
 const actionPrefix = /^\s*!?\s*(action)(?=[ \t]+[+-]?\d)/iu;
 const quotedSpeakerHeader = /^([^:\r\n]{1,100}):\s*(["“].*["”])$/u;
-const aliasKey = (text: string) => text.normalize("NFKC").trim().toLowerCase();
 type Beat = { id: string; kind: "narration" | "dialogue"; text: string; requires: string[] } & Record<string, unknown>;
 
-function plainNarration(content: string): { narration?: Beat[]; issue?: SceneReplyIssue } {
+function plainNarration(
+  content: string,
+  relaxed: boolean,
+  speakerOrControl: (label: string) => boolean,
+): { narration?: Beat[]; issue?: SceneReplyIssue } {
   // A damaged control or JSON reply cannot fall back to prose.
-  if (/[\[\]{}<>\x60]/u.test(content.normalize("NFKC"))) return { issue: "structured_reply" };
+  const normalized = content.normalize("NFKC");
+  const structured = relaxed ? /^\s*[\[<]|[{}]|\[\s*["'\[“‘]|\x60\x60\x60/mu : /[\[\]{}<>\x60]/u;
+  if (structured.test(normalized)) return { issue: "structured_reply" };
   const paragraphs: string[] = [];
   for (const paragraph of content.trim().split(/\r?\n(?:[^\S\r\n]*\r?\n)+/u)) {
     const text = paragraph.trim();
@@ -41,7 +47,14 @@ function plainNarration(content: string): { narration?: Beat[]; issue?: SceneRep
           .replace(/^(?:[-+*]|\d+[.)])\s+/u, "")
           .replace(/[*_~]/gu, "")
           .trim();
-        return /^[#"“'‘]|^[\p{L}\p{N}][\p{L}\p{M}\p{N} .'’()-]{0,55}:/u.test(syntax);
+        return (
+          /^[#"“'‘]/u.test(syntax) ||
+          (relaxed &&
+            (/^[\[<{]|^\x60\x60\x60/u.test(syntax) ||
+              [...syntax.matchAll(/\[([^\]\r\n]{1,100})\]/gu)].some((match) => speakerOrControl(match[1])) ||
+              (syntax.includes(":") && speakerOrControl(syntax.slice(0, syntax.indexOf(":")))))) ||
+          (!relaxed && /^[\p{L}\p{N}][\p{L}\p{M}\p{N} .'’()-]{0,55}:/u.test(syntax))
+        );
       })
     )
       return { issue: "structured_reply" };
@@ -66,6 +79,9 @@ export function decodeTaggedSceneReply(
 } {
   if (content.length > MODEL_JSON_MAX_CHARACTERS) return { value: null, issue: "reply_limits" };
   const scene = readset.source.scene;
+  const aliasKey = readset.explicitNpcIntroduction
+    ? npcNameKey
+    : (label: string) => label.normalize("NFKC").trim().toLowerCase();
   const speakers = new Set(scene.contactGeneration?.actorIds ?? scene.activeIds);
   const aliases = new Map<string, { id: string; name?: string }>();
   const ambiguous = new Set<string>();
@@ -88,6 +104,7 @@ export function decodeTaggedSceneReply(
   const reservedControl = (text: string) =>
     (controlPrefix.exec(text) ??
       (readset.sceneSpeechActions?.length ? actionPrefix.exec(text) : null))?.[1].toLowerCase();
+  const knownNames = new Map(Object.entries(readset.npcSpeakerNames ?? {}));
   const newcomers = new Map<string, string>();
   const ids = new Set(["scene-visit"]);
   const positions: string[] = [];
@@ -216,6 +233,12 @@ export function decodeTaggedSceneReply(
           (!Array.isArray(requires) || requires.length > 8 || !requires.every(isEffectLabel))) ||
         (proposal?.independent !== undefined && proposal.independent !== true);
       const effect: Record<string, unknown> = proposal && !invalid ? { ...proposal, id } : { id };
+      const slot = asRecord(effect.agenda);
+      if (
+        anchor?.offerAppointment &&
+        (control !== "keep" || slot.kind !== "offer" || slot.actorId !== anchor.speakerId)
+      )
+        continue;
       if (anchor && (control === "command" || marked)) bind(anchor, id);
       if (control === "keep") effect.independent = true;
       if (anchor && control === "command") effect.at = anchor.id;
@@ -246,7 +269,11 @@ export function decodeTaggedSceneReply(
             const label = returning?.label ?? effect.label;
             const name = returning?.name ?? effect.name;
             if (typeof label === "string") addAlias(label, effect.localKey);
-            if (typeof name === "string") addAlias(name, effect.localKey, name);
+            if (typeof name === "string") {
+              addAlias(name, effect.localKey, name);
+              knownNames.set(effect.localKey, name);
+              if (returning) knownNames.set(returning.id, name);
+            }
           }
         }
       }
@@ -259,10 +286,15 @@ export function decodeTaggedSceneReply(
     if (positions.length >= 24) continue;
     const id = "beat-" + (positions.length + 1);
     positions.push(id);
-    if (!text || text.length > NARRATION_SEGMENT_CHARACTERS || /^[{`]/u.test(text)) continue;
-    marked = narration === "!" || !!speaker?.startsWith("!");
+    const introduction = !!readset.explicitNpcIntroduction && meta.includes("introduce");
+    const appointment = !!readset.explicitSceneEvidence && meta.includes("appointment");
+    if ((!text && !introduction && !appointment) || text.length > NARRATION_SEGMENT_CHARACTERS || /^[{`]/u.test(text))
+      continue;
+    const markedSpeaker = !!speaker?.startsWith("!");
+    marked = narration === "!" || markedSpeaker || appointment;
     const requirements = marked ? ["missing-" + id] : [];
     if (narration !== undefined) {
+      if (introduction || appointment) continue;
       const actors = meta[0]?.startsWith("actors ") ? meta[0].slice(7).trim().split(/\s+/u) : [];
       if (
         meta.length &&
@@ -279,7 +311,7 @@ export function decodeTaggedSceneReply(
       }
       anchor = { id, kind: "narration", text, requires: requirements, ...(actors.length ? { actors } : {}) };
     } else {
-      const token = marked ? speaker.slice(1) : speaker;
+      const token = markedSpeaker ? speaker.slice(1) : speaker;
       const action =
         reserved === "action" ? /^action[ \t]+([1-9]\d?)(?:[ \t]+(escort))?$/iu.exec(speaker.trim()) : null;
       const choice = action ? readset.sceneSpeechActions?.[Number(action[1]) - 1] : undefined;
@@ -304,11 +336,16 @@ export function decodeTaggedSceneReply(
         continue;
       }
       if (admission) requirements.push(admission);
+      const introducedName = introduction ? knownNames.get(speakerId) : undefined;
+      if ((introduction && (text || !introducedName || choice || appointment)) || (appointment && (text || choice))) {
+        issue = "invalid_dialogue_tag";
+        continue;
+      }
       const beat: Beat = {
         id,
         kind: "dialogue",
         speakerId,
-        text,
+        text: introducedName ? `My name is ${introducedName}.` : appointment ? "Appointment offered." : text,
         requires: requirements,
         ...(choice ? { targetId: "player" } : {}),
       };
@@ -319,7 +356,10 @@ export function decodeTaggedSceneReply(
           target = tag.slice(index + 1).trim();
         if (tag === "shout" && !beat.delivery) beat.delivery = "shout";
         else if (tag === "aside" && !beat.presentation) beat.presentation = "aside";
-        else if (kind === "name" && index >= 0 && target && !beat.speakerLabel) beat.speakerLabel = target;
+        else if (tag === "introduce" && introduction && !beat.introduceName) beat.introduceName = true;
+        else if (tag === "appointment" && appointment && !beat.offerAppointment) beat.offerAppointment = true;
+        else if (kind === "name" && !readset.explicitNpcIntroduction && index >= 0 && target && !beat.speakerLabel)
+          beat.speakerLabel = target;
         else if (
           (kind === "whisper" || kind === "to") &&
           index >= 0 &&
@@ -339,7 +379,7 @@ export function decodeTaggedSceneReply(
         issue = "invalid_dialogue_tag";
         continue;
       }
-      if (alias?.name && !beat.speakerLabel) beat.speakerLabel = alias.name;
+      if (!readset.explicitNpcIntroduction && alias?.name && !beat.speakerLabel) beat.speakerLabel = alias.name;
       if (choice) {
         if (choice.kind === "visit") {
           visit = { segment: id, option: choice.option, escort };
@@ -367,7 +407,16 @@ export function decodeTaggedSceneReply(
     if (anchor) segments.push(anchor);
   }
   if (!segments.length && !halt) {
-    const plain = plainNarration(content);
+    const plain = plainNarration(
+      content,
+      readset.relaxedNarrationProse === true,
+      (label) =>
+        !!reservedControl(label) ||
+        speakers.has(label) ||
+        aliases.has(aliasKey(label)) ||
+        ambiguous.has(aliasKey(label)) ||
+        /^new:/u.test(label),
+    );
     const narration = plain.narration;
     if (narration) return { value: { segments: narration }, repaired: true };
     if (content.trimStart().startsWith("\x60\x60\x60")) issue = "fenced_reply";

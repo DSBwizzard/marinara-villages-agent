@@ -237,10 +237,13 @@ await runCase("weekly-agenda/agreement", () => {
   counter.segments[0].text = "No, I cannot meet you tomorrow at noon.";
   assert.equal(publish(counter, "counter", propose).held, false);
   assert.equal(world.residentPlans.appointments, undefined, "A model label cannot authorize a calendar write.");
-  const result = publish(raw, "agreement", propose);
+  assert.equal(agendaWeek(world, "mara", when, false).pending, undefined);
+  const explicit = structuredClone(raw);
+  Object.assign(explicit.segments[0], { offerAppointment: true });
+  const result = publish(explicit, "agreement", propose);
   assert.equal(result.held, false, JSON.stringify(result.rejected));
   const pending = agendaWeek(world, "mara", when, false).pending!;
-  assert.equal(pending.length, 2);
+  assert.equal(pending.length, 1);
   assert.equal(world.residentPlans.appointments, undefined);
   assert.throws(() => confirmAgendaAppointment(world, "mara", "stale", when), /changed/);
   assert(confirmAgendaAppointment(world, "mara", pending.at(-1)!.token, when));
@@ -257,7 +260,6 @@ await runCase("weekly-agenda/agreement", () => {
     shared.map(({ activity, source }) => [activity, source]),
     [["Look through maps", "agreed"]],
   );
-  assert.throws(() => confirmAgendaAppointment(world, "mara", pending[0]!.token, when), /overlaps/);
   assert.equal(world.residentPlans.appointments?.length, 1);
   const due = new Date(tomorrow + "T12:15:00Z");
   assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].source, "agreed");
@@ -357,12 +359,19 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
             }
           : {
               segments: [
-                { kind: "dialogue", speakerId: "mara", text: "Yes, I'll meet you here tomorrow at noon until one." },
+                {
+                  kind: "dialogue",
+                  speakerId: "mara",
+                  text: "Appointment offered.",
+                  offerAppointment: true,
+                  requires: ["resident-slot"],
+                },
               ],
               keep: [
                 {
                   for: ["player", "mara"],
                   about: ["mara"],
+                  id: "resident-slot",
                   class: "commitment",
                   text: "Look through maps at The Mill tomorrow from noon to one.",
                   offer: { proposer: "player", participants: ["player", "mara"] },
@@ -421,6 +430,24 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
         next.blocks.map(({ activity, source }: { activity: string; source: string }) => [activity, source]),
         [["Look through maps", "agreed"]],
       );
+      const cancelToken = confirmation.json().confirmed[0].token;
+      const cancelled = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/agendas/mara/appointments",
+        payload: { token: cancelToken, cancel: true },
+      });
+      assert.equal(cancelled.statusCode, 200, cancelled.body);
+      assert.equal(cancelled.json().confirmed, undefined);
+      assert.equal(cancelled.json().pending, undefined);
+      assert.equal(cancelled.json().days[1].blocks.length, 0);
+      for (const payload of [{ token: returned.pending![0].token }, { token: cancelToken, cancel: true }]) {
+        const stale = await host.app.inject({
+          method: "POST",
+          url: "/api/villages/agendas/mara/appointments",
+          payload,
+        });
+        assert.equal(stale.statusCode, 409, stale.body);
+      }
       assert.equal(calls, 2);
     } finally {
       await host.stop();

@@ -146,25 +146,19 @@ await runCase("gm-effects/tagged-memory-and-wish", async () => {
       assert.match(prompt, /The game records the exact requested fact/u);
       assert.doesNotMatch(prompt, /Following decisions available|\[action N\]|"type":"npc\.admit"/u);
     }
-    if (response === 3) {
-      assert.match(prompt, /Use \[keep\]: \{"id":"remember-fact","for":\["resident-id"\]/u);
-      assert.doesNotMatch(prompt, /required top-level keep entry/u);
-    }
+    if (response === 3) assert.doesNotMatch(prompt, /game records the exact requested fact/u);
     return {
       content:
         response === 1
           ? `[mara]: ${wish}\n[keep]: ${JSON.stringify({ owner: "mara", class: "desire", text: wish })}`
           : response === 2
             ? "[mara] [remember]: I’ll remember where you like to sit."
-            : [
-                "[mara] [remember]: I’ll remember that, too.",
-                '[keep]: {"id":"remember-fact","for":["mara"],"class":"information","text":"Player said: I prefer that we meet by the pond","source":[{"input":"I prefer that we meet by the pond","ground":{"kind":"spoken","to":["mara"]}}]}',
-              ].join("\n"),
+            : "[mara]: That sounds pleasant.",
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
   };
-  const send = (submissionId: string, message: string) =>
+  const send = (submissionId: string, message: string, rememberFor?: string) =>
     host.app.inject({
       method: "POST",
       url: "/api/villages/rooms/turn",
@@ -173,25 +167,26 @@ await runCase("gm-effects/tagged-memory-and-wish", async () => {
         submissionId,
         message,
         mode: "chat",
+        ...(rememberFor ? { rememberFor } : {}),
         expectedSceneRevision: host.scene().sceneRevision,
       },
     });
   try {
     assert.equal((await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).statusCode, 200);
-    for (const [id, message] of [
+    for (const [id, message, rememberFor] of [
       ["wish", '"What would you like to do someday?"'],
-      ["single-listener", '"Please remember this: I like to sit near the window."'],
-      ["qualified-request", '"Please remember this for next visit: I prefer that we meet by the pond."'],
+      ["single-listener", "I like to sit near the window.", "mara"],
+      ["quoted-request", '"Please remember this for next visit: I prefer that we meet by the pond."'],
     ]) {
-      const response = await send(id, message);
+      const response = await send(id, message, rememberFor);
       assert.equal(response.statusCode, 200, response.body);
       assert.equal(host.scene().submissions.at(-1)?.acceptance.rejected.length, 0);
     }
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
     const resident = views(world, "mara").map(({ version }) => version.text);
     assert(resident.includes(wish));
-    assert(resident.includes("Player said: I like to sit near the window"));
-    assert(resident.includes("Player said: I prefer that we meet by the pond"));
+    assert(resident.includes("Player said: I like to sit near the window."));
+    assert(!resident.some((text) => text.includes("meet by the pond")));
     assert(!views(world, "player").some(({ version }) => version.text === wish));
     assert.equal(calls, 3);
   } finally {

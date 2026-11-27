@@ -45,6 +45,7 @@ export type NarrationSourceContext = {
   seed: string;
   episodeId: string;
   input: string;
+  rememberFor?: string;
   actors: Actor[];
   subjects?: { id: string; incarnation: string }[];
   visitorTrips?: { characterId: string; arrivedAt: string; leavesAt: string }[];
@@ -218,6 +219,36 @@ export function readSceneNarrationReply(
   continuity: ContinuityCollection,
 ) {
   const visit = raw.visit;
+  const recipient = readset.source.rememberFor;
+  if (recipient) {
+    memoryRequire(
+      !raw.halt && !visit && (!Array.isArray(raw.commands) || raw.commands.length === 0),
+      "a reminder reply cannot change the Scene",
+    );
+    memoryRequire(
+      Array.isArray(raw.segments) &&
+        raw.segments.length > 0 &&
+        raw.segments.every((value) => {
+          const row = asRecord(value);
+          return row.kind === "dialogue" && row.speakerId === recipient && !row.introduceName;
+        }),
+      "only the reminder recipient can reply",
+    );
+    const keeps = Array.isArray(raw.keep) ? raw.keep : [];
+    memoryRequire(
+      readset.codeRequestedMemory
+        ? keeps.length === 0
+        : keeps.length === 1 && asRecord(keeps[0]).id === "remember-fact",
+      "a reminder reply can only save the explicit reminder",
+    );
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value) => {
+        const { presentation: _presentation, ...row } = asRecord(value);
+        return { ...row, delivery: "whisper", targetId: "player" };
+      }),
+    };
+  }
   const readReply = (payload: Record<string, unknown>) => {
     const movements: Record<string, unknown>[] = [];
     const automaticIds = new Set(
@@ -642,14 +673,21 @@ export function bindNarrationSource(
   };
   if ("input" in ref) {
     const span = exactInputSpan({ text: ref.input, occurrence: ref.occurrence }, context.input),
-      moment = inputMoment(ref, context);
+      moment = inputMoment(
+        context.rememberFor ? { ...ref, ground: { kind: "spoken", to: [context.rememberFor], at: "start" } } : ref,
+        context,
+      );
     source.unitId = "input";
     source.fingerprint = memoryHash(context.input);
     source.excerpt = span.text;
     source.range = { start: span.start, end: span.end };
     source.moment = moment;
     source.actorId = "player";
-    const ground = ref.ground;
+    const ground =
+      context.rememberFor && ref.ground?.kind === "spoken"
+        ? { ...ref.ground, to: [context.rememberFor], delivery: "whisper" as const, targetId: context.rememberFor }
+        : ref.ground;
+    if (context.rememberFor) memoryRequire(ground?.kind === "spoken", "the reminder was submitted as spoken words");
     if (ground?.kind === "spoken" || ground?.kind === "visible-action") {
       memoryRequire(moment, "perception needs its captured moment");
       const origin = position(context, "player", moment);

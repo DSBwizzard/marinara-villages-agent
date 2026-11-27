@@ -259,7 +259,7 @@ await runCase("narration-writing/empty-cast-npc", async () => {
       positions ? '"Hello, is anyone here?"' : '"Please remember that I like bread."',
       "chat",
     );
-    assert.equal(publication.readset.positionedSceneSources === true, positions);
+    assert.equal(publication.readset.positionedSceneSources, true);
     const result = acceptNarration(f.state, publication, "first-meeting", publication.readset.capturedAt);
     assert.equal(result.held, false, JSON.stringify(result.rejected));
     const episode = result.episode!,
@@ -743,20 +743,25 @@ await runCase("narration-writing/single-request", async () => {
     casualPrompt,
     /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,
   );
-  const remember = await f.writing.prepareVenueTurnMessages(f.scene, '"Mara, please remember this: I knit."', "chat");
-  assert.equal(remember.readset.requestedMemory?.recipientId, f.id);
+  const fact = "L’été, je tricote.";
+  const remember = await f.writing.prepareVenueTurnMessages(f.scene, fact, "chat", undefined, undefined, true, f.id);
+  assert.deepEqual(remember.readset.requestedMemory, { start: 0, end: fact.length, recipientId: f.id });
+  assert.equal(remember.readset.source.rememberFor, f.id);
   assert.equal(remember.readset.codeRequestedMemory, true);
   const rememberPrompt = remember.fitted.messages
     .slice(0, -2)
     .map((row) => row.content)
     .join("\n");
-  assert.match(rememberPrompt, /Code records the exact requested fact/u);
+  assert.match(rememberPrompt, /game records the exact requested fact/u);
   assert.doesNotMatch(rememberPrompt, /"id":"remember-fact"/u);
-  assert.doesNotMatch(rememberPrompt, /I knit/u);
+  assert(!rememberPrompt.includes(fact));
   const unspokenMemory = await f.writing.prepareVenueTurnMessages(
     f.scene,
-    "Mara, please remember this: I knit.",
+    '"Mara, please remember this: I knit."',
     "chat",
+    undefined,
+    undefined,
+    true,
   );
   assert.equal(unspokenMemory.readset.requestedMemory, undefined);
   assert.equal(unspokenMemory.readset.codeRequestedMemory, undefined);
@@ -782,7 +787,7 @@ await runCase("narration-writing/single-request", async () => {
     true,
   );
   const groupPrompt = unspecific.fitted.messages.map(({ content }) => content).join("\n");
-  assert.match(groupPrompt, /Ask who should remember it/u);
+  assert.doesNotMatch(groupPrompt, /records the exact requested fact/u);
   assert.doesNotMatch(groupPrompt, /"id":"remember-fact"/u);
   assert.equal(unspecific.readset.requestedMemory, undefined);
 
@@ -1661,9 +1666,22 @@ await runCase("narration-writing/long-followup", async () => {
     "chat",
   );
   const historical = Object.entries(memoryEdit.readset.source.historical);
-  const [alias, reference] = historical.find(
-    ([, source]) => source.kind === "knowledge" && source.actorId === "player",
-  )!;
+  assert(!historical.some(([, source]) => source.kind === "knowledge" && source.excerpt === shared.text));
+  const reference = memoryEdit.readset.readOnlyKnowledge?.find(
+    (source) => source.kind === "knowledge" && source.actorId === "player" && source.excerpt === shared.text,
+  );
+  const speakerReference = memoryEdit.readset.readOnlyKnowledge?.find(
+    (source) => source.kind === "knowledge" && source.actorId === f.id && source.excerpt === shared.text,
+  );
+  assert(reference && speakerReference);
+  const alias = "h:1515.2";
+  const compatReadset = {
+    ...memoryEdit.readset,
+    source: {
+      ...memoryEdit.readset.source,
+      historical: { ...memoryEdit.readset.source.historical, [alias]: reference, "h:1515.3": speakerReference },
+    },
+  };
   const citedRoot = f.state.continuity.versions.find((version) => version.id === reference.unitId)!.rootId;
   assert(!reply.readset.admission.supplied.some((target) => target.id === citedRoot));
   for (const change of [
@@ -1671,15 +1689,15 @@ await runCase("narration-writing/long-followup", async () => {
     "Please correct what I told you about the weaving memory.",
   ]) {
     const write = await f.writing.prepareVenueTurnMessages(f.scene, change, "chat");
-    assert(write.readset.admission.supplied.some((target) => target.id === citedRoot));
+    assert(!write.readset.admission.supplied.some((target) => target.id === citedRoot));
   }
   assert(
-    historical.some(
-      ([, source]) => source.kind === "knowledge" && source.actorId === f.id && source.excerpt === reference.excerpt,
+    memoryEdit.readset.readOnlyKnowledge?.some(
+      (source) => source.kind === "knowledge" && source.actorId === f.id && source.excerpt === reference.excerpt,
     ),
   );
   const annotated = { segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", source: [alias] }] };
-  const normalized = readSceneNarrationReply(annotated, [f.id], memoryEdit.readset, f.state.continuity);
+  const normalized = readSceneNarrationReply(annotated, [f.id], compatReadset, f.state.continuity);
   assert.equal(normalized.segments[0].text, "I remember.");
   assert(!Object.hasOwn(normalized.segments[0], "source"));
   assert.deepEqual(annotated.segments[0].source, [alias], "recovery keeps the exact purchased reply");

@@ -2,7 +2,7 @@ import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badGateway, VillagesRequestError } from "./errors.js";
-import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
+import { contactNeighbors, contactPosition, type ContactIntent, type ContactMove } from "./venue-contact.js";
 import { isSceneAside, MAX_SCENE_ASIDES, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
@@ -68,7 +68,13 @@ export function addressedSceneResidents<T extends { name: string; characterId: s
 export function zoneEventScene(
   scene: VenueScene,
   venue: VillageVenue,
-  intent: { targetId?: string; message?: string; zoneId?: string; priorityIds?: string[] } = {},
+  intent: {
+    targetId?: string;
+    message?: string;
+    zoneId?: string;
+    contactKind?: ContactIntent["kind"];
+    priorityIds?: string[];
+  } = {},
 ): VenueScene {
   const occupants = (scene.sceneAttendance?.occupants ?? []).filter(
     (person) => !scene.departedIds?.includes(person.characterId),
@@ -105,14 +111,8 @@ export function zoneEventScene(
       .slice(-2)
       .map((line) => line.speakerId),
   );
-  const input = words(intent.message ?? "");
-  const crossZones = /\b(?:go|head|step|walk|move|cross|enter|into|through)\b/u.test(input)
-    ? venueZones(sceneLayoutVenue(venue, scene))
-        .filter((zone) => zone.seen && neighbors.includes(zone.id) && input.includes(words(zone.name)))
-        .map((zone) => zone.id)
-    : [];
-  const calling = /\b(?:shout|yell|call out)\b/u.test(input);
-  const named = addressedSceneResidents(intent.message ?? "", near, occupants, intent.targetId);
+  const layout = venueZones(sceneLayoutVenue(venue, scene));
+  const seenZones = new Set(layout.filter((zone) => zone.seen && !zone.closed).map((zone) => zone.id));
   const established = near.filter((person) =>
     scene.doorwayContacts?.some(
       (contact) =>
@@ -121,52 +121,48 @@ export function zoneEventScene(
         contact.characterZoneId === contactPosition(scene, person.characterId),
     ),
   );
-  // A knock or a direct address can get an answer at an adjacent public doorway.
+  // Only native Contact actions and established contacts open a doorway voice path.
   const publicDoorway = new Set(
     scene.zoneId === "exterior" || scene.area === "outside" || intent.zoneId
-      ? venueZones(sceneLayoutVenue(venue, scene))
+      ? layout
           .filter((zone) => zone.kind === "public" && !zone.closed && (!intent.zoneId || zone.id === intent.zoneId))
           .map((zone) => zone.id)
       : [],
   );
   const atPublicDoorway = ({ characterId }: { characterId: string }) =>
     publicDoorway.has(contactPosition(scene, characterId));
-  const action = (intent.message ?? "").replace(/"[^"]*"|“[^”]*”/gu, "");
-  const knocked = /\bknock(?:s|ed|ing)?\b/iu.test(action) ? near.filter(atPublicDoorway) : [];
-  const hosts = knocked.filter(({ characterId }) => venue.access?.managerIds.includes(characterId));
-  const opening = hosts.length === 1 ? hosts : knocked.length === 1 ? knocked : [];
-  const doorwayVoice = [
-    ...new Set(
-      [
-        ...established,
-        ...opening,
-        ...named.filter((person) => person.characterId === intent.targetId || calling || atPublicDoorway(person)),
-      ].map(({ characterId }) => characterId),
-    ),
-  ];
+  const doorway = near.filter(atPublicDoorway);
+  const contactTargets = intent.contactKind
+    ? doorway.filter(({ characterId }) => !intent.targetId || intent.targetId === characterId)
+    : [];
+  const hosts = contactTargets.filter(({ characterId }) => venue.access?.managerIds.includes(characterId));
+  const opening = hosts.length === 1 ? hosts : contactTargets.length === 1 ? contactTargets : [];
+  const eligible = near.filter(
+    (person) =>
+      (seenZones.has(contactPosition(scene, person.characterId)) &&
+        (!scene.activeIds.length || intent.targetId === person.characterId)) ||
+      established.includes(person) ||
+      opening.includes(person) ||
+      (previousSpeakers.has(person.characterId) && contactPosition(scene, person.characterId) === move?.originZoneId),
+  );
+  const named = addressedSceneResidents(intent.message ?? "", eligible, occupants, intent.targetId);
+  const doorwayVoice = [...new Set([...established, ...opening].map(({ characterId }) => characterId))];
   const candidates = [
     ...named.filter((person) => person.characterId === intent.targetId),
     ...named,
     ...opening,
-    ...near.filter(
-      (person) =>
-        contactPosition(scene, person.characterId) === intent.zoneId ||
-        crossZones.includes(contactPosition(scene, person.characterId)) ||
-        (previousSpeakers.has(person.characterId) &&
-          contactPosition(scene, person.characterId) === move?.originZoneId) ||
-        scene.doorwayContacts?.some((contact) => contact.characterId === person.characterId),
-    ),
-    ...(calling ? near.slice(0, 1) : []),
+    ...established,
+    ...eligible,
   ];
   const offered = [...new Map(candidates.map((person) => [person.characterId, person])).values()].slice(0, 4);
   const priority = [
-    ...(intent.priorityIds ?? []).filter(
+    ...[...(intent.priorityIds ?? []), ...(intent.targetId ? [intent.targetId] : [])].filter(
       (id) => scene.activeIds.includes(id) && contactPosition(scene, id) === scene.zoneId,
     ),
     ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
     ...named.map((person) => person.characterId),
     ...scene.activeIds.filter((id) => continuing.has(id)),
-    ...offered.slice(0, 1).map((person) => person.characterId),
+    ...opening.map((person) => person.characterId),
     ...scene.activeIds,
     ...offered.map((person) => person.characterId),
   ];
@@ -186,6 +182,7 @@ export function zoneEventScene(
       hearing: "direct",
       venue,
       instruction: "",
+      ...(intent.contactKind ? { contactKind: intent.contactKind } : {}),
       localIds: scene.activeIds,
       remoteIds: offered.map((person) => person.characterId).filter((id) => selected.includes(id)),
       ...(doorwayVoice.length ? { doorwayVoiceIds: doorwayVoice.filter((id) => selected.includes(id)) } : {}),
@@ -219,6 +216,7 @@ export function routeZoneEvents(
   lines: VenueReplyLine[],
   moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[],
   playerMoves: readonly { zoneId: string; segment: number }[] = [],
+  fixDoorwayPositions = false,
 ) {
   const venue = scene.contactGeneration?.venue;
   if (!venue) return;
@@ -275,7 +273,8 @@ export function routeZoneEvents(
       playerNear &&
       origin !== playerZone &&
       line.targetId === "player" &&
-      !!scene.contactGeneration?.doorwayVoiceIds?.includes(actor);
+      !!scene.contactGeneration?.doorwayVoiceIds?.includes(actor) &&
+      (!fixDoorwayPositions || (playerZone === scene.zoneId && origin === contactPosition(scene, actor)));
     const playerWords =
       speechDelivery(line) === "whisper"
         ? line.targetId === "player"

@@ -1,6 +1,7 @@
 import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { npcNameKey } from "./npc-index.js";
 import { readNarrationEffectHeader } from "./narration-contract.js";
 import {
   bindNarrationSource,
@@ -83,7 +84,14 @@ export function prepareNarrationNative(
       admitting = asRecord(value).id;
       const command = readNarrationNativeCommand(value);
       memoryRequire(command.type === "npc.admit", "invalid NPC command");
-      if (!command.existingId) memoryRequire(++newNpcCount <= 1, "a reply may introduce at most one new NPC");
+      if (!command.existingId) {
+        memoryRequire(++newNpcCount <= 1, "a reply may introduce at most one new NPC");
+        if (readset.explicitNpcIntroduction && command.label && command.name)
+          memoryRequire(
+            npcNameKey(command.label) !== npcNameKey(command.name),
+            "an NPC's public role must differ from their private name",
+          );
+      }
       const segment = rawSegments.findIndex(
           (value, index) =>
             value &&
@@ -376,6 +384,7 @@ export function prepareNarrationNative(
       };
     }
     if (command.type === "npc.introduce") {
+      memoryRequire(!readset.explicitNpcIntroduction, "use the explicit name introduction beat");
       const npc = findNpc(candidate, command.who);
       memoryRequire(
         npc &&

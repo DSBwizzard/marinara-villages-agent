@@ -10,7 +10,8 @@ export function composeAgenda(
   let blocks = routine.map((block) => ({ ...block }));
   for (const reservation of reservations) {
     const replaceable = (block: VillageAgendaBlock) =>
-      reservation.replaces === "flexible" ? flexibleAgendaBlock(block) : !block.essential && !block.commitmentId;
+      !restingAgendaBlock(block) &&
+      (reservation.replaces === "flexible" ? flexibleAgendaBlock(block) : !block.essential && !block.commitmentId);
     const work = reservation.source === "work";
     let covered = reservation.startMinute;
     for (const block of blocks.filter(
@@ -23,7 +24,7 @@ export function composeAgenda(
     blocks = blocks.flatMap((block) => {
       const start = Math.max(block.startMinute, reservation.startMinute);
       const end = Math.min(block.endMinute, reservation.endMinute);
-      if (start >= end || (work && (!replaceable(block) || restingAgendaBlock(block)))) return [block];
+      if (start >= end || (work && !replaceable(block))) return [block];
       return [
         ...(block.startMinute < start ? [{ ...block, endMinute: start }] : []),
         {

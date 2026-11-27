@@ -27,6 +27,22 @@ export function savedNpcNameReveal(state: VillageState, npc: NpcIdentity) {
       );
     const lines = episode.segments.filter((line, index) => {
       if (line.role !== "assistant" || line.speakerId !== npc.id || !playerHeardNpcSpeech(line)) return false;
+      if (episode.explicitNpcIntroduction)
+        return (
+          line.name === npc.name &&
+          episode.commandReceipts.some(
+            ({ id, kind, targetId, text, witnesses }) =>
+              kind === "npc-introduction" &&
+              targetId === npc.id &&
+              text === npc.name &&
+              witnesses.includes("player") &&
+              episode.grounding.some(
+                (source) =>
+                  source.unitId === line.id &&
+                  episode.dependencies?.["native:" + id]?.includes(continuitySourceUnit(source)),
+              ),
+          )
+        );
       const openingQuote = /^["“]([^"”]+)["”](?:\s|$)/u.exec(line.content.trim())?.[1];
       return openingQuote?.replace(/[.!]$/u, "") === npc.name || revealsNpcName(line, npc.name, index === first);
     });

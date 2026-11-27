@@ -40,7 +40,7 @@ import { worldCharacterReferences } from "../../domain/rules/npc-cast.js";
 import { findCardCharacter, introductoryVisitorStay, visitorLodging } from "../../domain/rules/visitors.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
-import { narrationAccessPrompt, sceneAccessDiscussed } from "../../domain/rules/narration-access.js";
+import { narrationAccessPrompt } from "../../domain/rules/narration-access.js";
 import { narrationResidencePrompt } from "../../domain/rules/narration-residence.js";
 import { narrationPlacePrompt } from "../../domain/rules/narration-place.js";
 import {
@@ -131,8 +131,8 @@ export function createSceneWriting({
       );
     }
   }
-  const requestKey = (scene: VenueScene, input: string, mode: string) =>
-    memoryHash([scene.id, venueOperationId(), mode, input]);
+  const requestKey = (scene: VenueScene, input: string, mode: string, rememberFor?: string) =>
+    memoryHash([scene.id, venueOperationId(), mode, input, ...(rememberFor ? [rememberFor] : [])]);
   async function prepareVenueTurnMessages(
     original: VenueScene,
     input: string,
@@ -140,11 +140,12 @@ export function createSceneWriting({
     signal?: AbortSignal,
     trace?: GreetingTrace,
     freshReply = false,
+    rememberFor?: string,
   ) {
     assertCurrentSceneGeneration(original);
     signal?.throwIfAborted();
     const started = performance.now();
-    const key = requestKey(original, input, mode),
+    const key = requestKey(original, input, mode, rememberFor),
       saved = freshReply ? undefined : venueSavedCheckpoint?.<Request>("writing-request:" + key);
     if (saved) {
       assertRequestIdentity(saved, original, input);
@@ -216,17 +217,18 @@ export function createSceneWriting({
       ((mode !== "chat" && !spontaneousOpening) || !!scene.contactGeneration?.instruction);
     const tagged =
       !scene.visitorIntroduction &&
-      !scene.contactGeneration?.instruction &&
+      (!scene.contactGeneration?.instruction || !!scene.contactGeneration.contactKind) &&
       (mode === "greet" || (freshReply && mode === "chat"));
     const addressed = nativeCommands
       ? []
       : addressedSceneResidents(input, cast, scene.sceneAttendance?.occupants ?? cast);
     const leadSpeakerId =
-      addressed.length === 1 &&
+      rememberFor ??
+      (addressed.length === 1 &&
       (scene.contactGeneration?.localIds?.includes(addressed[0].characterId) ||
         scene.contactGeneration?.doorwayVoiceIds?.includes(addressed[0].characterId))
         ? addressed[0].characterId
-        : undefined;
+        : undefined);
     const context = narrationContinuityContext(
       authority,
       scene,
@@ -234,8 +236,9 @@ export function createSceneWriting({
       venueOperationId(),
       input,
       villageNow(authority.clock?.advanceMs ?? 0).toISOString(),
-      !nativeCommands,
+      true,
       tagged,
+      rememberFor,
     );
     let loreInspection: LoreInspection | undefined;
     let loreRequirements: number[][][] = [];
@@ -275,32 +278,28 @@ export function createSceneWriting({
       !tagged &&
       !nativeCommands &&
       ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(model.model.toLowerCase());
-    const housingDiscussed =
-      /\b(?:housing|residence|household|roommate|lodging|move in|move out|live with|sleep here)\b/iu.test(input);
-    const housing = narrationResidencePrompt(
-      nativeCommands || housingDiscussed
-        ? context.residence
-        : {
-            homes: context.residence.homes.filter(
-              (row) =>
-                row.id === scene.placeId || context.residence.requests.some((request) => request.venue === row.id),
-            ),
-            requests: context.residence.requests,
-          },
-      nativeCommands,
-    );
-    const placeQuery = input.toLocaleLowerCase("en-US");
-    const places =
-      nativeCommands || /\b(?:places|where else|where can|directions|explore|discover)\b/iu.test(input)
-        ? context.places
-        : context.places.filter(
-            ({ id, name }) => id === scene.placeId || placeQuery.includes(name.toLocaleLowerCase("en-US")),
-          );
-    const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
+    const places = context.places
+      .toSorted((a, b) => Number(b.id === scene.placeId) - Number(a.id === scene.placeId))
+      .slice(0, 16);
+    const residence = {
+      ...context.residence,
+      homes: context.residence.homes
+        .filter(
+          (home) =>
+            home.id === scene.placeId ||
+            context.residence.requests.some((request) => request.venue === home.id) ||
+            [...home.managerIds, ...home.householdIds].some((id) => id === "player" || selectedIds.includes(id)),
+        )
+        .slice(0, 12),
+    };
+    const housing = narrationResidencePrompt(residence, nativeCommands);
+    const access = context.access
+      .toSorted((a, b) => Number(b.venueId === scene.placeId) - Number(a.venueId === scene.placeId))
+      .slice(0, 12);
+    const showAccess = access.length > 0;
     const localVisitZones = (sceneLayoutVenue(venue, scene).zones ?? [])
       .filter(
         (zone) =>
-          showAccess ||
           zone.seen ||
           zone.id === scene.zoneId ||
           (zone.kind === "public" &&
@@ -311,7 +310,7 @@ export function createSceneWriting({
     const offerSpeechActions = tagged && residentMovesInReply && !context.codeRequestedMemory;
     const visitOptions =
       residentMovesInReply && (!tagged || offerSpeechActions)
-        ? sceneVisitOptions(context.access, scene.placeId, selectedIds, localVisitZones, calendar, venue)
+        ? sceneVisitOptions(access, scene.placeId, selectedIds, localVisitZones, calendar, venue)
         : [];
     const canInviteForVisit = visitOptions.length > 0;
     const movementOptions = residentMovementOptions(
@@ -355,7 +354,7 @@ export function createSceneWriting({
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
     const memoryResident = JSON.stringify(requestedMemory?.recipientId ?? "resident-id");
-    const memoryKeep = `{"id":"remember-fact","for":[${memoryResident}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${memoryResident}]}}]}`;
+    const memoryKeep = `{"id":"remember-fact","for":[${memoryResident}],"class":"information","text":"Player said: <exact submitted words>","source":[{"input":"<exact submitted words>","ground":{"kind":"spoken","delivery":"whisper","targetId":${memoryResident},"to":[${memoryResident}],"at":"start"}}]}`;
     const npcIntroduction = !context.codeRequestedMemory && !scene.visitorIntroduction;
     const agenda = sceneAgendaContext(
       village,
@@ -368,7 +367,12 @@ export function createSceneWriting({
       leadSpeakerId,
     );
     const { agendaOptions: slots, activities, ...agendaFacts } = agenda;
-    const agendaVenues = [venue.id, ...places.filter(({ id }) => id !== venue.id).map(({ id }) => id)]
+    const scheduledCast = village.villagers.some(
+      (resident) => resident.agenda && selectedIds.includes(resident.characterId),
+    );
+    const agendaVenues = (
+      scheduledCast ? [venue.id, ...places.filter(({ id }) => id !== venue.id).map(({ id }) => id)] : []
+    )
       .slice(0, 10)
       .flatMap((id) => {
         const destination = findLocation(village, id);
@@ -464,6 +468,7 @@ export function createSceneWriting({
           : "",
         tagged ? "" : nativeCommands ? NARRATION_RESPONSE : ordinarySceneCitationIds(positions),
         !nativeCommands || tagged ? ordinarySceneKeepSources(tagged || positions) : "",
+        "Use owner IDs for durable desires and commitments. Mark actual offer, acceptance, or rejection with act on the exact current source.",
         freshReply || tagged ? "Use the supplied calendar for the current time. Past exchanges cannot change it." : "",
         scene.contactGeneration?.doorwayVoiceIds?.length
           ? (tagged
@@ -506,7 +511,7 @@ export function createSceneWriting({
           : "",
         npcIntroduction
           ? tagged
-            ? 'Use the NPC’s public role or ID until they give the player their name. Put their exact name in the speaker header on the line that reveals it, for example [Mira]: "Mira." For an ambiguous or reserved name, use [speaker-id] [name Mira]: "Mira."'
+            ? "If the NPC chooses to introduce themselves by name in a line heard by the player, put [speaker-id] [introduce]: on its own line with nothing after the colon. The game supplies their exact name in that line. Use the NPC’s ID for other dialogue."
             : 'For an unnamed NPC, use a distinct public role label like "Pastry seller" at admission. When their name becomes public, put speakerLabel:"Name" on their dialogue line heard by the player. Copy their exact saved name. Leave speakerLabel out while their name stays private.'
           : "",
       ]),
@@ -558,18 +563,15 @@ export function createSceneWriting({
       ],
       circumstances: [
         ...blocksFor([
-          nativeCommands && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
-          nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
-          showAccess ? narrationAccessPrompt(context.access) : "",
+          (nativeCommands || tagged) && !requestedMemory && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
+          (nativeCommands || tagged) && !requestedMemory && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
           (nativeCommands || (tagged && !context.codeRequestedMemory)) && showAccess ? NARRATION_ACCESS_COMMANDS : "",
           canInviteForVisit ? "Visit invitations available in this Scene: " + JSON.stringify(visitOptions) : "",
           followingOptions.length
             ? "Following decisions available in this Scene, grouped by speaker as [number, decision]: " +
               JSON.stringify(followingMenu)
             : "",
-          housing,
-          nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
-          narrationPlacePrompt(places),
+          (nativeCommands || tagged) && !requestedMemory && housing ? NARRATION_HOUSING_COMMANDS : "",
           context.codeRequestedMemory
             ? tagged
               ? "The game records the exact requested fact. Use [speaker-id] [remember]: text to acknowledge it only if the record is accepted. Keep any other offers pending."
@@ -578,10 +580,13 @@ export function createSceneWriting({
               ? (tagged
                   ? `The player explicitly asked to save a fact. Use [keep]: ${memoryKeep}. Use [speaker-id] [remember]: text for acknowledgment.`
                   : `The player explicitly asked to save a fact. Add this required top-level keep entry: ${memoryKeep}. Put "remember-fact" in requires on any line claiming it was saved.`) +
-                " Copy the exact fact from the player submission. Use the ID of the resident who heard it."
-              : context.clarifyMemoryRecipient
-                ? "Several people heard the request to remember a fact, and the player did not name a recipient. Ask who should remember it. Use ordinary dialogue and avoid claiming the fact was saved."
-                : "",
+                " Copy the exact submission, including punctuation. Only the named recipient heard it."
+              : "",
+          rememberFor
+            ? "This whole submission is a spoken reminder whispered to " +
+              JSON.stringify(rememberFor) +
+              ". Give only that actor’s whispered reply to the player. Omit narration and other effects."
+            : "",
           !nativeCommands && context.protections.length
             ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
             : "",
@@ -621,6 +626,19 @@ export function createSceneWriting({
               : undefined,
           }),
         ]),
+        ...(showAccess
+          ? [
+              {
+                evidenceId: "native-access",
+                text: narrationAccessPrompt(access, scene.placeId, localVisitZones, !tagged && !nativeCommands),
+                optional: "memory" as const,
+              },
+            ]
+          : []),
+        ...(housing ? [{ evidenceId: "native-housing", text: housing, optional: "memory" as const }] : []),
+        ...(places.length
+          ? [{ evidenceId: "native-places", text: narrationPlacePrompt(places), optional: "memory" as const }]
+          : []),
         ...(agendaOptions.length ||
         agenda.homeActivities ||
         agenda.available ||
@@ -639,7 +657,7 @@ export function createSceneWriting({
                     : []),
                   ...(agendaVenues.length
                     ? [
-                        'For a joint plan use a commitment offer for both parties, about:[actorId], agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use a supplied Venue/Zone. Cite the actual witnessed offer and any decision with act. Refer to this slot as a proposal until the player confirms it in the Agenda. Use a fitted alias for an existing offer.',
+                        'For a joint plan use a commitment offer for both parties, about:[actorId], agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use a supplied Venue/Zone. Cite each actual decision with act. In tagged replies, use [resident-id] [appointment]: with nothing after the colon for the resident’s offer or acceptance, followed by its [keep]. The game supplies the actual words and the player confirms in the Agenda. Use a fitted alias for an existing offer.',
                       ]
                     : []),
                   JSON.stringify({ agendaOptions, ...agendaFacts, ...(agendaVenues.length ? { agendaVenues } : {}) }),
@@ -691,7 +709,16 @@ export function createSceneWriting({
         }),
       });
     }
-    const readset = fittedNarrationReadset(authority, context, fitted.evidenceIds);
+    const readset = fittedNarrationReadset(
+      authority,
+      {
+        ...context,
+        access: fitted.evidenceIds.includes("native-access") ? access : [],
+        residence: fitted.evidenceIds.includes("native-housing") ? residence : { homes: [], requests: [] },
+        places: fitted.evidenceIds.includes("native-places") ? places : [],
+      },
+      fitted.evidenceIds,
+    );
     const visitorIds = village.visitors
       ?.filter((visitor) =>
         readset.source.actors.some(
@@ -711,11 +738,20 @@ export function createSceneWriting({
           : {}),
         ...(!nativeCommands && !freshReply ? { retryEpisodeRevision: authority.episodes.revision } : {}),
         ...(freshReply || tagged ? { strictSceneReply: true as const } : {}),
-        ...(tagged ? { taggedSceneReply: true as const, npcSpeakerNames } : {}),
+        ...(tagged
+          ? {
+              taggedSceneReply: true as const,
+              npcSpeakerNames,
+              explicitNpcIntroduction: true as const,
+              relaxedNarrationProse: true as const,
+            }
+          : {}),
+        explicitSceneEvidence: true,
         playerNavigation: mode === "leave" ? "conclude" : "explicit",
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
+        ...(fitted.evidenceIds.includes("native-access") ? { visibleAccessZones: localVisitZones } : {}),
         ...(sceneSpeechActions.length ? { sceneSpeechActions } : {}),
-        ...(canInviteForVisit
+        ...(canInviteForVisit && fitted.evidenceIds.includes("native-access")
           ? {
               sceneVisitOptions: visitOptions.map(({ actorId, venueId, zoneId, afterHours }) => ({
                 actorId,
@@ -747,7 +783,6 @@ export function createSceneWriting({
                 : {}),
               coalesceOfferDecisions: true,
               stripOfferContributionEcho: true,
-              recognizeDirectOfferSpeech: 5,
               optionalActorMemories: 5,
               continuityEffectRecovery: true,
               stripSceneReplyDecorations: 5,
@@ -772,10 +807,11 @@ export function createSceneWriting({
     trace?: GreetingTrace,
     retry?: { request: Request; beforeDispatch: () => Promise<void> },
     freshReply = false,
+    rememberFor?: string,
   ) {
     assertCurrentSceneGeneration(scene);
     return measurePipeline("Scene narration", { sceneId: scene.id, mode }, async () => {
-      const key = requestKey(scene, input, mode),
+      const key = requestKey(scene, input, mode, rememberFor),
         completionStage = "writing-completion:" + key;
       const savedRequest = freshReply ? undefined : venueSavedCheckpoint?.<Request>("writing-request:" + key);
       const savedCompletion = freshReply
@@ -789,7 +825,7 @@ export function createSceneWriting({
       } else {
         const prepared = retry
           ? await prepareRetryRequest(retry.request, scene, input, key)
-          : await prepareVenueTurnMessages(scene, input, mode, signal, trace, freshReply);
+          : await prepareVenueTurnMessages(scene, input, mode, signal, trace, freshReply, rememberFor);
         request = prepared;
         signal?.throwIfAborted();
         await recordLoreUse(request.fitted.lore, `Scene · ${scene.placeName || "Exchange"}`);

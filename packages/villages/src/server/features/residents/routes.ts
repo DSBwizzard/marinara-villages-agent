@@ -14,7 +14,7 @@ import { socialMail } from "./social-mail.js";
 import { wishes } from "./wishes/service.js";
 import { continuityWishes } from "../../domain/rules/continuity-library.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import { agendaWeek, confirmAgendaAppointment } from "../../domain/rules/agenda-overview.js";
+import { agendaWeek, cancelAgendaAppointment, confirmAgendaAppointment } from "../../domain/rules/agenda-overview.js";
 import { readKeepsakes } from "../../domain/rules/mailbox-view.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { keepsakeArt } from "./keepsake-art.js";
@@ -306,12 +306,18 @@ export function registerAgendaRoutes(engine: FastifyInstance) {
   app.post<{ Params: CharacterParams }>("/agendas/:characterId/appointments", async (request, reply) => {
     try {
       const id = readCharacterId(request.params.characterId);
-      const { token } = z
-        .object({ token: z.string().regex(/^[a-f0-9]{64}$/u) })
+      const command = z
+        .object({ token: z.string().regex(/^[a-f0-9]{64}$/u), cancel: z.literal(true).optional() })
         .strict()
-        .parse(request.body);
+        .safeParse(request.body);
+      if (!command.success) throw badRequest("Choose an appointment from the Agenda.");
+      const { token, cancel } = command.data;
       const state = await mutateVillageState(
-        (world) => confirmAgendaAppointment(world, id, token, villageNow(world.clock?.advanceMs ?? 0)),
+        (world) => {
+          const now = villageNow(world.clock?.advanceMs ?? 0);
+          if (cancel) cancelAgendaAppointment(world, id, token, now);
+          else confirmAgendaAppointment(world, id, token, now);
+        },
         { memories: true },
       );
       return agendaWeek(state, id, villageNow(state.clock?.advanceMs ?? 0), false);

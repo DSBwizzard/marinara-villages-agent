@@ -49,19 +49,23 @@ export function WeeklyAgenda({
       });
     return () => controller.abort();
   }, [actorId, inspect, refresh, request, visible]);
-  async function confirm(offer: AgendaAppointmentOffer) {
+  async function decide(offer: AgendaAppointmentOffer | NonNullable<AgendaWeek["confirmed"]>[number], cancel = false) {
     if (confirming) return;
     setConfirming(true);
     setError("");
     try {
       const saved = await request<AgendaWeek>(`/agendas/${encodeURIComponent(actorId)}/appointments`, {
         method: "POST",
-        body: JSON.stringify({ token: offer.token }),
+        body: JSON.stringify({ token: offer.token, ...(cancel ? { cancel: true } : {}) }),
       });
-      setWeek((current) => (current?.pending?.some((entry) => entry.token === offer.token) ? saved : current));
-      onDate(offer.time.date);
+      setWeek((current) =>
+        (cancel ? current?.confirmed : current?.pending)?.some((entry) => entry.token === offer.token)
+          ? saved
+          : current,
+      );
+      if (offer.time) onDate(offer.time.date);
     } catch (cause) {
-      setError(messageFrom(cause, "Could not confirm the appointment."));
+      setError(messageFrom(cause, cancel ? "Could not cancel the appointment." : "Could not confirm the appointment."));
     } finally {
       setConfirming(false);
     }
@@ -70,14 +74,19 @@ export function WeeklyAgenda({
   return (
     <>
       <AgendaPlanner days={week.days} date={date} onDate={onDate} />
-      {week.pending?.map((offer) => (
+      {[
+        ...(week.pending ?? []).map((offer) => ({ offer, cancel: false })),
+        ...(week.confirmed ?? []).map((offer) => ({ offer, cancel: true })),
+      ].map(({ offer, cancel }) => (
         <div key={offer.id}>
           <strong>{offer.activity}</strong>
-          <p>
-            {offer.time.date}, {timeLabel(offer.time.startMinute)}–{timeLabel(offer.time.endMinute)}, {offer.place}
-          </p>
-          <button type="button" disabled={confirming} onClick={() => void confirm(offer)}>
-            Confirm appointment
+          {offer.time ? (
+            <p>
+              {offer.time.date}, {timeLabel(offer.time.startMinute)}–{timeLabel(offer.time.endMinute)}, {offer.place}
+            </p>
+          ) : null}
+          <button type="button" disabled={confirming} onClick={() => void decide(offer, cancel)}>
+            {cancel ? "Cancel appointment" : "Confirm appointment"}
           </button>
         </div>
       ))}

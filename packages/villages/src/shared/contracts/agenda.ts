@@ -16,6 +16,8 @@ export type AgendaAppointmentOffer = {
 
 export type AgendaWeek = {
   pending?: AgendaAppointmentOffer[];
+  confirmed?: (Omit<AgendaAppointmentOffer, "time" | "place"> &
+    Partial<Pick<AgendaAppointmentOffer, "time" | "place">>)[];
   visibility: "known" | "shared" | "inspect";
   days: {
     date: string;

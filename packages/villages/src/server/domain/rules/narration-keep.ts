@@ -61,6 +61,7 @@ export function prepareContinuityKeep(
     resolveTarget?(id: string): string;
     ordinaryDialogue?: true;
     ordinaryReplyRecovery?: true;
+    explicitSceneEvidence?: true;
   },
 ) {
   const proposal = readContinuityProposal(raw, sourceContext.ordinaryReplyRecovery || sourceContext.ordinaryDialogue),
@@ -198,6 +199,7 @@ export function prepareContinuityKeep(
   const speaker = holders[0];
   const dialogueOwner =
     sourceContext.ordinaryDialogue &&
+    !sourceContext.explicitSceneEvidence &&
     !owner &&
     !proposal.replace &&
     !proposal.parent &&
@@ -324,6 +326,7 @@ export function prepareNarrationKeep(
   ordinaryDialogue?: true,
   ordinaryReplyRecovery?: true,
   recognizeDirectOfferSpeech?: NarrationReadset["recognizeDirectOfferSpeech"],
+  explicitSceneEvidence?: true,
 ) {
   if (ordinaryReplyRecovery) {
     const row = asRecord(raw);
@@ -402,6 +405,7 @@ export function prepareNarrationKeep(
     operationId: sourceContext.episodeId,
     ordinaryDialogue,
     ordinaryReplyRecovery,
+    explicitSceneEvidence,
     bindSource: (ref, owner) => bindNarrationSource(ref, sourceContext, owner),
     resolveTarget: (id) => {
       if (!id.startsWith("h:")) return id;

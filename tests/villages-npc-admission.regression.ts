@@ -905,10 +905,15 @@ await runCase("npc-admission/name", () => {
   npc.name = "Rasha Dunmore";
   const arrival = acceptNarration(meeting.state, meeting.publication(rawArrival(npc.id)), "meeting", at).episode!;
   applyAcceptedSceneDelta(meeting.scene, arrival);
-  const reply = (content: string, id: string, tagged = true) => {
+  const reply = (content: string, id: string, tagged = true, explicit = false) => {
     const publication = meeting.publication({}, '"What should I call you?"', id);
     const readset = tagged
-      ? { ...publication.readset, taggedSceneReply: true as const, npcSpeakerNames: { [npc.id]: npc.name } }
+      ? {
+          ...publication.readset,
+          taggedSceneReply: true as const,
+          npcSpeakerNames: { [npc.id]: npc.name },
+          ...(explicit ? { explicitNpcIntroduction: true as const, relaxedNarrationProse: true as const } : {}),
+        }
       : publication.readset;
     const raw = tagged
       ? decodeTaggedSceneReply(content, readset).value
@@ -921,6 +926,17 @@ await runCase("npc-admission/name", () => {
   const unspoken = reply("[Rasha Dunmore]: Take a seat.", "unspoken-label");
   assert.equal(unspoken.segments[0].name, "Mara");
   assert(!unspoken.commandReceipts.some(({ kind }) => kind === "npc-introduction"));
+  const denied = reply("[Rasha Dunmore]: I am not Rasha Dunmore.", "denied-label", true, true);
+  assert.equal(denied.segments[0].name, "Mara");
+  assert(!denied.commandReceipts.some(({ kind }) => kind === "npc-introduction"));
+  const sideText = reply("Outside: a bell rings [softly].", "plain-brackets", true, true);
+  assert.equal(sideText.segments[0].content, "Outside: a bell rings [softly].");
+  const strictProse = {
+    ...meeting.publication({}).readset,
+    taggedSceneReply: true as const,
+    relaxedNarrationProse: true as const,
+  };
+  assert.equal(decodeTaggedSceneReply('Coordinator output: {"keep":[{"text":"private"}]}', strictProse).value, null);
 
   const savedQuote = reply('"Rasha Dunmore." She taps the glass.', "saved-quote", false);
   assert.equal(savedQuote.segments[0].name, "Mara");
@@ -929,7 +945,8 @@ await runCase("npc-admission/name", () => {
     lineId: savedQuote.segments[0].id,
   });
 
-  const spoken = reply('[Rasha Dunmore]: "Rasha Dunmore." She taps the glass.\n[Rasha Dunmore]: Take a seat.', "named");
+  const spoken = reply(`[${npc.id}] [introduce]:\n[${npc.id}]: Take a seat.`, "named", true, true);
+  assert.equal(spoken.segments[0].content, "My name is Rasha Dunmore.");
   assert.deepEqual(
     spoken.segments.map(({ speakerId, name }) => [speakerId, name]),
     [
@@ -1236,8 +1253,14 @@ await runCase("npc-admission/improvised-collision", () => {
       raw = improvisedArrival();
     raw.commands[0][field] = "Mara";
     const before = memoryHash(f.state);
-    assert.throws(() => acceptNarration(f.state, f.publication(raw), field, at), /already identifies/);
-    assert.equal(memoryHash(f.state), before);
+    if (field === "name") {
+      assert.throws(() => acceptNarration(f.state, f.publication(raw), field, at), /already identifies/);
+      assert.equal(memoryHash(f.state), before);
+    } else {
+      const result = acceptNarration(f.state, f.publication(raw), field, at);
+      assert.equal(result.held, false);
+      assert.equal(result.episode!.commandReceipts.find(({ kind }) => kind === "npc")?.admission?.npc.label, "Mara");
+    }
   }
 });
 await runCase("npc-admission/premature-action", () => {
