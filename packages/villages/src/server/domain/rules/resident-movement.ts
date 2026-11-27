@@ -355,36 +355,46 @@ export function residentMovementOptions(
 
 /** Spoken follow choices use the captured local cast and the existing route options. */
 export function residentFollowingOptions(
+  state: VillageState,
   venue: VillageVenue,
   scene: VenueScene,
   options: ReturnType<typeof residentMovementOptions>,
-): Extract<SceneSpeechAction, { kind: "follow" }>[] {
+) {
   const from = scene.zoneId;
-  if (!from) return [];
+  if (!from) return { ongoing: [], choices: [] };
+  const ongoing: string[] = [];
   const adjacent = new Set(contactNeighbors(venue, from, scene));
-  return options.destinations.flatMap(({ characterId: actorId, zoneIds, trespassZoneIds }) => {
-    if (contactPosition(scene, actorId) !== from) return [];
-    const option = (agrees: boolean, to?: string, trespass?: true) => ({
-      kind: "follow" as const,
-      actorId,
-      agrees,
-      to,
-      trespass,
-    });
-    return [
-      option(true),
-      option(false),
-      ...options.zones.flatMap(({ id }) =>
-        !adjacent.has(id)
-          ? []
-          : [
-              ...(zoneIds.includes(id) ? [option(true, id)] : []),
-              ...(trespassZoneIds.includes(id) ? [option(true, id, true)] : []),
-              option(false, id),
-            ],
-      ),
-    ];
-  });
+  const choices = options.destinations.flatMap(
+    ({ characterId: actorId, zoneIds, trespassZoneIds }): Extract<SceneSpeechAction, { kind: "follow" }>[] => {
+      if (contactPosition(scene, actorId) !== from || scene.departedIds?.includes(actorId)) return [];
+      const incarnation = continuityActor(state, actorId)?.incarnation;
+      const alreadyFollowing = scene.movementAgreements?.some(
+        (row) => row.actorId === actorId && row.following && row.incarnation === incarnation,
+      );
+      if (alreadyFollowing) ongoing.push(actorId);
+      const option = (agrees: boolean, to?: string, trespass?: true) => ({
+        kind: "follow" as const,
+        actorId,
+        agrees,
+        to,
+        trespass,
+      });
+      return [
+        ...(alreadyFollowing ? [] : [option(true)]),
+        option(false),
+        ...options.zones.flatMap(({ id }) =>
+          !adjacent.has(id)
+            ? []
+            : [
+                ...(zoneIds.includes(id) ? [option(true, id)] : []),
+                ...(trespassZoneIds.includes(id) ? [option(true, id, true)] : []),
+                option(false, id),
+              ],
+        ),
+      ];
+    },
+  );
+  return { ongoing, choices };
 }
 
 /** Display eligibility and capacity once per destination. The native move checks still use the full options. */

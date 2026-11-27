@@ -719,7 +719,7 @@ await runCase("scene-travel/local-permission", async () => {
       assert(option, "The actual fitted reply includes the host's same-Venue invitation option");
       assert.match(
         messages.at(-1)!.content,
-        /each lasting change on its own tag line/,
+        /marked beat only when its next line proposes the lasting change/,
         "The final reminder uses one proposal line per change",
       );
       if (mode === "unrelated")
@@ -941,15 +941,27 @@ await runCase("scene-travel/mixed-speech-actions", async () => {
     host.model.chatComplete = async (messages) => {
       calls++;
       const prompt = messages.map(({ content }) => content).join("\n");
+      const following = JSON.parse(prompt.match(/Following decisions available.*: ([^\n]+)/)![1]) as Record<
+        string,
+        [number, string][]
+      >;
+      if (calls === 2) {
+        assert.match(prompt, /"currentFollowers":\["mara"\]/u);
+        assert(!following.mara.some(([, decision]) => decision === "start following"));
+        const stop = following.mara.find(([, decision]) => decision === "stop following")?.[0];
+        assert(stop);
+        assert(following.mara.some(([, decision]) => decision === "agree to cross to Common"));
+        return {
+          content: "[action " + stop + "]: All right, I'll stay here.",
+          finishReason: "stop",
+          usage: { inputTokens: 10, outputTokens: 10 },
+        };
+      }
       const invites = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]) as {
         actorId: string;
         zoneId: string;
         option: number;
       }[];
-      const following = JSON.parse(prompt.match(/Following decisions available.*: ([^\n]+)/)![1]) as Record<
-        string,
-        [number, string][]
-      >;
       const invited = invites.find(({ actorId, zoneId }) => actorId === "mara" && zoneId === "workshop");
       const agreed = following.mara.find(([, decision]) => decision === "start following")?.[0];
       assert(invited && agreed && invited.option !== agreed);
@@ -1011,6 +1023,30 @@ await runCase("scene-travel/mixed-speech-actions", async () => {
       assert.equal(move.json().session.trespassing, undefined);
       assert.equal(move.json().session.activeIds.includes("mara"), !movesAway);
       assert.equal(calls, 1, "One reply settles both actions. Move and replay purchase nothing.");
+      if (!movesAway) {
+        const current = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+        assert.equal(current.statusCode, 200, current.body);
+        const currentSession = current.json().session;
+        const stopped = await host.app.inject({
+          method: "POST",
+          url: "/api/villages/rooms/turn",
+          payload: {
+            ...input,
+            sessionId: currentSession.id,
+            submissionId: "stop-following",
+            expectedSceneRevision: currentSession.sceneRevision,
+            message: '"I can take it from here, Mara. Thanks for coming along."',
+          },
+        });
+        assert.equal(stopped.statusCode, 200, stopped.body);
+        const world = await repository.readAuthority({ memories: true });
+        assert.deepEqual(world.episodes.records.at(-1)?.rejectedEffects ?? [], []);
+        assert.equal(
+          host.scene().movementAgreements?.some((row) => row.actorId === "mara" && row.following) ?? false,
+          false,
+        );
+        assert.equal(calls, 2);
+      }
     } finally {
       await host.stop();
     }

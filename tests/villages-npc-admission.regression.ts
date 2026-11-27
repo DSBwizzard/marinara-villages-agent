@@ -213,6 +213,62 @@ await runCase("npc-admission/tagged-turn", () => {
     assert.equal(Object.keys(f.state.worldPlaces.npcs).length, count);
     assert(acceptNarration(f.state, publication, "tagged-return", at).replayed);
   }
+  for (const shape of [
+    "compact",
+    "legacy-readset",
+    "bare-key",
+    "unmarked",
+    "intervening",
+    "blank",
+    "named-role",
+    "collision",
+  ]) {
+    const f = fixture();
+    const admitted = shape === "compact";
+    const readset = {
+      ...f.publication({}).readset,
+      taggedSceneReply: true as const,
+      npcSpeakerNames: {},
+      ...(shape === "legacy-readset" ? {} : { compactNpcSpeech: true as const }),
+    };
+    const arrival = "A seller leans out from behind the counter.";
+    const name = shape === "collision" ? f.existing.name : "Lena Pike";
+    const label = shape === "named-role" ? "Seller Lena Pike" : "Cheese seller";
+    const content = [
+      "Narration: Rain drums on the awning.",
+      (shape === "unmarked" ? "Narration: " : "Narration!: ") + arrival,
+      ...(shape === "intervening" ? ["[cue]: {}"] : []),
+      shape === "bare-key"
+        ? "[new:seller]: Try the lane by the well."
+        : "[new:seller] [npc " + name + " | " + label + "]:" + (shape === "blank" ? "" : " Try the lane by the well."),
+    ].join("\n");
+    const raw = decodeTaggedSceneReply(content, readset).value!;
+    assert.equal((raw.commands as unknown[]).length, admitted || shape === "collision" ? 1 : 0, shape);
+    const count = Object.keys(f.state.worldPlaces.npcs).length;
+    const result = acceptNarration(f.state, { raw, readset, responseDigest: memoryHash(content) }, "market", at);
+    assert(!result.held, JSON.stringify(result.rejected));
+    if (admitted) assert.equal(result.rejected.length, 0);
+    const episode = readAcceptedEpisode(result.episode!, f.state.seed);
+    assert.deepEqual(
+      episode.segments.map(({ content, name }) => [content, name ?? ""]),
+      admitted
+        ? [
+            ["Rain drums on the awning.", "Narration"],
+            [arrival, "Narration"],
+            ["Try the lane by the well.", "Cheese seller"],
+          ]
+        : [["Rain drums on the awning.", "Narration"], ...(shape === "unmarked" ? [[arrival, "Narration"]] : [])],
+      shape,
+    );
+    assert.equal(Object.keys(f.state.worldPlaces.npcs).length, count + Number(admitted), shape);
+    const seller = Object.values(f.state.worldPlaces.npcs).find(({ name }) => name === "Lena Pike");
+    assert.equal(!!seller, admitted);
+    if (seller) {
+      assert(!episode.segments[0]!.heardBy.includes(seller.id), "Arrival does not backdate knowledge");
+      assert.equal(episode.segments.at(-1)?.speakerId, seller.id);
+      assert.equal(seller.label, "Cheese seller");
+    }
+  }
   const f = fixture(),
     readset = f.publication({}).readset;
   const raw = decodeTaggedSceneReply(
