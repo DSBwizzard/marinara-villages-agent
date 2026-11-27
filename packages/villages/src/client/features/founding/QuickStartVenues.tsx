@@ -85,7 +85,7 @@ export function QuickStartVenues({
   onRetrySaving?(): void;
   onCloseVenue?(): void;
   backLabel?: string;
-  onRemove?(venue: SetupVenueDraft): Promise<boolean> | boolean;
+  onRemove?(venue: SetupVenueDraft): void | Promise<void>;
 }) {
   const [arrangementPage, setArrangementPage] = useState<ArrangementPage | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -263,21 +263,34 @@ export function QuickStartVenues({
   const cards = ordered.map((venue) => {
     if (drawer)
       return (
-        <button
-          key={venue.id}
-          type="button"
-          className="villages-quick-venue-card villages-venue-drawer-row"
-          data-venue-id={venue.id}
-          disabled={busy || imageBusy}
-          onClick={() => {
-            onSelect(venue);
-            selectSection("about");
-            setEditingAbout(true);
-            setEditorOpen(true);
-          }}
-        >
-          {venue.name || "Venue"}
-        </button>
+        <div className="villages-venue-drawer-item" key={venue.id}>
+          <button
+            type="button"
+            className="villages-quick-venue-card villages-venue-drawer-row"
+            data-venue-id={venue.id}
+            disabled={busy || imageBusy}
+            onClick={() => {
+              onSelect(venue);
+              selectSection("about");
+              setEditingAbout(true);
+              setEditorOpen(true);
+            }}
+          >
+            {venue.name || "Venue"}
+          </button>
+          {onRemove && (
+            <button
+              type="button"
+              className="villages-venue-drawer-remove"
+              aria-label={`Remove ${venue.name || "Venue"}`}
+              title="Remove Venue"
+              disabled={busy || imageBusy}
+              onClick={() => void onRemove(venue)}
+            >
+              <VillageIcon name="trash" />
+            </button>
+          )}
+        </div>
       );
     const home = venue.occupancy.playerHome || !!venue.residentIds?.length;
     return (
@@ -471,17 +484,6 @@ export function QuickStartVenues({
             {!arrangementPage && !zoneDetails && section === "about" ? (
               <section className="villages-manage" aria-label="About this venue">
                 <div className="villages-people-actions">
-                  {onRemove && (
-                    <button
-                      type="button"
-                      disabled={busy || imageBusy}
-                      onClick={async () => {
-                        if (await onRemove(selected)) closeVenue();
-                      }}
-                    >
-                      Remove Venue
-                    </button>
-                  )}
                   <button type="button" disabled={busy || imageBusy} onClick={() => setEditingAbout(!editingAbout)}>
                     {editingAbout ? "Done" : "Edit"}
                   </button>

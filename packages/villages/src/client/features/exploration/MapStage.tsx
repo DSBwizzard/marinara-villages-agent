@@ -182,6 +182,7 @@ export function MapStage({
   navigationView,
   onNavigationView,
   compactPhotos = false,
+  onPinDragStart,
   onMovePin,
   onMoveInvalid,
   onNudgePin,
@@ -235,6 +236,7 @@ export function MapStage({
   /** Show the village's photo cards while keeping desktop's fitted map. */
   photoPins?: boolean;
   compactPhotos?: boolean;
+  onPinDragStart?(): void;
   onMovePin?(
     id: string,
     x: number,
@@ -695,7 +697,10 @@ export function MapStage({
       event.stopPropagation();
       const x = event.clientX - drag.startX,
         y = event.clientY - drag.startY;
-      if (Math.hypot(x, y) >= 8) drag.moved = true;
+      if (!drag.moved && Math.hypot(x, y) >= 8) {
+        drag.moved = true;
+        onPinDragStart?.();
+      }
       if (drag.moved) {
         event.preventDefault();
         setPinOffset({ id: pin.id, x, y });

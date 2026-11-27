@@ -583,7 +583,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             alt={`Map of ${setupLocationName || "your starting location"}`}
             pins={(setupStep === FOUNDING_STEP.Maps ? [] : draftPins).map((pin) => ({
               ...pin,
-              selected: (phone && !venueDrawer ? selectedPin?.id : selectedSetupVenueId) === pin.id,
+              selected: selectedSetupVenueId === pin.id,
               onSelect:
                 interactive && !setupVenueBusy && !setupSuggestionsBusy && !addVenuePending
                   ? () => {
@@ -608,7 +608,15 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             }
             view={defaultView("contain")}
             shape={setupMapShape}
-            onPlace={!phone && interactive ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined}
+            onPlace={
+              !phone && interactive
+                ? (x, y, size) => {
+                    setSelectedSetupVenueId(null);
+                    placeSetupPin(x, y, size, nextPin?.id);
+                  }
+                : undefined
+            }
+            onPinDragStart={() => setSelectedSetupVenueId(null)}
             onMovePin={
               interactive && mapReady && !setupEditorOpen && !setupSuggestionsBusy && !setupVenueBusy
                 ? (id, x, y, size) => placeSetupPin(x, y, size, id)
@@ -629,6 +637,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 ? (id, dx, dy) => {
                     const venue = setupVenues.find((row) => row.id === id);
                     if (!venue) return;
+                    setSelectedSetupVenueId(null);
                     placeSetupPin(
                       Math.round(Math.max(0, Math.min(1, (venue.presentation.x ?? 0.5) + dx)) * 10000) / 10000,
                       Math.round(Math.max(0, Math.min(1, (venue.presentation.y ?? 0.5) + dy)) * 10000) / 10000,
@@ -1128,7 +1137,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                       { cancel: "Cancel", confirm: "Remove Venue" },
                     ))
                   )
-                    return false;
+                    return;
                   setSetupVenues((rows) => rows.filter((row) => row.id !== venue.id));
                   setSetupWorkspace((state) => ({ ...state, venueReview: undefined }));
                   setSetupContext((state) => ({
@@ -1146,7 +1155,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                   setSetupMapReviewed(false);
                   setSetupFocusIssue(null);
                   setSetupProblem("");
-                  return true;
                 }
           }
           actions={

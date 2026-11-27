@@ -2136,6 +2136,8 @@ export async function verifyFoundingLayout(group) {
           await showVenuePin(added.id);
           const addedPin = root.locator(`[data-pin-id="${added.id}"]`);
           await expect(addedPin).toBeInViewport();
+          await addedPin.press("Enter");
+          await expect(addedPin).toHaveAttribute("data-selected", "true");
           await addedPin.press("ArrowRight");
           assert.equal(
             await page.evaluate(
@@ -2151,11 +2153,23 @@ export async function verifyFoundingLayout(group) {
           await editVenue(added.id);
           await expect(sheet).toBeVisible();
           await expect(sheet.getByRole("button", { name: "Redraft Venue", exact: true })).toHaveCount(0);
-          await sheet.getByRole("button", { name: "Remove Venue", exact: true }).click();
-          await page
-            .getByRole("dialog", { name: "Confirm", exact: true })
-            .getByRole("button", { name: "Remove Venue", exact: true })
-            .click();
+          await expect(sheet.getByRole("button", { name: "Remove Venue", exact: true })).toHaveCount(0);
+          await closeVenue();
+          const row = venueList.locator(`[data-venue-id="${added.id}"]`);
+          const trash = venueList.getByRole("button", { name: "Remove New Venue", exact: true });
+          const trashBounds = await trash.boundingBox();
+          const rowBounds = await row.boundingBox();
+          assert.ok(trashBounds.x >= rowBounds.x + rowBounds.width && trashBounds.width >= 44);
+          await trash.click();
+          const removal = page.getByRole("dialog", { name: "Confirm", exact: true });
+          await expect(removal).toContainText("Remove New Venue");
+          await expect(sheet).toHaveCount(0);
+          await removal.getByRole("button", { name: "Cancel", exact: true }).click();
+          await expect(trash).toBeFocused();
+          await expect(row).toBeVisible();
+          await trash.click();
+          await removal.getByRole("button", { name: "Remove Venue", exact: true }).click();
+          await expect(row).toHaveCount(0);
           await expect(sheet).toBeHidden();
           assert.notEqual(await page.evaluate(() => window.featureController.selectedSetupVenueId), added.id);
           assert.deepEqual(
@@ -2339,11 +2353,16 @@ export async function verifyFoundingLayout(group) {
           () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
         );
         const drag = async (dx, dy) => {
+          await marker.press("Enter");
+          await expect(marker).toHaveAttribute("data-selected", "true");
           const box = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
           await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
           await page.mouse.down();
           await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { steps: 5 });
+          await expect(marker).toHaveAttribute("data-selected", "false");
+          await expect(sheet).toHaveCount(0);
           await page.mouse.up();
+          await expect(marker).toHaveAttribute("data-selected", "false");
         };
         if (phone) {
           const fullMap = root.getByRole("dialog", { name: "Venues", exact: true });
@@ -2522,16 +2541,20 @@ export async function verifyFoundingLayout(group) {
             return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
           };
           const beforeTouch = await readPosition();
+          await marker.locator(".marinara-capability-villages-map-point").tap();
+          await expect(marker).toHaveAttribute("data-selected", "true");
           const point = await pinPoint();
           await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
           await touch.send("Input.dispatchTouchEvent", {
             type: "touchMove",
             touchPoints: [{ x: point.x + 20, y: point.y + 12 }],
           });
+          await expect(marker).toHaveAttribute("data-selected", "false");
           await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
           await expect.poll(async () => (await readPosition()).x).toBeGreaterThan(beforeTouch.x);
           const moved = await readPosition();
           assert.ok(moved.y > beforeTouch.y, "Dragging a Venue icon moves it on both axes");
+          await expect(marker).toHaveAttribute("data-selected", "false");
           await expect(sheet).toHaveCount(0);
           const movedPoint = await pinPoint();
           await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [movedPoint] });

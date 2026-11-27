@@ -1037,9 +1037,17 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-venue-drawer-actions button { min-height:44px; padding:.35rem .65rem; }
 .villages-forging-v2 [data-venue-drawer] .villages-quick-venue-list { align-self:start; height:auto; padding:.65rem; background:var(--founding-field); }
 .villages-forging-v2 [data-venue-drawer] .villages-quick-venue-list h3 { margin:0; font-size:1rem; }
+.villages-venue-drawer-item { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.25rem; }
 .villages-forging-v2 [data-venue-drawer] button.villages-venue-drawer-row {
   width:100%; min-height:44px; min-width:0; padding:.45rem .6rem; display:block; text-align:left; overflow-wrap:anywhere; border-radius:.5rem;
 }
+.villages-forging-v2 [data-venue-drawer] button.villages-venue-drawer-remove {
+  display:grid; place-items:center; align-self:center; width:44px; padding:0; border-color:transparent; background:transparent;
+}
+.villages-forging-v2 [data-venue-drawer] button.villages-venue-drawer-remove:hover:not(:disabled) {
+  color:var(--founding-error); background:var(--founding-hover);
+}
+.villages-venue-drawer-remove svg { width:17px; height:17px; }
 .villages-forging-v2[data-desktop-map] .villages-quick-start[data-venue-drawer]:not([data-venue-open]) {
   grid-template-columns:minmax(0,1fr) minmax(12rem,36%);
 }
