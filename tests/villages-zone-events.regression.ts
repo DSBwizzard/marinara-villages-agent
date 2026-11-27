@@ -55,7 +55,7 @@ const base = coerceSession({
   submissions: [],
 });
 const direct = zoneEventScene(base, venue);
-const scene = zoneEventScene(base, venue, { targetId: "near" });
+const scene = zoneEventScene(base, venue, { targetId: "near", contactKind: "call" });
 scene.contactGeneration!.hearing = undefined;
 scene.contactGeneration!.actorIds!.push("far");
 
@@ -105,24 +105,13 @@ assert.equal(
   ).length,
   0,
 );
-const called = zoneEventScene(base, venue, { targetId: "near" });
+const called = zoneEventScene(base, venue, { targetId: "near", contactKind: "call" });
+assert.equal(zoneEventScene(base, venue, { targetId: "near" }).contactGeneration!.doorwayVoiceIds, undefined);
 assert.deepEqual(direct.contactGeneration!.actorIds, ["local"], "Ordinary turns only offer the local cast");
 assert.deepEqual(called.contactGeneration!.remoteIds, ["near"], "Direct contact admits the neighboring actor");
-assert.deepEqual(
-  zoneEventScene(base, venue, { message: "Local, you said Near was cooking." }).contactGeneration!.actorIds,
-  ["local"],
-);
-for (const message of [
-  "Near, what is cooking?",
-  "Hello, Near!",
-  "I ask Near what is cooking.",
-  "I call out to Near.",
-  'I call, "Near, can I come in?"',
-]) {
-  const context = zoneEventScene(base, venue, { message });
-  assert.deepEqual(context.contactGeneration!.remoteIds, ["near"]);
-  assert.deepEqual(context.contactGeneration!.doorwayVoiceIds, ["near"]);
-}
+assert.equal(direct.contactGeneration!.leadSpeakerId, undefined);
+assert.equal(zoneEventScene(base, venue, { targetId: "local" }).contactGeneration!.leadSpeakerId, "local");
+assert.equal(called.contactGeneration!.leadSpeakerId, "near");
 const privateRoom = structuredClone(venue);
 privateRoom.zones!.find((zone) => zone.id === "hall")!.kind = "restricted";
 const privateScene = {
@@ -130,15 +119,14 @@ const privateScene = {
   sceneAttendance: { ...base.sceneAttendance!, layout: captureSceneLayout(privateRoom) },
 };
 assert.deepEqual(
-  zoneEventScene(privateScene, privateRoom, { message: 'I call, "Near, can I come in?"' }).contactGeneration!
+  zoneEventScene(privateScene, privateRoom, { targetId: "near", contactKind: "call" }).contactGeneration!
     .doorwayVoiceIds,
   undefined,
 );
 assert.deepEqual(
-  zoneEventScene(base, venue, { message: "I tell Near's sister about the soup." }).contactGeneration!.remoteIds,
-  [],
+  zoneEventScene(base, venue, { contactKind: "call", zoneId: "hall" }).contactGeneration!.doorwayVoiceIds,
+  ["near"],
 );
-assert.deepEqual(zoneEventScene(base, venue, { message: "I shout, ‘Help!’" }).contactGeneration!.remoteIds, ["near"]);
 assert.deepEqual(zoneEventScene(extended, chain, { targetId: "veryFar" }).contactGeneration!.remoteIds, []);
 const quiet = routed([{ kind: "dialogue", speakerId: "local", text: "Private local words." }], direct).lines[0];
 assert.deepEqual(quiet.heardBy, ["local", "player"]);
@@ -150,6 +138,31 @@ assert.throws(() => routed([crash("local")], direct), /invalid narrated sound/);
 const reach = zoneEventHearingContext(called, chain);
 assert.match(reach, /"across":\["near"\]/);
 assert.doesNotMatch(reach, /bedroom|exterior|hall|attic/, "hearing context omits hidden room identities");
+const doorwayMove = structuredClone(called);
+const fork = structuredClone(venue);
+fork.zones!.find(({ id }) => id === "exterior")!.connectedTo!.push("bedroom");
+fork.zones!.find(({ id }) => id === "bedroom")!.connectedTo!.push("exterior");
+doorwayMove.contactGeneration!.venue = fork;
+doorwayMove.sceneAttendance!.layout = captureSceneLayout(fork);
+const spokenAfterMove = readNarrationReply(
+  {
+    segments: [{ kind: "dialogue", speakerId: "near", targetId: "player", text: "Private after moving." }],
+  },
+  ["near"],
+);
+const movedWords = narrationLines(
+  spokenAfterMove,
+  doorwayMove,
+  "doorway-move",
+  at,
+  [{ characterId: "near", zoneId: "bedroom", segment: 0 }],
+  [],
+  undefined,
+  undefined,
+  { explicitSceneEvidence: true },
+).lines[0];
+assert(!movedWords.heardBy.includes("player"));
+assert.equal(movedWords.contactHidden, true);
 
 for (const delivery of [undefined, "whisper", "shout"] as const) {
   for (const presentation of [undefined, "aside"] as const) {
@@ -249,10 +262,11 @@ for (let index = 0; index < 12; index++)
   });
 const bounded = zoneEventScene(crowded, venue);
 assert(bounded.contactGeneration!.actorIds!.length <= 4);
-assert(
-  zoneEventScene(crowded, venue, { message: "Offstage 11, help!" }).contactGeneration!.remoteIds.includes("offstage11"),
+assert.equal(zoneEventScene(crowded, venue, { targetId: "offstage11" }).contactGeneration!.doorwayVoiceIds, undefined);
+assert.equal(
+  zoneEventScene(crowded, venue, { targetId: "offstage7", contactKind: "call" }).contactGeneration!.remoteIds[0],
+  "offstage7",
 );
-assert.equal(zoneEventScene(crowded, venue, { targetId: "offstage7" }).contactGeneration!.remoteIds[0], "offstage7");
 const broadcast = routed([{ kind: "dialogue", speakerId: "local", text: "Watch out!", delivery: "shout" }], bounded);
 assert.equal(broadcast.lines[0].heardBy.length, 15, "cast limits never limit delivery");
 console.log("Zone event routing, private witnesses and captured movement passed.");

@@ -377,7 +377,7 @@ export function ExplorationScreen({
                     const point = placeSpot(place);
                     if (point)
                       setNavigationView((current) => ({
-                        zoom: current?.zoom ?? 1,
+                        zoom: current?.zoom,
                         centerX: point.x,
                         centerY: point.y,
                       }));
@@ -457,7 +457,6 @@ export function ExplorationScreen({
               <div className={`${ELEMENT_TAG}-home-map-viewport`}>
                 <MapStage
                   inert={!!arrival}
-                  navigationControlsOnMobile={navigatorOpen}
                   key={selectedMap?.id}
                   lighting={lighting}
                   src={townMapImage || null}
@@ -527,6 +526,7 @@ export function ExplorationScreen({
                   }}
                   mobile={mobile}
                   exploration
+                  gameplayNavigation
                   navigationView={navigationView}
                   onNavigationView={setNavigationView}
                   keyboardPlacementId={markerDraft?.selected}

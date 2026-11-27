@@ -120,7 +120,7 @@ await runCase("episodes/shared-pair-budget", () => {
   assert.equal(selected.episodes.length, 2);
   const arrival = selectEpisodeHistory(history, continuity, [player, mara], "Hello.", 12000, "new-scene");
   assert.equal(
-    arrival.recallCandidates?.[0].id,
+    arrival.sharedRecall?.[0]?.id,
     "mara-two",
     "An admitted but offstage resident does not displace the latest exchange they actually shared",
   );
@@ -733,7 +733,7 @@ await runCase("episodes/independent-spans", async () => {
         scene,
         venue,
         "learn-other-span",
-        "Quote what I said so I can correct the note about " + clean.excerpt,
+        "I'd like to revisit the detail about " + clean.excerpt,
         at,
       ),
       readset = fittedNarrationReadset(

@@ -766,11 +766,14 @@ await test("appointment", async (f) => {
   const offer = "Let's look through maps here tomorrow from noon to one.";
   const date = new Date(Date.now() + 86400_000).toISOString().slice(0, 10);
   const reply = {
-    segments: [{ ...alternate.segments[0], text: "Yes, I'll meet you here tomorrow at noon until one." }],
+    segments: [
+      { ...alternate.segments[0], text: "Appointment offered.", offerAppointment: true, requires: ["resident-slot"] },
+    ],
     keep: [
       {
         for: ["player", "mara"],
         about: ["mara"],
+        id: "resident-slot",
         class: "commitment",
         text: "Look through maps at The Mill tomorrow from noon to one.",
         offer: { proposer: "player", participants: ["player", "mara"] },
@@ -793,7 +796,17 @@ await test("appointment", async (f) => {
   assert.equal(blockedAlternate.statusCode, 409, blockedAlternate.body);
   assert.equal(f.state().residentPlans.appointments?.length ?? 0, 0);
   const accepted = await f.send(reply, offer);
-  assert.equal(f.state().residentPlans.appointments?.length, 1, JSON.stringify(f.latest()));
+  assert.equal(f.state().residentPlans.appointments?.length ?? 0, 0);
+  const agenda = await f.app.inject({ method: "GET", url: "/api/villages/agendas?characterId=mara" });
+  assert.equal(agenda.statusCode, 200, agenda.body);
+  assert.equal(agenda.json().pending?.length, 1, agenda.body);
+  const confirmed = await f.app.inject({
+    method: "POST",
+    url: "/api/villages/agendas/mara/appointments",
+    payload: { token: agenda.json().pending[0].token },
+  });
+  assert.equal(confirmed.statusCode, 200, confirmed.body);
+  assert.equal(f.state().residentPlans.appointments?.length, 1);
   assert.equal(f.state().episodes.records.at(-1)!.commandReceipts.length, 0);
   assert.equal(accepted.retryReply, undefined);
 });

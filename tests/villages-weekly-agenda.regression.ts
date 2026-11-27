@@ -12,11 +12,14 @@ import {
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
+  cancelAgendaAppointment,
+  confirmAgendaAppointment,
   sceneAgendaContext,
   agendaWeek,
   repairSceneAppointment,
   applySceneAppointment,
 } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
+import { arrangementRepairRecords } from "../packages/villages/src/server/domain/rules/repair-arrangements.js";
 import {
   activityMoments,
   keepsakeAvailable,
@@ -44,7 +47,7 @@ const tomorrow = "2026-11-11";
 const when = new Date(at);
 const time = { date: tomorrow, startMinute: 720, endMinute: 780, venueId: "mill", zoneId: "exterior" };
 
-function fixture() {
+function fixture({ oldCompactCapture = false } = {}) {
   const world = { ...defaultVillageState(), seed: "agenda", setupAt: at, foundedAt: at, timeZone: "UTC" };
   const venue = venueFixture({ id: "mill", name: "The Mill", category: "public" });
   world.venues.push(venue);
@@ -99,10 +102,11 @@ function fixture() {
     authority = world,
     source = scene,
     instant = at,
+    captured = authority,
   ) {
-    const context = narrationContinuityContext(authority, source, venue, operation, input, instant);
+    const context = narrationContinuityContext(captured, source, venue, operation, input, instant);
     const readset = fittedNarrationReadset(
-      authority,
+      captured,
       context,
       context.parts.flatMap(({ block }) => (block.evidenceId ? [block.evidenceId] : [])),
     );
@@ -113,13 +117,10 @@ function fixture() {
         responseDigest: memoryHash(raw),
         readset: {
           ...readset,
-          agendaOptions: sceneAgendaContext(
-            world,
-            [{ characterId: "mara", doing: "Talking" }],
-            when,
-            "schedule",
-            venue.id,
-          ).agendaOptions,
+          ...(oldCompactCapture ? { compactSceneDecisions: true as const } : {}),
+          agendaOptions: sceneAgendaContext(world, [{ characterId: "mara", doing: "Talking" }], when, venue.id, [
+            { id: venue.id, zones: [{ id: "exterior" }] },
+          ]).agendaOptions,
           agendaVenues: [{ id: venue.id, zones: ["exterior"] }],
         },
       },
@@ -207,7 +208,7 @@ await runCase("weekly-agenda/visibility", () => {
 });
 
 await runCase("weekly-agenda/agreement", () => {
-  const { world, publish } = fixture();
+  const { world, publish, scene } = fixture();
   const propose = "Let's look through maps here tomorrow from noon to one.";
   const raw = {
     segments: [
@@ -229,17 +230,36 @@ await runCase("weekly-agenda/agreement", () => {
       },
     ],
   };
-  const pending = structuredClone(raw);
-  pending.keep[0].source.pop();
-  pending.segments[0].text = "I'll think about it.";
-  assert.equal(publish(pending, "offer-only", propose).held, false);
+  const offerOnly = structuredClone(raw);
+  offerOnly.keep[0].source.pop();
+  offerOnly.segments[0].text = "I'll think about it.";
+  assert.equal(publish(offerOnly, "offer-only", propose).held, false);
   assert.equal(world.residentPlans.appointments, undefined);
   const counter = structuredClone(raw);
-  counter.segments[0].text = "Yes, but Saturday at noon instead.";
-  assert.equal(publish(counter, "counter", propose).held, true);
-  assert.equal(world.residentPlans.appointments, undefined);
-  const result = publish(raw, "agreement", propose);
+  counter.segments[0].text = "No, I cannot meet you tomorrow at noon.";
+  assert.equal(publish(counter, "counter", propose).held, false);
+  assert.equal(world.residentPlans.appointments, undefined, "A model label cannot authorize a calendar write.");
+  assert.equal(agendaWeek(world, "mara", when, false).pending, undefined);
+  const explicit = structuredClone(raw);
+  Object.assign(explicit.segments[0], { offerAppointment: true });
+  const historical = fixture({ oldCompactCapture: true });
+  const beforeOfferCheck = structuredClone(explicit);
+  Object.assign(beforeOfferCheck.keep[0].agenda.time, { startMinute: 600, endMinute: 630 });
+  const retained = historical.publish(beforeOfferCheck, "retained-appointment", propose);
+  assert.equal(retained.held, false, JSON.stringify(retained.rejected));
+  const retainedOffer = agendaWeek(historical.world, "mara", when, false).pending![0];
+  assert.throws(
+    () => confirmAgendaAppointment(historical.world, "mara", retainedOffer.token, when),
+    /already committed/,
+  );
+  const result = publish(explicit, "agreement", propose);
   assert.equal(result.held, false, JSON.stringify(result.rejected));
+  const pending = agendaWeek(world, "mara", when, false).pending!;
+  assert.equal(pending.length, 1);
+  assert.equal(world.residentPlans.appointments, undefined);
+  assert.throws(() => confirmAgendaAppointment(world, "mara", "stale", when), /changed/);
+  assert(confirmAgendaAppointment(world, "mara", pending.at(-1)!.token, when));
+  assert(!confirmAgendaAppointment(world, "mara", pending.at(-1)!.token, when), "Replay cannot book twice.");
   const state = coerceVillageState(JSON.parse(JSON.stringify(world)));
   assert.equal(state.residentPlans.appointments?.length, 1);
   assert.ok(
@@ -252,31 +272,97 @@ await runCase("weekly-agenda/agreement", () => {
     shared.map(({ activity, source }) => [activity, source]),
     [["Look through maps", "agreed"]],
   );
-  const conflict = publish(raw, "another-appointment", propose);
-  assert.equal(conflict.held, true);
   assert.equal(world.residentPlans.appointments?.length, 1);
   const due = new Date(tomorrow + "T12:15:00Z");
   assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].source, "agreed");
   assert.equal(Object.hasOwn(agendaWeek(state, "mara", due, false).days[0].blocks[0], "join"), false);
-  const originalEpisodes = structuredClone(state.episodes),
-    booking = state.residentPlans.appointments![0];
+
+  const meetup = { ...scene, id: "booked-activity", startedAt: due.toISOString() };
+  const greeting = publish(
+    { segments: [{ kind: "dialogue", speakerId: "mara", text: "Welcome. The window is already open." }] },
+    "activity-hello",
+    "Good afternoon.",
+    state,
+    meetup,
+    due.toISOString(),
+  );
+  assert.equal(greeting.held, false, JSON.stringify(greeting.rejected));
+  const offerEvidence = "episode-context:" + result.episode!.id;
+  const recall = () =>
+    narrationContinuityContext(state, meetup, state.venues[0], "activity-next", "Mm-hm.", due.toISOString());
+  assert(recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
+  const booking = state.residentPlans.appointments![0];
+  const activity = booking.activity;
+  booking.activity = "Something different";
+  assert(!recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
+  booking.activity = activity;
+  booking.cancelled = true;
+  assert(!recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
+  delete booking.cancelled;
+
+  const originalEpisodes = structuredClone(state.episodes);
+  const oldCancellation = agendaWeek(state, "mara", when, false).confirmed![0]!.token;
+  const beforeRepair = structuredClone(state);
   repairSceneAppointment(
     state,
     booking.id,
     { time: { ...booking.time, startMinute: 780, endMinute: 840 }, activity: "Read maps together" },
-    at,
+    new Date(Date.parse(at) + 500).toISOString(),
     "repair-booking",
   );
   let repaired = coerceVillageState(JSON.parse(JSON.stringify(state)));
+  const correctedAgenda = agendaWeek(repaired, "mara", when, false);
   assert(
-    agendaWeek(repaired, "mara", when, false).days[1].blocks.some(
+    correctedAgenda.days[1].blocks.some(
       (block) => block.startMinute === 780 && block.activity === "Read maps together" && block.source === "agreed",
     ),
   );
+  assert.equal(correctedAgenda.confirmed![0]!.activity, "Read maps together");
+  assert.throws(() => cancelAgendaAppointment(repaired, "mara", oldCancellation, when), /changed/);
+  assert.throws(() => confirmAgendaAppointment(repaired, "mara", pending[0]!.token, when), /changed/);
+  assert(!recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
   assert.deepEqual(repaired.episodes, originalEpisodes);
+
+  const withdrawal = {
+    segments: [{ id: "withdrawal", kind: "dialogue", speakerId: "mara", text: "I need to cancel our appointment." }],
+    keep: [
+      {
+        id: "close-agreement",
+        replace: booking.id,
+        for: ["mara", "player"],
+        closeOffer: { by: "mara", reason: "withdrawn" },
+        source: [{ segment: "withdrawal", act: "withdraw" }],
+      },
+    ],
+  };
+  const sceneCancellation = structuredClone(repaired);
+  const stale = publish(
+    withdrawal,
+    "stale-withdrawal",
+    "Can we still meet?",
+    sceneCancellation,
+    scene,
+    at,
+    beforeRepair,
+  );
+  assert(
+    stale.rejected.some((row) => row.reason.includes("appointment changed")),
+    JSON.stringify(stale.rejected),
+  );
+  assert.equal(agendaWeek(sceneCancellation, "mara", when, false).confirmed![0]!.activity, "Read maps together");
+  const fresh = publish(withdrawal, "fresh-withdrawal", "Can we still meet?", sceneCancellation, scene, later);
+  assert.equal(fresh.held, false, JSON.stringify(fresh.rejected));
+  assert.equal(agendaWeek(sceneCancellation, "mara", when, false).confirmed, undefined);
+
+  const nativeCancellation = coerceVillageState(JSON.parse(JSON.stringify(repaired)));
+  cancelAgendaAppointment(nativeCancellation, "mara", correctedAgenda.confirmed![0]!.token, when);
+  assert.equal(agendaWeek(nativeCancellation, "mara", when, false).pending, undefined);
+  assert.equal(agendaWeek(nativeCancellation, "mara", when, false).confirmed, undefined);
+  assert(!arrangementRepairRecords(nativeCancellation).some(({ id }) => JSON.parse(id)[2] === booking.id));
   repairSceneAppointment(repaired, booking.id, null, at, "cancel-booking");
   repaired = coerceVillageState(JSON.parse(JSON.stringify(repaired)));
   assert(!agendaWeek(repaired, "mara", when, false).days[1].blocks.some((block) => block.source === "agreed"));
+  assert.throws(() => confirmAgendaAppointment(repaired, "mara", pending[0]!.token, when), /changed/);
   assert.equal(
     applySceneAppointment(repaired, repaired.continuity, { target: { id: booking.id } } as any, "old-delayed-work", at),
     false,
@@ -289,7 +375,7 @@ await runCase("weekly-agenda/compact-context", () => {
   const agenda = Object.assign(resident.agenda, { calendarVersion: 1 as const });
   const day = [
     { startMinute: 0, endMinute: 720, venueId: "mill", activity: "Morning errand" },
-    { startMinute: 720, endMinute: 900, venueId: "mill", activity: "Mend nets" },
+    { startMinute: 720, endMinute: 900, venueId: "mill", activity: "Mend nets", flexible: true },
     { startMinute: 900, endMinute: 1440, venueId: "mill", activity: "Staff the desk" },
   ];
   agenda.plannedDays = { [tomorrow]: day };
@@ -297,21 +383,19 @@ await runCase("weekly-agenda/compact-context", () => {
   agenda.plannedDays[tomorrow] = [
     day[0]!,
     { ...day[1]!, endMinute: 780 },
-    { ...day[1]!, startMinute: 780, activity: "Fill in at the library" },
+    { ...day[1]!, startMinute: 780, activity: "Fill in at the library", flexible: false },
     day[2]!,
   ];
   recordAgendaChanges(world, before, when);
   const cast = [{ characterId: "mara", doing: "Talking with the player" }];
-  const ordinary = sceneAgendaContext(world, cast, when, "", "mill");
+  const knownPlaces = [{ id: "mill", zones: [{ id: "exterior" }] }];
+  const ordinary = sceneAgendaContext(world, cast, when, "mill", knownPlaces);
   assert.deepEqual(ordinary.activities, [{ actorId: "mara", doing: "Talking with the player" }]);
-  assert.equal(ordinary.agendaOptions.length, 0);
-  assert.equal(ordinary.recentChange, undefined);
-  const asked = sceneAgendaContext(world, cast, when, "Are you free tomorrow afternoon?", "mill");
-  assert(asked.agendaOptions.every((row) => row.time.date === tomorrow && row.time.startMinute >= 720));
-  assert(asked.agendaOptions.length <= 3);
-  assert.equal(asked.available?.[0]?.free, false);
-  const changed = sceneAgendaContext(world, cast, when, "Why did your plans change tomorrow afternoon?", "mill");
-  assert.deepEqual(changed.recentChange, {
+  assert(ordinary.agendaOptions.some((row) => row.time.date === tomorrow));
+  assert(ordinary.agendaOptions.length <= 16);
+  assert.deepEqual(ordinary.available?.mara?.[tomorrow], [[720, 780]]);
+  assert.equal(Object.keys(ordinary.available?.mara ?? {}).length, 7);
+  assert.deepEqual(ordinary.recentChange, {
     actorId: "mara",
     date: tomorrow,
     startMinute: 780,
@@ -319,16 +403,43 @@ await runCase("weekly-agenda/compact-context", () => {
     previous: "Mend nets",
     replacement: "Fill in at the library",
   });
-  assert.equal(
-    sceneAgendaContext(world, [], when, "Why did the plan change tomorrow?", "mill").recentChange,
-    undefined,
-  );
+  assert.equal(sceneAgendaContext(world, [], when, "mill", knownPlaces).recentChange, undefined);
   const afterWindow = new Date("2026-11-12T08:00:00.000Z");
-  assert.equal(
-    sceneAgendaContext(world, cast, afterWindow, "Why did your plan change yesterday?", "mill").recentChange,
-    undefined,
+  assert.equal(sceneAgendaContext(world, cast, afterWindow, "mill", knownPlaces).recentChange, undefined);
+  const other = {
+    ...resident,
+    characterId: "tess",
+    agenda: agendaFixture({
+      day: [{ startMinute: 900, endMinute: 960, venueId: "mill", zoneId: "exterior", activity: "Check the nets" }],
+    }),
+  };
+  const restricted = {
+    ...resident,
+    agenda: agendaFixture({
+      day: [
+        { startMinute: 540, endMinute: 600, venueId: "mill", zoneId: "store", activity: "Count supplies privately" },
+        { startMinute: 660, endMinute: 720, venueId: "mill", zoneId: "store", activity: "Seal the finished order" },
+      ],
+    }),
+  };
+  const shared = sceneAgendaContext(
+    { ...world, villagers: [restricted, other] },
+    [...cast, { characterId: other.characterId, doing: "Visiting" }],
+    when,
+    "mill",
+    knownPlaces,
   );
+  assert(shared.agendaOptions.some((slot) => slot.actorId === other.characterId && slot.time.date === tomorrow));
+  assert(shared.agendaOptions.every((slot) => slot.time.zoneId !== "store"));
   assert(!JSON.stringify(agendaWeek(world, "mara", when, true)).includes("recentChanges"));
+
+  const storedRest = { ...day[1]!, activity: "Settling down to sleep" };
+  agenda.plannedDays[tomorrow] = [day[0]!, storedRest, day[2]!];
+  assert.deepEqual(sceneAgendaContext(world, cast, when, "mill", knownPlaces).available?.mara?.[tomorrow], []);
+  agenda.plannedDays[tomorrow] = [day[0]!, { ...storedRest, purpose: "ordinary" as const }, day[2]!];
+  assert.deepEqual(sceneAgendaContext(world, cast, when, "mill", knownPlaces).available?.mara?.[tomorrow], [
+    [720, 900],
+  ]);
 });
 
 await runCase("weekly-agenda/scene-scheduling", async () => {
@@ -355,52 +466,69 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
       assert(agenda, `turn ${calls + 1} uses fitted schedule evidence`);
       const packet = JSON.parse(agenda);
       const schedule = { ...time, zoneId: "common" };
-      const reply =
-        ++calls === 1
-          ? {
-              segments: [{ kind: "dialogue", speakerId: "mara", text: "I sort maps here from nine until eleven." }],
-              keep: [
-                {
-                  for: ["player"],
-                  about: ["mara"],
-                  class: "information",
-                  text: "Mara sorts maps here today from nine until eleven.",
-                  source: [{ segment: 1 }],
-                  agenda: {
-                    actorId: "mara",
-                    kind: "told",
-                    time: { ...schedule, date: "2026-11-10", startMinute: 540, endMinute: 660 },
-                  },
-                },
-              ],
-            }
-          : {
-              segments: [
-                { kind: "dialogue", speakerId: "mara", text: "Yes, I'll meet you here tomorrow at noon until one." },
-              ],
-              keep: [
-                {
-                  for: ["player", "mara"],
+      const destination = packet.agendaDestinations.find(
+        ([, venue, zone]: [number, string, string]) => venue === "The Mill" && zone === "Common",
+      )?.[0];
+      assert(Number.isSafeInteger(destination), "The fitted packet provides the actual visit destination");
+      if (calls > 0) {
+        assert(packet.agendaOptions.some((slot: { time: { date: string } }) => slot.time.date === tomorrow));
+        const valid = ++calls === 2;
+        const compact = { date: schedule.date, startMinute: schedule.startMinute, endMinute: schedule.endMinute };
+        return {
+          content:
+            "[mara] [appointment]: " +
+            JSON.stringify({
+              activity: "Look through maps",
+              time: valid
+                ? { ...compact, destination }
+                : calls === 3
+                  ? { ...compact, destination: packet.agendaDestinations.length + 1 }
+                  : { ...compact, destination, startMinute: 600, endMinute: 630 },
+            }) +
+            (valid
+              ? "\nNarration: A breeze lifts a page.\n[keep]: " +
+                JSON.stringify({
+                  id: "another-time",
+                  for: ["mara", "player"],
                   about: ["mara"],
                   class: "commitment",
-                  text: "Look through maps at The Mill tomorrow from noon to one.",
-                  offer: { proposer: "player", participants: ["player", "mara"] },
-                  source: [
-                    { input: offer, ground: { kind: "spoken", to: ["mara"] }, act: "offer" },
-                    { segment: 1, act: "accept" },
-                  ],
-                  agenda: { actorId: "mara", kind: "offer", time: schedule, activity: "Look through maps" },
-                },
-              ],
-            };
-      if (calls === 1) {
-        assert.equal(packet.agendaOptions.length, 1);
-        assert.equal(packet.agendaOptions[0].activity, "Sort maps");
-        assert.equal(packet.agendaVenues, undefined, "casual speech carries no appointment destinations");
-      } else {
-        assert(packet.agendaOptions.some((slot: { time: { date: string } }) => slot.time.date === tomorrow));
-        assert(packet.agendaVenues.some((venue: { id: string }) => venue.id === "mill"));
+                  text: "Mara offers another appointment two hours later.",
+                  offer: { proposer: "mara", participants: ["mara", "player"] },
+                  agenda: {
+                    actorId: "mara",
+                    kind: "offer",
+                    activity: "Look through maps",
+                    time: {
+                      ...schedule,
+                      startMinute: schedule.startMinute + 120,
+                      endMinute: schedule.endMinute + 120,
+                    },
+                  },
+                  source: [{ segment: 1, act: "offer" }],
+                })
+              : ""),
+          finishReason: "stop",
+        };
       }
+      calls++;
+      const reply = {
+        segments: [{ kind: "dialogue", speakerId: "mara", text: "I sort maps here from nine until eleven." }],
+        keep: [
+          {
+            for: ["player"],
+            about: ["mara"],
+            class: "information",
+            text: "Mara sorts maps here today from nine until eleven.",
+            source: [{ segment: 1 }],
+            agenda: {
+              actorId: "mara",
+              kind: "told",
+              time: { ...schedule, date: "2026-11-10", startMinute: 540, endMinute: 660 },
+            },
+          },
+        ],
+      };
+      assert(packet.agendaOptions.some((slot: { activity: string }) => slot.activity === "Sort maps"));
       return { content: JSON.stringify(reply), finishReason: "stop" };
     };
     try {
@@ -421,19 +549,79 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
         assert.equal(result.statusCode, 200, result.body);
         const { acceptance } = host.scene().submissions.at(-1)!;
         assert.equal(acceptance.status, "applied");
-        assert.deepEqual(acceptance.rejected, []);
+        assert.deepEqual(
+          acceptance.rejected.map(({ id }) => id),
+          calls === 2 ? ["another-time"] : [],
+        );
       }
       const state = fixtureVillageState(host.records.get("villages-village").data, host.records);
-      const [today, next] = agendaWeek(state, "mara", new Date(), false).days;
+      const returned = agendaWeek(state, "mara", new Date(), false);
+      assert.equal(returned.days[1].blocks.length, 0);
       assert.deepEqual(
-        today.blocks.map(({ activity, source }) => [activity, source]),
+        returned.pending?.map(({ time }) => time),
+        [{ ...time, zoneId: "common" }],
+      );
+      const confirmation = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/agendas/mara/appointments",
+        payload: { token: returned.pending![0].token },
+      });
+      assert.equal(confirmation.statusCode, 200, confirmation.body);
+      const [today, next] = confirmation.json().days;
+      assert.deepEqual(
+        today.blocks.map(({ activity, source }: { activity: string; source: string }) => [activity, source]),
         [["Sort maps", "told"]],
       );
       assert.deepEqual(
-        next.blocks.map(({ activity, source }) => [activity, source]),
+        next.blocks.map(({ activity, source }: { activity: string; source: string }) => [activity, source]),
         [["Look through maps", "agreed"]],
       );
-      assert.equal(calls, 2);
+      const cancelToken = confirmation.json().confirmed[0].token;
+      const cancelled = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/agendas/mara/appointments",
+        payload: { token: cancelToken, cancel: true },
+      });
+      assert.equal(cancelled.statusCode, 200, cancelled.body);
+      assert.equal(cancelled.json().confirmed, undefined);
+      assert.equal(cancelled.json().pending, undefined);
+      assert.equal(cancelled.json().days[1].blocks.length, 0);
+      for (const payload of [{ token: returned.pending![0].token }, { token: cancelToken, cancel: true }]) {
+        const stale = await host.app.inject({
+          method: "POST",
+          url: "/api/villages/agendas/mara/appointments",
+          payload,
+        });
+        assert.equal(stale.statusCode, 409, stale.body);
+      }
+      for (const message of [
+        "Could we move tomorrow's meeting elsewhere?",
+        "Could we meet here tomorrow from ten until ten thirty?",
+      ]) {
+        const unavailable = await host.app.inject({
+          method: "POST",
+          url: "/api/villages/rooms/turn",
+          payload: {
+            sessionId: "browser",
+            submissionId: randomUUID(),
+            message,
+            mode: "chat",
+            targetId: "",
+            expectedSceneRevision: host.scene().sceneRevision,
+          },
+        });
+        assert.equal(unavailable.statusCode, 200, unavailable.body);
+        assert(
+          unavailable
+            .json()
+            .session.lines.some(
+              ({ content }: { content: string }) => content === "The appointment is still unsettled.",
+            ),
+        );
+        const current = fixtureVillageState(host.records.get("villages-village").data, host.records);
+        assert.equal(agendaWeek(current, "mara", new Date(), false).pending, undefined);
+      }
+      assert.equal(calls, 4);
     } finally {
       await host.stop();
     }

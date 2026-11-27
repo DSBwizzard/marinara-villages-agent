@@ -5,7 +5,13 @@ import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 
 export const scheduledAgendaActivity = (block: VillageAgendaBlock) =>
-  !(!block.venueId && flexibleAgendaBlock(block) && block.activity === "Taking care of their own affairs");
+  block.purpose !== "unplanned" &&
+  !(
+    !block.purpose &&
+    !block.venueId &&
+    flexibleAgendaBlock(block) &&
+    block.activity === "Taking care of their own affairs"
+  );
 
 export { restingAgendaBlock } from "./agenda-flexibility.js";
 

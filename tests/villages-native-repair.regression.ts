@@ -1416,7 +1416,13 @@ await runCase("native-repair/weekly-correction", async () => {
       });
     });
     const day = (await f.api.list("people", "", 0, "mara", "agenda")).records[0]!;
-    const edit = async (activity: string, replacement: string, action: string, repeat = "date") => {
+    const edit = async (
+      activity: string,
+      replacement: string,
+      action: string,
+      repeat = "date",
+      metadata: Record<string, string | boolean> = {},
+    ) => {
       const record = await f.api.inspect(day.id, "mara"),
         field = record.fields.find((field) => field.key.startsWith("activity:") && field.value === activity)!;
       assert(field, activity);
@@ -1425,7 +1431,11 @@ await runCase("native-repair/weekly-correction", async () => {
         operationId: "agenda-" + action + "-" + replacement.replaceAll(" ", "-"),
         recordId: record.id,
         action,
-        values: { [field.key]: replacement || activity, ["repeat:" + index]: repeat },
+        values: {
+          [field.key]: replacement || activity,
+          ["repeat:" + index]: repeat,
+          ...Object.fromEntries(Object.entries(metadata).map(([key, value]) => [`${key}:${index}`, value])),
+        },
         knowers: [],
         personId: "mara",
         expectedRecord: record.token!,
@@ -1439,7 +1449,7 @@ await runCase("native-repair/weekly-correction", async () => {
     assert(agendaBlocksFor(state.villagers[0].agenda!, date).some((b) => b.activity === "Walking"));
     assert(!agendaBlocksFor(state.villagers[0].agenda!, date).some((b) => b.activity === "Reading maps"));
     const prior = routineRevision(state.villagers[0].agenda!);
-    await edit("Walking", "Tending herbs", "correct", "weekly");
+    await edit("Walking", "Tending herbs", "correct", "weekly", { purpose: "repair", flexible: true });
     f.reopen();
     state = await f.read();
     assert(!routineRevisionMatches(state.villagers[0].agenda!, prior));
@@ -1447,9 +1457,36 @@ await runCase("native-repair/weekly-correction", async () => {
     future.setUTCDate(future.getUTCDate() + 7);
     const materialized = structuredClone(state);
     planRoutineDays(materialized, future);
-    assert(agendaBlocksFor(materialized.villagers[0].agenda!, future).some((b) => b.activity === "Tending herbs"));
+    const recurring = agendaBlocksFor(materialized.villagers[0].agenda!, future).find(
+      (b) => b.activity === "Tending herbs",
+    );
+    assert.equal(recurring?.purpose, "repair");
+    assert.equal(recurring.flexible, true);
     await edit("Tending herbs", "Watering herbs", "correct", "weekly");
     assert(agendaBlocksFor((await f.read()).villagers[0].agenda!, future).some((b) => b.activity === "Watering herbs"));
+
+    const record = await f.api.inspect(day.id, "mara");
+    const activity = record.fields.find(
+      (field) => field.key.startsWith("activity:") && field.value === "Watering herbs",
+    )!;
+    const review = await f.api.prepare({
+      operationId: "agenda-flexibility-only",
+      recordId: record.id,
+      action: "correct",
+      values: { [activity.key.replace(/^activity:/u, "flexible:")]: false },
+      knowers: [],
+      personId: "mara",
+      expectedRecord: record.token!,
+    });
+    assert(
+      review.changes.some(
+        (change) => change.before.includes("Can reschedule") && !change.after.includes("Can reschedule"),
+      ),
+    );
+    await f.api.apply(review.id, review.token);
+    const finalAgenda = (await f.read()).villagers[0].agenda!;
+    assert.equal(agendaBlocksFor(finalAgenda, date).find((b) => b.activity === "Watering herbs")?.flexible, false);
+    assert.equal(agendaBlocksFor(finalAgenda, future).find((b) => b.activity === "Watering herbs")?.flexible, true);
   }
 });
 

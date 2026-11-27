@@ -55,8 +55,9 @@ await runCase("npc-cast/identity", () => {
   const f = fixture();
   f.state.villagers[0].cardSnapshot.name = "Feddy Fastbayer";
   f.state.villagers[1].cardSnapshot.name = "Daylite";
-  for (const name of ["Feddy", "feddy fastbayer", "Ｆｅｄｄｙ", "Daylite"])
+  for (const name of ["feddy fastbayer", "Ｆｅｄｄｙ　Ｆａｓｔｂａｙｅｒ", "Daylite"])
     assert.throws(() => assertDistinctNpcName(f.state, name), /already identifies/);
+  for (const alias of ["Feddy", "Feddy Ramos"]) assert.doesNotThrow(() => assertDistinctNpcName(f.state, alias));
   assert(worldCharacterReferences(f.state).some((person) => person.name === "Feddy Fastbayer"));
   const scoped = worldCharacterReferences(f.state, {
     placeId: f.state.venues[0].id,
@@ -201,7 +202,7 @@ await runCase("npc-cast/index-edits", () => {
   f.state.worldPlaces = second;
   f.state.villagers[0].cardSnapshot.name = "Feddy Fastbayer";
   assert.throws(
-    () => assertDistinctNpcName(f.state, "Feddy"),
+    () => assertDistinctNpcName(f.state, "Feddy Fastbayer"),
     /already identifies/,
     "roster edits do not reuse an obsolete NPC-index collision set",
   );
@@ -212,12 +213,12 @@ await runCase("npc-cast/player-identity", () => {
   f.state.playerName = "";
   f.state.playerPersonaId = "persona";
   f.state.playerPersonaName = "Vesper Cedar";
-  for (const name of ["Vesper Cedar", "Vesper", "Ｖｅｓｐｅｒ"])
-    assert.throws(
-      () => assertDistinctNpcName(f.state, name),
-      /already identifies/,
-      "the linked Persona is the Player identity",
-    );
+  assert.throws(
+    () => assertDistinctNpcName(f.state, "Ｖｅｓｐｅｒ Cedar"),
+    /already identifies/,
+    "the linked Persona is the Player identity",
+  );
+  assert.doesNotThrow(() => assertDistinctNpcName(f.state, "Vesper"));
   assert.doesNotThrow(() => assertDistinctNpcName(f.state, "An unrelated neighbor"));
 });
 await runCase("npc-cast/name-prefixes", () => {

@@ -12,6 +12,7 @@ type SceneSendInput = {
   message?: string;
   mode?: string;
   targetId?: string;
+  rememberFor?: string;
   contact?: { kind?: string; boundaryZoneId?: string };
 };
 type SavedSceneRequest = {
@@ -47,6 +48,7 @@ export function sceneResend(
     prior.message === input.message &&
     prior.mode === input.mode &&
     (prior.targetId || "") === (input.targetId || "") &&
+    prior.rememberFor === input.rememberFor &&
     prior.contact?.kind === input.contact?.kind &&
     prior.contact?.boundaryZoneId === input.contact?.boundaryZoneId;
   if (same && !saved.freshReply && saved.acceptance !== "held" && saved.acceptance !== "abandoned")

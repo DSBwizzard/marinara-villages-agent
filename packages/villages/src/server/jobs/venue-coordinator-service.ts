@@ -1039,7 +1039,10 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             replyReady: sceneTurnPublished(latest),
             acceptance: latest.acceptance.status,
             ...(operationId && latest.mode === "chat" && sceneTurnPublished(latest)
-              ? { submittedMessage: latest.message }
+              ? {
+                  submittedMessage: latest.message,
+                  ...(latest.rememberFor ? { submittedRememberFor: latest.rememberFor } : {}),
+                }
               : {}),
           }
         : undefined;
@@ -1061,7 +1064,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             input: null,
             committed: !!navigation || (!!saved && sceneTurnPublished(saved)),
             ...(saved ? { acceptance: saved.acceptance.status } : {}),
-            ...(saved?.mode === "chat" && sceneTurnPublished(saved) ? { submittedMessage: saved.message } : {}),
+            ...(saved?.mode === "chat" && sceneTurnPublished(saved)
+              ? {
+                  submittedMessage: saved.message,
+                  ...(saved.rememberFor ? { submittedRememberFor: saved.rememberFor } : {}),
+                }
+              : {}),
             replyReady: !saved || sceneTurnPublished(saved),
           }
         : (data.abandonedOperations as VenueOperation[] | undefined)?.some((entry) => entry.id === operationId)

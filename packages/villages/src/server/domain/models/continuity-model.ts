@@ -31,7 +31,7 @@ export type ContinuityVersion = {
   createdRevision: number;
   text: string;
   class: ContinuityClass;
-  agenda?: import("zod").infer<typeof import("../decoding/agenda-codec.js").agendaEvidence>;
+  agenda?: import("zod").infer<typeof import("../decoding/agenda-codec.js").savedAgendaEvidence>;
   relationshipScore?: number;
   romanticInterest?: number;
   romanticDay?: { date: string; gained: boolean };

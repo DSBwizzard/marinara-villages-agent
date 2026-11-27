@@ -26,7 +26,7 @@ function preferredVillagerPlace(
   // Resolve the saved location against current Places, then fall back if it was removed.
   const venue = venueId.length > 0 ? findLocation(village, venueId) : undefined;
   if (venue) {
-    const zone = chooseAgendaZone(venue, villager.characterId, agenda?.activity, agenda?.zoneId, village, {
+    const zone = chooseAgendaZone(venue, villager.characterId, agenda, agenda?.zoneId, village, {
       at,
     });
     return {
@@ -45,7 +45,7 @@ function preferredVillagerPlace(
   const home = village.venues.find((entry) => venueResidentIds(entry).includes(villager.characterId));
   if (!home) return null;
   const building = homeBuildingOptions().find((option) => option.kind === home.occupancy.homeKind);
-  const zone = chooseAgendaZone(home, villager.characterId, agenda?.activity, agenda?.zoneId, village, {
+  const zone = chooseAgendaZone(home, villager.characterId, agenda, agenda?.zoneId, village, {
     at,
   });
   return {

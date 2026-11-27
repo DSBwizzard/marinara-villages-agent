@@ -132,7 +132,8 @@ export function arrangementRepairRecords(state: VillageState): RepairRecord[] {
       );
     }
   }
-  for (const booking of state.residentPlans.appointments ?? [])
+  for (const booking of state.residentPlans.appointments ?? []) {
+    if (booking.cancelled) continue;
     records.push(
       record(["appointment", booking.resident.id, booking.id], booking.activity, "Agreed plan", [
         text("activity", "Activity", booking.activity),
@@ -142,6 +143,7 @@ export function arrangementRepairRecords(state: VillageState): RepairRecord[] {
         ...destinations(booking.time.venueId, booking.time.zoneId ?? "exterior"),
       ]),
     );
+  }
   for (const venue of state.venues)
     for (const offer of venue.access?.workOffers ?? [])
       records.push({

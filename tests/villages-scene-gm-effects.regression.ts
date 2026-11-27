@@ -146,25 +146,19 @@ await runCase("gm-effects/tagged-memory-and-wish", async () => {
       assert.match(prompt, /The game records the exact requested fact/u);
       assert.doesNotMatch(prompt, /Following decisions available|\[action N\]|"type":"npc\.admit"/u);
     }
-    if (response === 3) {
-      assert.match(prompt, /Use \[keep\]: \{"id":"remember-fact","for":\["resident-id"\]/u);
-      assert.doesNotMatch(prompt, /required top-level keep entry/u);
-    }
+    if (response === 3) assert.doesNotMatch(prompt, /game records the exact requested fact/u);
     return {
       content:
         response === 1
           ? `[mara]: ${wish}\n[keep]: ${JSON.stringify({ owner: "mara", class: "desire", text: wish })}`
           : response === 2
             ? "[mara] [remember]: I’ll remember where you like to sit."
-            : [
-                "[mara] [remember]: I’ll remember that, too.",
-                '[keep]: {"id":"remember-fact","for":["mara"],"class":"information","text":"Player said: I prefer that we meet by the pond","source":[{"input":"I prefer that we meet by the pond","ground":{"kind":"spoken","to":["mara"]}}]}',
-              ].join("\n"),
+            : "[mara]: That sounds pleasant.",
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
   };
-  const send = (submissionId: string, message: string) =>
+  const send = (submissionId: string, message: string, rememberFor?: string) =>
     host.app.inject({
       method: "POST",
       url: "/api/villages/rooms/turn",
@@ -173,25 +167,26 @@ await runCase("gm-effects/tagged-memory-and-wish", async () => {
         submissionId,
         message,
         mode: "chat",
+        ...(rememberFor ? { rememberFor } : {}),
         expectedSceneRevision: host.scene().sceneRevision,
       },
     });
   try {
     assert.equal((await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).statusCode, 200);
-    for (const [id, message] of [
+    for (const [id, message, rememberFor] of [
       ["wish", '"What would you like to do someday?"'],
-      ["single-listener", '"Please remember this: I like to sit near the window."'],
-      ["qualified-request", '"Please remember this for next visit: I prefer that we meet by the pond."'],
+      ["single-listener", "I like to sit near the window.", "mara"],
+      ["quoted-request", '"Please remember this for next visit: I prefer that we meet by the pond."'],
     ]) {
-      const response = await send(id, message);
+      const response = await send(id, message, rememberFor);
       assert.equal(response.statusCode, 200, response.body);
       assert.equal(host.scene().submissions.at(-1)?.acceptance.rejected.length, 0);
     }
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
     const resident = views(world, "mara").map(({ version }) => version.text);
     assert(resident.includes(wish));
-    assert(resident.includes("Player said: I like to sit near the window"));
-    assert(resident.includes("Player said: I prefer that we meet by the pond"));
+    assert(resident.includes("Player said: I like to sit near the window."));
+    assert(!resident.some((text) => text.includes("meet by the pond")));
     assert(!views(world, "player").some(({ version }) => version.text === wish));
     assert.equal(calls, 3);
   } finally {
@@ -200,7 +195,7 @@ await runCase("gm-effects/tagged-memory-and-wish", async () => {
 });
 
 await runCase("gm-effects/relationship-answer", async () => {
-  for (const variant of ["conclude", "native"]) {
+  for (const variant of ["conclude", "native", "missing-command-beat"]) {
     const host = await packagedSceneServer();
     const native = variant !== "conclude";
     const answer = "I enjoy how curious you are when we talk.";
@@ -216,7 +211,10 @@ await runCase("gm-effects/relationship-answer", async () => {
           segments: [
             said(ending ? "See you around." : "It's good to talk."),
             ...(ending && native
-              ? [{ id: "exit", kind: "narration", text: "You head out.", requires: ["close"] }]
+              ? [
+                  { id: "exit", kind: "narration", text: "You head out.", requires: ["close"] },
+                  { id: "last", kind: "narration", text: "Behind you, the light falls across the bench." },
+                ]
               : []),
           ],
           ...(ending && native
@@ -225,7 +223,7 @@ await runCase("gm-effects/relationship-answer", async () => {
                   {
                     id: "close",
                     type: "scene.end",
-                    at: "exit",
+                    at: variant === "missing-command-beat" ? "invented-segment" : "exit",
                     source: [{ input: departure, ground: { kind: "visible-action", to: ["mara"] } }],
                   },
                 ],
@@ -279,6 +277,7 @@ await runCase("gm-effects/relationship-answer", async () => {
       const ending = await send(true);
       assert.equal(ending.statusCode, 200, ending.body);
       assert.equal(host.scene().status, "closed");
+      if (native) assert(host.scene().lines.some((line) => line.content.includes("the light falls across the bench")));
       const closingEdge = await edge();
       assert.equal(closingEdge.answer, undefined);
       assert.equal(closingEdge.score, 3);
@@ -296,7 +295,7 @@ for (const scenario of scenarios)
   await runCase("gm-effects/" + scenario, async () => {
     const project = scenario.startsWith("project-"),
       leave = scenario.endsWith("-leave"),
-      held = ["capacity", "past-appointment", "halt"].includes(scenario);
+      held = ["past-appointment", "halt"].includes(scenario);
     const host = await packagedSceneServer({
       configure(world, now) {
         if (scenario === "npc")
@@ -597,16 +596,7 @@ for (const scenario of scenarios)
           "failed assertions never become displayed fiction",
         );
         assert.equal(world.episodes.records.filter((episode) => episode.sceneId === "browser").length, 0);
-        if (scenario === "capacity") {
-          assert.equal(response.statusCode, 502);
-          assert.match(turn.progressError ?? "", /overcrowd/, "the actual capacity rule holds this reply");
-          for (const id of ["mara", "bryn"])
-            assert.equal(
-              scene.accompanying!.find((row) => row.characterId === id)!.zoneId,
-              "common",
-              "over-capacity movement applies no partial result",
-            );
-        } else if (scenario === "past-appointment") {
+        if (scenario === "past-appointment") {
           assert.equal(response.statusCode, 502);
           assert.match(turn.progressError ?? "", /past|nonexistent/);
         } else {
@@ -634,6 +624,16 @@ for (const scenario of scenarios)
         const episode = world.episodes.records.find((row) => row.id === turn.episodeId)!;
         assert(episode, "the public reply has its canonical accepted Episode");
         if (scenario !== "project-greet") assert.equal(episode.privateInput, payload.message);
+        if (scenario === "capacity") {
+          assert.deepEqual(
+            episode.segments.map(({ content }) => content),
+            ["The crossing didn't go through."],
+          );
+          assert.equal(episode.commandReceipts.length, 0);
+          assert(episode.rejectedEffects?.some(({ reason }) => /overcrowd/u.test(reason)));
+          for (const id of ["mara", "bryn"])
+            assert.equal(scene.accompanying!.find((row) => row.characterId === id)!.zoneId, "common");
+        }
         if (leave) {
           assert.equal(scene.status, "closed");
           const selected = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });

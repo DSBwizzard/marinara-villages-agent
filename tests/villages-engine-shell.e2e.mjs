@@ -106,9 +106,9 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(colors).toEqual(original);
     await expect(home).toHaveAttribute("data-mobile", String(viewport.width < 705));
-    await expect(home.getByRole("button", { name: /^(Zoom in|Zoom out|Reset map view)$/ })).toHaveCount(
-      viewport.width < 705 ? 0 : 3,
-    );
+    const slider = home.getByRole("slider", { name: "Map zoom", exact: true });
+    if (viewport.width < 705) await expect(slider).toHaveCount(0);
+    else await expect(slider).toBeVisible();
     for (const button of await home
       .locator(
         ".marinara-capability-villages-explore-nav button, .marinara-capability-villages-explore-notices, .marinara-capability-villages-home-bar .marinara-capability-villages-icon-button",
