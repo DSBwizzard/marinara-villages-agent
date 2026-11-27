@@ -223,8 +223,13 @@ export async function verifyFoundingLayout(group) {
             }
             suggestions++;
             assert.equal(body.mode, "draft-venue");
-            assert.equal(body.targetVenueId, "founding-community");
+            assert.match(body.targetVenueId, /^venue:/);
             assert.equal(body.venueBrief, "A covered meeting courtyard.");
+            assert.deepEqual(
+              body.venues.map((venue) => venue.id),
+              [body.targetVenueId],
+            );
+            assert.equal(body.targetVenue.name, "");
             if (failVenueConnection)
               return send({
                 id: body.actionId,
@@ -633,7 +638,14 @@ export async function verifyFoundingLayout(group) {
         const editVenue = async (id) => {
           if (await sheet.count()) await closeVenue();
           await root.locator(`[data-venue-id="${id}"]`).click();
-          await button("Edit Venue").click();
+        };
+        const addVenue = async (ideas = "", previousIdeas) => {
+          await button("Add Venue").click();
+          const dialog = root.getByRole("dialog", { name: "Add Venue", exact: true });
+          const field = dialog.getByRole("textbox", { name: "Venue ideas (optional)", exact: true });
+          if (previousIdeas !== undefined) await expect(field).toHaveValue(previousIdeas);
+          await field.fill(ideas);
+          await dialog.getByRole("button", { name: "Add Venue", exact: true }).click();
         };
         const editProfile = async () => {
           const edit = sheet.getByRole("button", { name: "Edit", exact: true });
@@ -2074,7 +2086,7 @@ export async function verifyFoundingLayout(group) {
         if (view.width === 1366 || view.width === 320 || (view.width === 390 && view.height === 844)) {
           const keptVenues = await page.evaluate(() => structuredClone(window.featureController.setupVenues));
           await page.evaluate(() => window.featureController.setSetupVenues([]));
-          await expect(button("Draft Venues")).toBeEnabled();
+          await expect(button("Draft All Venues")).toBeEnabled();
           const emptyVenueWarning = venueList.getByText("A Village requires at least one Venue.", { exact: true });
           await expect(emptyVenueWarning).toHaveCount(0);
           await settingNext().click();
@@ -2092,8 +2104,8 @@ export async function verifyFoundingLayout(group) {
               },
             })),
           );
-          await button("Draft Venues").click();
-          const plan = root.getByRole("dialog", { name: "Draft Venues", exact: true });
+          await button("Draft All Venues").click();
+          const plan = root.getByRole("dialog", { name: "Draft All Venues", exact: true });
           await expect(plan.getByLabel("Venue ideas")).toBeVisible();
           await plan.getByRole("button", { name: "Back", exact: true }).click();
           assert.equal(suggestions, 0, "Opening plan ideas does not request generation");
@@ -2105,8 +2117,10 @@ export async function verifyFoundingLayout(group) {
           const existingVenues = keptVenues.slice(0, 5);
           await page.evaluate((rows) => window.featureController.setSetupVenues(rows), existingVenues);
           const selectedPeople = await page.evaluate(() => window.featureController.setupFoundingVillagerIds);
-          await button("Add Venue").click();
+          await addVenue("   ");
           await expect(sheet).toBeVisible();
+          await expect(sheet.getByLabel("Venue Name", { exact: true })).toHaveValue("New Venue");
+          assert.equal(suggestions, 0, "Blank ideas never start a draft request");
           await expect(emptyVenueWarning).toHaveCount(0);
           const added = await page.evaluate(() => window.featureController.setupVenues.at(-1));
           assert.ok(added.presentation.x !== null && added.presentation.y !== null, "Added Venues get map pins");
@@ -2131,16 +2145,12 @@ export async function verifyFoundingLayout(group) {
             added.presentation.x + 0.01,
             "The new pin can be moved",
           );
-          await addedPin.click();
-          await expect(venueList.locator(`[data-venue-id="${added.id}"]`)).toHaveAttribute("aria-pressed", "true");
+          await expect(addedPin).toHaveAttribute("data-selected", "false");
           await expect(sheet).toHaveCount(0);
-          await button("Edit Venue").click();
+          await expect(button("Edit Venue")).toHaveCount(0);
+          await editVenue(added.id);
           await expect(sheet).toBeVisible();
-          await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
-          const redraft = page.getByRole("dialog", { name: "Redraft Venue", exact: true });
-          await redraft.getByLabel("Venue ideas", { exact: true }).fill("A small library");
-          await redraft.getByRole("button", { name: "Back", exact: true }).click();
-          assert.equal(suggestions, 0, "Opening a local draft prompt spends nothing");
+          await expect(sheet.getByRole("button", { name: "Redraft Venue", exact: true })).toHaveCount(0);
           await sheet.getByRole("button", { name: "Remove Venue", exact: true }).click();
           await page
             .getByRole("dialog", { name: "Confirm", exact: true })
@@ -2253,18 +2263,15 @@ export async function verifyFoundingLayout(group) {
           await expect(placementPane).toBeHidden();
           await expect(venueList).toBeHidden();
           await expect(root.getByRole("complementary", { name: "Professor Mari" })).toBeVisible();
-          await expect(homeRow).toHaveAttribute("aria-pressed", "true");
           const community = root.locator('[data-venue-id="founding-community"]');
           await closeVenue();
           await expect(venueList).toBeVisible();
           await community.click();
-          await button("Edit Venue").click();
           await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
           await sheet.getByRole("button", { name: /^Residents/ }).click();
           await expect(sheet.locator(".marinara-capability-villages-directory-card")).toHaveCount(0);
           await closeVenue();
           await homeRow.click();
-          await button("Edit Venue").click();
           await expect(sheet.getByRole("button", { name: "← Venues", exact: true })).toBeFocused();
         }
         if (frame.width <= 700) {
@@ -2277,7 +2284,7 @@ export async function verifyFoundingLayout(group) {
           });
         await closeVenue();
         if (placementBounds) {
-          await expect(button("Edit Venue")).toBeFocused();
+          await expect(homeRow).toBeFocused();
           await expect(venueList).toBeVisible();
         }
         await editVenue("founding-garden");
@@ -2315,17 +2322,14 @@ export async function verifyFoundingLayout(group) {
           await expect(stage).not.toHaveAttribute("data-navigation-zoom", initialZoom);
           const zoom = await stage.getAttribute("data-navigation-zoom");
           await marker.press("Enter");
-          await expect(venueList.locator('[data-venue-id="founding-home:player"]')).toHaveAttribute(
-            "aria-pressed",
-            "true",
-          );
-          await button("Edit Venue").click();
+          await expect(sheet).toHaveCount(0);
+          await homeRow.click();
           const backToMap = sheet.getByRole("button", { name: "← Venues", exact: true });
           await expect(backToMap).toBeFocused();
           await backToMap.press("Escape");
           await expect(backToMap).toBeFocused();
           await backToMap.click();
-          await expect(button("Edit Venue")).toBeFocused();
+          await expect(homeRow).toBeFocused();
           await expect(stage).toHaveAttribute("data-navigation-zoom", zoom);
           await mapCanvas.getByRole("button", { name: "Reset map view", exact: true }).click();
           await showVenuePin("founding-home:player");
@@ -2423,6 +2427,7 @@ export async function verifyFoundingLayout(group) {
           assert.ok(afterDrag.y >= 0 && afterDrag.y <= 1);
         }
         assert.ok(afterDrag.y > beforeDrag.y);
+        await expect(marker).toHaveAttribute("data-selected", "false");
         await expect(sheet).toHaveCount(0);
         if (view.width >= 1000) {
           const point = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
@@ -2476,7 +2481,7 @@ export async function verifyFoundingLayout(group) {
         );
         await editVenue("founding-home:player");
         await expect(sheet).toBeVisible();
-        await expect(sheet.getByLabel("Description", { exact: true })).toHaveCount(0);
+        await expect(sheet.getByLabel("Description", { exact: true })).toBeVisible();
         await expect(sheet.getByRole("navigation", { name: "Venue sections" })).toBeVisible();
         await expect(sheet.getByRole("combobox")).toHaveCount(0);
         await sheet.getByRole("button", { name: "Zones", exact: true }).click();
@@ -2605,12 +2610,8 @@ export async function verifyFoundingLayout(group) {
           await showVenuePin("founding-home:player");
           const target = await pinPoint();
           await page.touchscreen.tap(target.x, target.y);
-          await expect(venueList.locator('[data-venue-id="founding-home:player"]')).toHaveAttribute(
-            "aria-pressed",
-            "true",
-          );
           await expect(sheet).toHaveCount(0);
-          await button("Edit Venue").click();
+          await homeRow.tap();
           await expect(sheet).toBeVisible();
           await expect(sheet.getByRole("button", { name: "← Venues", exact: true })).toBeFocused();
           assert.deepEqual(await readPosition(), moved, "Selecting and opening a Venue keeps its position");
@@ -2711,38 +2712,31 @@ export async function verifyFoundingLayout(group) {
               ]),
             ),
           );
+        const keptVenues = await page.evaluate(() => structuredClone(window.featureController.setupVenues));
+        const existingVenues = keptVenues.slice(0, 5);
+        await page.evaluate((rows) => window.featureController.setSetupVenues(rows), existingVenues);
         const savedPins = await readPins();
-        await expect(button("Draft Venues")).toBeEnabled();
+        await expect(button("Draft All Venues")).toBeEnabled();
         assert.equal(suggestions, 0);
         failVenueConnection = true;
-        await editVenue("founding-community");
-        await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
-        const redraft = page.getByRole("dialog", { name: "Redraft Venue", exact: true });
-        await redraft.getByLabel("Venue ideas").fill("A covered meeting courtyard.");
-        await redraft.getByRole("button", { name: "Draft Venue", exact: true }).click();
+        await addVenue("A covered meeting courtyard.");
         await expect(root.getByText("The System connection is unavailable.", { exact: false })).toBeVisible();
         await button("Check Model Connections").click();
         const repair = root.getByRole("dialog", { name: "Model Connections", exact: true });
         await repair.getByRole("button", { name: "Back", exact: true }).click();
         assert.equal(suggestions, 1, "Checking connections never retries generation");
+        assert.deepEqual(await page.evaluate(() => window.featureController.setupVenues), existingVenues);
         failVenueConnection = false;
-        await closeVenue();
-        await button("Retry draft").click();
+        await expect(button("Draft All Venues")).toBeEnabled();
+        await expect(button("Retry draft")).toHaveCount(0);
+        await addVenue("A covered meeting courtyard.", "A covered meeting courtyard.");
         await expect.poll(() => suggestions).toBe(2);
-        const draftReview = root.getByRole("dialog", { name: "Review Venue draft", exact: true });
-        await expect(draftReview.getByRole("rowheader", { name: "Community Courtyard", exact: true })).toBeVisible();
-        const useDraft = draftReview.getByRole("button", { name: "Use changes", exact: true });
-        await expect(useDraft).toBeInViewport({ ratio: 1 });
-        await useDraft.click();
-        await expect(draftReview).toHaveCount(0);
-        await expect
-          .poll(() =>
-            page.evaluate(
-              () => window.featureController.setupVenues.find((row) => row.id === "founding-community").name,
-            ),
-          )
-          .toBe("Community Courtyard");
-        assert.deepEqual(await readPins(), savedPins, "Drafted Venue text keeps each existing map pin");
+        await expect(sheet.getByLabel("Venue Name", { exact: true })).toHaveValue("Community Courtyard");
+        const { id: draftedId } = await page.evaluate(() => window.featureController.setupVenues.at(-1));
+        const { [draftedId]: draftedPin, ...keptPins } = await readPins();
+        assert.ok(draftedPin.x !== null && draftedPin.y !== null, "A drafted Venue gets a pin");
+        assert.deepEqual(keptPins, savedPins, "Drafting one Venue keeps each existing map pin");
+        assert.deepEqual(await page.evaluate(() => window.featureController.setupVenues.slice(0, -1)), existingVenues);
         assert.ok(
           await page.evaluate(() =>
             window.featureController.setupVenues
@@ -2750,6 +2744,8 @@ export async function verifyFoundingLayout(group) {
               .every((row) => row.residentIds.length + Number(row.occupancy.playerHome) === 1),
           ),
         );
+        await closeVenue();
+        await page.evaluate((rows) => window.featureController.setSetupVenues(rows), keptVenues);
         await editVenue("founding-home:player");
         await manageVenue();
         const appearance = sheet.getByLabel("Description", { exact: true });

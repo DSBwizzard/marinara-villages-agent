@@ -1040,13 +1040,6 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 [data-venue-drawer] button.villages-venue-drawer-row {
   width:100%; min-height:44px; min-width:0; padding:.45rem .6rem; display:block; text-align:left; overflow-wrap:anywhere; border-radius:.5rem;
 }
-.villages-forging-v2 [data-venue-drawer] .villages-venue-drawer-row[aria-pressed=true] {
-  background:var(--founding-selected); border-color:var(--founding-selected-line);
-}
-.villages-forging-v2 [data-venue-drawer] .villages-venue-drawer-edit {
-  display:flex; justify-content:flex-start; padding:.55rem 0 0; border-top:1px solid var(--founding-line);
-}
-.villages-forging-v2 [data-venue-drawer] .villages-venue-drawer-edit button { flex:none; }
 .villages-forging-v2[data-desktop-map] .villages-quick-start[data-venue-drawer]:not([data-venue-open]) {
   grid-template-columns:minmax(0,1fr) minmax(12rem,36%);
 }
@@ -1072,6 +1065,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .villages-venue-review-dialog>header h3 { font-size:1.52em; line-height:1.15; font-weight:650; }
 .villages-venue-review-scroll { min-height:0; overflow:auto; overscroll-behavior:contain; padding:0 1.25rem; }
 .villages-venue-review-scroll:focus-visible { outline:2px solid var(--founding-focus); outline-offset:-2px; }
+.villages-venue-review-warning { margin:.8rem 0 .25rem; font-size:.9em; }
 .villages-venue-review-table { width:100%; border-collapse:collapse; table-layout:fixed; }
 .villages-venue-review-table :is(th,td) { padding:.72rem .8rem; vertical-align:top; text-align:left; overflow-wrap:anywhere; }
 .villages-venue-review-table thead th { font-size:.83em; }

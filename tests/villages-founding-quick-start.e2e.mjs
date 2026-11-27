@@ -55,12 +55,13 @@ function Harness(){
  });
  window.legacyReview=()=>setWorkspace(state=>({...state,venueReview:{baseline:JSON.stringify(venues),sourceKey:source,venues:venues.slice(0,1)}}));
  window.redraftSelected=()=>suggest({venueId:venues[0].id,fullVenue:true});
+ window.draftNewVenue=()=>suggest({venueId:'venue:single-cafe',addVenue:true,venueBrief:'A standalone cafe'});
  window.editDuringRequest=()=>patch(venues[0].id,row=>({...row,form:'A newer manual description'}));
  const dismissReview=()=>{setProblem('');setWorkspace(state=>({...state,venueReview:undefined}));};
  return <><style>{VILLAGES_FORGING_STYLES}</style><div className='villages-forging-v2'><header className='villages-forging-heading'><h1>Founding Venues</h1></header><main className='villages-forging-body'>
  {workspace.venueReview && <FoundingVenueReview review={workspace.venueReview} current={venues} sourceKey={source} onUse={setVenues} onDismiss={dismissReview}/>}
  <QuickStartVenues venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
- actions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest&&!workspace.suggestionRequest.failure} failed={!!workspace.suggestionRequest?.failure} onGenerate={()=>suggest({plan:true})}/>}/>
+ actions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest&&!workspace.suggestionRequest.failure} onGenerate={()=>suggest({plan:true})}/>}/>
  {problem?<p role='alert'>{problem}</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);syncVillagesStyles();
@@ -99,6 +100,15 @@ await withBrowser(browser, async () => {
         const input = route.request().postDataJSON();
         calls++;
         const sources = input.mode === "draft-plan" ? input.sourceVenues : [input.targetVenue];
+        if (input.targetVenueId === "venue:single-cafe") {
+          assert.equal(input.mode, "draft-venue");
+          assert.equal(input.venueBrief, "A standalone cafe");
+          assert.deepEqual(
+            input.venues.map((row) => row.id),
+            [input.targetVenueId],
+          );
+          assert.equal(input.targetVenue.name, "");
+        }
         if (input.mode === "draft-plan") {
           assert.equal(sources.length, 4);
           assert.ok(sources.every((row) => !row.occupancy.playerHome && !row.residentIds.length));
@@ -171,12 +181,14 @@ await withBrowser(browser, async () => {
       );
       await page.goto("http://page-three.test/");
       const button = (name) => page.getByRole("button", { name, exact: true });
-      await expect(button("Draft Venues")).toBeEnabled();
+      await expect(button("Draft All Venues")).toBeEnabled();
       assert.deepEqual(await page.evaluate(() => window.quickState.venues), []);
-      await button("Draft Venues").click();
+      await button("Draft All Venues").click();
       await expect(button("Replace Venues")).toBeVisible();
       const review = page.getByRole("dialog", { name: "Venue drafts", exact: true });
       const details = review.getByRole("region", { name: "Venue draft details" });
+      const replaceWarning = details.getByText("Applying this draft replaces all of your current Venues.");
+      await expect(replaceWarning).toHaveCount(0);
       if (viewport.width > 727)
         await expect(details.getByRole("columnheader", { name: "Form", exact: true })).toBeVisible();
       await expect(details.getByRole("rowheader")).toHaveCount(3);
@@ -185,7 +197,7 @@ await withBrowser(browser, async () => {
       assert.deepEqual(await page.evaluate(() => window.quickState.venues), [], "Generation waits for review");
       await button("Discard draft").click();
       assert.deepEqual(await page.evaluate(() => window.quickState.venues), []);
-      await button("Draft Venues").click();
+      await button("Draft All Venues").click();
       await button("Replace Venues").click();
       await expect.poll(() => page.evaluate(() => window.quickState.venues.length)).toBe(3);
       assert.ok(
@@ -227,7 +239,8 @@ await withBrowser(browser, async () => {
       );
       assert.equal(await page.evaluate(() => window.quickState.venues.length), 4);
       await button("Discard draft").click();
-      await button("Draft Venues").click();
+      await button("Draft All Venues").click();
+      await expect(replaceWarning).toBeVisible();
       await button("Discard draft").click();
       assert.equal(
         await page.evaluate(() => window.quickState.venues[0].occupancy.playerHome),
@@ -235,7 +248,7 @@ await withBrowser(browser, async () => {
         "Discard keeps existing assignments",
       );
       loseReply = true;
-      await button("Draft Venues").click();
+      await button("Draft All Venues").click();
       await expect.poll(() => reads).toBeGreaterThan(0);
       await expect(button("Replace Venues")).toBeVisible();
       await button("Replace Venues").click();
@@ -245,7 +258,7 @@ await withBrowser(browser, async () => {
         ),
       );
       hold = true;
-      await button("Draft Venues").click();
+      await button("Draft All Venues").click();
       await expect.poll(() => !!release).toBe(true);
       await page.evaluate(() => window.editDuringRequest());
       release();
@@ -253,6 +266,18 @@ await withBrowser(browser, async () => {
       await expect.poll(() => page.evaluate(() => window.quickState.problem)).toContain("choices changed");
       assert.equal(await page.evaluate(() => window.quickState.venues[0].form), "A newer manual description");
       assert.equal(calls, 6, "Only explicit drafts dispatch requests");
+      const beforeAddition = await page.evaluate(() => structuredClone(window.quickState.venues));
+      const previousReads = reads;
+      loseReply = true;
+      await page.evaluate(() => window.draftNewVenue());
+      await page.reload();
+      await expect.poll(() => reads).toBeGreaterThan(previousReads);
+      await expect.poll(() => page.evaluate(() => window.quickState.venues.at(-1)?.id)).toBe("venue:single-cafe");
+      const added = await page.evaluate(() => structuredClone(window.quickState.venues));
+      assert.deepEqual(added.slice(0, -1), beforeAddition);
+      assert.equal(added.at(-1).name, "Draft Cafe 0");
+      assert.equal(await page.evaluate(() => window.quickState.workspace.suggestionRequest), undefined);
+      assert.equal(calls, 7, "Reload only reads the admitted Add Venue request");
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
       assert.equal(overflow, false);
       await page.screenshot({ path: ".build-tmp/page-three-" + viewport.width + ".png" });

@@ -95,6 +95,9 @@ export function FoundingVenueReview({
       onClose={onDismiss}
     >
       <div className="villages-venue-review-scroll" tabIndex={0} role="region" aria-label="Venue draft details">
+        {review.replaceAll && current.length > 0 && (
+          <p className="villages-venue-review-warning">Applying this draft replaces all of your current Venues.</p>
+        )}
         <table className="villages-venue-review-table" role="table">
           <thead role="rowgroup">
             <tr role="row">

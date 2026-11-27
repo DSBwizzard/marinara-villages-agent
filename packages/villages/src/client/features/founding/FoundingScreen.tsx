@@ -32,7 +32,7 @@ import {
 import { FOUNDING_STEP, SETUP_STEPS } from "./founding-steps.js";
 import { QuickStartButton } from "./QuickStartButton.js";
 import { QuickStartVenues } from "./QuickStartVenues.js";
-import { arrangeQuickStartVenues } from "./quick-start-placement.js";
+import { appendFoundingVenue, arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { useFoundingKeyboardOverlay } from "./useFoundingKeyboardOverlay.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 import { SceneryStyleFields } from "./villages-founding-editor";
@@ -49,7 +49,7 @@ const PHONE_LAYOUT = "(max-width:727px)";
 const CHAPTER_MENUS = [undefined, "people", "maps", "venues", "review"] as const;
 const VENUE_INTRO = [
   "There’s our Map. Now let’s give your Villagers somewhere to go. A café is a Venue. Its counter and back patio are Zones, where Scenes happen.",
-  "Got a place in mind? Choose **Add Venue**. Or choose **Draft Venues**, jot down a few ideas, and I’ll sketch a starting set.",
+  "Got a place in mind? Choose **Add Venue**. Or choose **Draft All Venues** and I’ll sketch a starting set.",
   "Put your places on the Map, then open **Assignments** to choose who lives and works where. Look at us, doing municipal planning.",
 ];
 type ReviewStage = "people" | "setting" | "map" | "confirm";
@@ -186,14 +186,19 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     uploadSetupImage,
   } = controller;
   const pendingSetting = setupWorkspace.suggestionRequest?.draftSetting && !setupWorkspace.suggestionRequest.failure;
+  const suggestionPending = !!setupWorkspace.suggestionRequest && !setupWorkspace.suggestionRequest.failure;
+  const addVenuePending = suggestionPending && setupWorkspace.suggestionRequest?.addVenue === true;
   const failedSuggestion = setupWorkspace.suggestionRequest;
-  const retryDraft =
+  const failedVenueDraft =
     failedSuggestion?.failure &&
     !failedSuggestion.draftSetting &&
-    (!failedSuggestion.venueId || setupVenues.some((venue) => venue.id === failedSuggestion.venueId))
+    (failedSuggestion.addVenue ||
+      !failedSuggestion.venueId ||
+      setupVenues.some((venue) => venue.id === failedSuggestion.venueId))
       ? failedSuggestion
       : undefined;
-  const rawSetupProblem = currentSetupProblem || (setupStep === FOUNDING_STEP.Venues ? retryDraft?.failure : "") || "";
+  const rawSetupProblem =
+    currentSetupProblem || (setupStep === FOUNDING_STEP.Venues ? failedVenueDraft?.failure : "") || "";
   const venueConnectionUnavailable =
     setupStep === FOUNDING_STEP.Venues && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
   const setupProblem = venueConnectionUnavailable
@@ -311,7 +316,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   const [reviewSettingSection, setReviewSettingSection] = useState<ReviewSettingSection>("Map");
   useLetterFont(screen === "setup" ? "lora" : undefined);
   const [openVenueFromMap, setOpenVenueFromMap] = useState<{ id: string }>();
-  const [redraftVenueId, setRedraftVenueId] = useState<string>();
+  const [addVenueOpen, setAddVenueOpen] = useState(false);
   const [draftVenuePlan, setDraftVenuePlan] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
@@ -567,7 +572,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       }));
       setMovingSetupVenueId(issue.field === "placement" ? issue.venueId : null);
     };
-    const mapReady = !setupMapBusy;
+    const mapReady = !setupMapBusy && !addVenuePending;
     const venueDrawer = setupStep === FOUNDING_STEP.Venues;
     const venueShapeProblem = foundingVenueShapeProblem(setupVenues);
     const map = (interactive: boolean) => (
@@ -578,9 +583,9 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             alt={`Map of ${setupLocationName || "your starting location"}`}
             pins={(setupStep === FOUNDING_STEP.Maps ? [] : draftPins).map((pin) => ({
               ...pin,
-              selected: (phone || venueDrawer ? selectedPin?.id : selectedSetupVenueId) === pin.id,
+              selected: (phone && !venueDrawer ? selectedPin?.id : selectedSetupVenueId) === pin.id,
               onSelect:
-                interactive && !setupVenueBusy && !setupSuggestionsBusy
+                interactive && !setupVenueBusy && !setupSuggestionsBusy && !addVenuePending
                   ? () => {
                       setSelectedSetupVenueId(pin.id);
                       setSetupFocusIssue(null);
@@ -606,10 +611,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             onPlace={!phone && interactive ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined}
             onMovePin={
               interactive && mapReady && !setupEditorOpen && !setupSuggestionsBusy && !setupVenueBusy
-                ? (id, x, y, size) => {
-                    setSelectedSetupVenueId(id);
-                    placeSetupPin(x, y, size, id);
-                  }
+                ? (id, x, y, size) => placeSetupPin(x, y, size, id)
                 : undefined
             }
             onMoveInvalid={() => setSetupPlacementError("Place the Venue inside the map.")}
@@ -627,7 +629,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 ? (id, dx, dy) => {
                     const venue = setupVenues.find((row) => row.id === id);
                     if (!venue) return;
-                    setSelectedSetupVenueId(id);
                     placeSetupPin(
                       Math.round(Math.max(0, Math.min(1, (venue.presentation.x ?? 0.5) + dx)) * 10000) / 10000,
                       Math.round(Math.max(0, Math.min(1, (venue.presentation.y ?? 0.5) + dy)) * 10000) / 10000,
@@ -671,7 +672,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       setSetupMapReviewed(false);
       setSetupProblem("");
     };
-    const chapterDisabled = busy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError;
+    const chapterDisabled =
+      busy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || addVenuePending || !!draftSaveError;
+    const venueDraftDisabled = chapterDisabled || !!setupMapRequest || !!setupWorkspace.venueReview;
+    const addVenueDisabled = venueDraftDisabled || suggestionPending || setupVenues.length >= FOUNDING_VENUE_LIMIT;
     const advanceDisabled =
       chapterDisabled ||
       ((setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Review) && (setupMapBusy || !!setupMapRequest));
@@ -988,7 +992,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     const venuesPanel = (
       <div className="villages-founding-places">
         {venueDrawer && draftVenuePlan && (
-          <FoundingDialog title="Draft Venues" compact onClose={() => setDraftVenuePlan(false)}>
+          <FoundingDialog title="Draft All Venues" compact withinChapter onClose={() => setDraftVenuePlan(false)}>
             <label>
               Venue ideas
               <textarea
@@ -1009,48 +1013,64 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
               <button
                 type="button"
                 className="villages-forging-primary"
-                disabled={chapterDisabled}
+                disabled={venueDraftDisabled || suggestionPending}
                 onClick={() => {
                   setDraftVenuePlan(false);
                   void suggestSetupVenues({ plan: true });
                 }}
               >
-                Draft Venues
+                Draft All Venues
               </button>
             </footer>
           </FoundingDialog>
         )}
-        {redraftVenueId && (
-          <FoundingDialog title="Redraft Venue" compact onClose={() => setRedraftVenueId(undefined)}>
+        {venueDrawer && addVenueOpen && (
+          <FoundingDialog title="Add Venue" compact withinChapter onClose={() => setAddVenueOpen(false)}>
             <label>
-              Venue ideas
+              Venue ideas (optional)
               <textarea
                 autoComplete="off"
                 rows={3}
                 maxLength={4096}
-                value={setupWorkspace.venueBriefs?.[redraftVenueId] ?? ""}
-                onChange={(event) =>
-                  setSetupWorkspace((state) => ({
-                    ...state,
-                    venueBriefs: { ...state.venueBriefs, [redraftVenueId]: event.target.value },
-                  }))
-                }
+                value={setupWorkspace.addVenueBrief ?? ""}
+                onChange={(event) => {
+                  const addVenueBrief = event.currentTarget.value;
+                  setSetupWorkspace((state) => ({ ...state, addVenueBrief }));
+                }}
               />
             </label>
             <footer>
-              <button type="button" onClick={() => setRedraftVenueId(undefined)}>
+              <button type="button" onClick={() => setAddVenueOpen(false)}>
                 Back
               </button>
               <button
                 type="button"
                 className="villages-forging-primary"
-                disabled={chapterDisabled}
-                onClick={() => {
-                  void suggestSetupVenues({ venueId: redraftVenueId, fullVenue: true });
-                  setRedraftVenueId(undefined);
+                disabled={addVenueDisabled}
+                onClick={async () => {
+                  setAddVenueOpen(false);
+                  const id = "venue:" + createVillagesClientId();
+                  const ideas = setupWorkspace.addVenueBrief?.trim();
+                  if (ideas) {
+                    if (!(await suggestSetupVenues({ venueId: id, addVenue: true, venueBrief: ideas }))) return;
+                  } else {
+                    setSetupVenues((rows) => appendFoundingVenue(rows, newSetupVenue(id, 0.5, 0.5)));
+                    setSetupMapReviewed(false);
+                    setSetupProblem("");
+                    setSetupWorkspace((state) => ({
+                      ...state,
+                      addVenueBrief: undefined,
+                      suggestionRequest:
+                        state.suggestionRequest?.addVenue && state.suggestionRequest.failure
+                          ? undefined
+                          : state.suggestionRequest,
+                    }));
+                  }
+                  setSelectedSetupVenueId(id);
+                  setOpenVenueFromMap({ id });
                 }}
               >
-                Draft Venue
+                Add Venue
               </button>
             </footer>
           </FoundingDialog>
@@ -1097,7 +1117,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           venues={setupVenues}
           locationName={setupLocationName}
           onRetrySaving={() => void retrySetupSaving()}
-          onRedraft={reviewingMap ? undefined : (venue) => setRedraftVenueId(venue.id)}
           onRemove={
             reviewingMap
               ? undefined
@@ -1133,24 +1152,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           actions={
             <>
               {!reviewingMap && (
-                <button
-                  type="button"
-                  disabled={chapterDisabled || setupVenues.length >= FOUNDING_VENUE_LIMIT}
-                  onClick={() => {
-                    const id = "venue:" + createVillagesClientId();
-                    const row = newSetupVenue(id, 0.5, 0.5);
-                    setSetupVenues((rows) =>
-                      arrangeQuickStartVenues([
-                        ...rows,
-                        { ...row, presentation: { ...row.presentation, x: null, y: null } },
-                      ]),
-                    );
-                    setSetupMapReviewed(false);
-                    setSelectedSetupVenueId(id);
-                    setOpenVenueFromMap({ id });
-                    setSetupProblem("");
-                  }}
-                >
+                <button type="button" disabled={addVenueDisabled} onClick={() => setAddVenueOpen(true)}>
                   Add Venue
                 </button>
               )}
@@ -1184,27 +1186,16 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
               ) : (
                 <QuickStartButton
                   busy={busy || setupSuggestionsBusy}
-                  disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting || !!setupWorkspace.venueReview}
-                  pending={
-                    !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
-                  }
-                  failed={!!retryDraft}
-                  onGenerate={() => {
-                    if (!retryDraft) {
-                      setDraftVenuePlan(true);
-                      return;
-                    }
-                    void suggestSetupVenues(
-                      retryDraft.venueId ? { venueId: retryDraft.venueId, fullVenue: true } : { plan: true },
-                    );
-                  }}
+                  disabled={venueDraftDisabled || !!pendingSetting}
+                  pending={suggestionPending && !pendingSetting}
+                  onGenerate={() => setDraftVenuePlan(true)}
                 />
               )}
             </>
           }
           people={wizardVillagers}
           selectedId={selectedSetupVenueId}
-          busy={setupSuggestionsBusy}
+          busy={setupSuggestionsBusy || addVenuePending}
           imageBusy={setupVenueBusy || setupSuggestionsBusy}
           focusIssue={setupFocusIssue}
           saveError={draftSaveError || undefined}
@@ -1222,13 +1213,14 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
               {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
             </>
           }
-          onSelect={(venue, editing = true) => {
+          onSelect={(venue) => {
             setSelectedSetupVenueId(venue.id);
             setSetupFocusIssue(null);
             setMovingSetupVenueId(null);
-            setSetupWorkspace((state) => ({ ...state, paused: editing, view: editing ? "details" : "map" }));
+            setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
           }}
           onReturnToMap={() => {
+            if (venueDrawer) setSelectedSetupVenueId(null);
             setSetupFocusIssue(null);
             setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
           }}
