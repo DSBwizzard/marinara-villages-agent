@@ -323,6 +323,30 @@ await runCase("npc-admission/tagged-turn", () => {
   const shadowed = withPeople([people[0], { ...people[1], name: "Visible Seller" }]);
   assert.equal(decodeTaggedSceneReply("[Visible Seller]: Ambiguous words.", shadowed).value, null);
   assert.equal(decodeTaggedSceneReply("[Offstage Seller]: Unheard words.", withPeople(people)).value, null);
+  const addressed = decodeTaggedSceneReply(
+    "[Visible Seller] [ To Player ]: Here you are.\n[Another Seller] [whisper Visible Seller]: Set one aside.",
+    { ...withPeople(people), npcSpeakerNames: { "seller-id": "Private Name" } },
+  );
+  assert.deepEqual(
+    (addressed.value?.segments as { targetId: string; delivery?: string }[]).map(({ targetId, delivery }) => [
+      targetId,
+      delivery,
+    ]),
+    [
+      ["player", undefined],
+      ["seller-id", "whisper"],
+    ],
+  );
+  for (const [recipient, captured] of [
+    ["Offstage Seller", withPeople(people)],
+    ["Visible Seller", shadowed],
+    ["Private Name", { ...withPeople(people), npcSpeakerNames: { "seller-id": "Private Name" } }],
+  ] as const) {
+    assert.deepEqual(decodeTaggedSceneReply("[other-id] [whisper " + recipient + "]: Private words.", captured), {
+      value: null,
+      issue: "invalid_dialogue_tag",
+    });
+  }
   for (const [content, issue] of [
     ["[unknown]: Private dialogue.\nA continuation.", "unknown_speaker"],
     ['[keep]: {"text":"secret"\nA continuation.', "invalid_private_record"],

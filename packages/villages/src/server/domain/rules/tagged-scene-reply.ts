@@ -13,7 +13,7 @@ import type { SceneReplyIssue } from "../../../shared/contracts/scene-failure-di
 export const TAGGED_SCENE_FORMAT = [
   "For a narration-only reply, write plain prose. When mixing narration, dialogue or effects, use one Scene beat per line: Narration: text or [speaker-id]: spoken text. A unique displayed speaker name also works in brackets. Omit code fences.",
   "Put each character's actual words on their own speaker line, even for a brief greeting amid an action. For example, write Narration: She opens the door. Then on a new line write [speaker-id]: Come in.",
-  "[speaker-id] [whisper recipient-id]: text, [speaker-id] [shout]: text, and [speaker-id] [aside]: text are optional. An aside follows its main line.",
+  "For ordinary dialogue use [speaker-id]: text. To address the player explicitly use [speaker-id] [to player]: text, or [speaker-id] [whisper player]: text for a quiet line only they hear. For anyone else copy the recipient's supplied ID. [shout] and [aside] are optional. An aside follows its main line.",
   "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
   "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
   "Do not repeat an outcome in other prose. Player movement and Village time come from the game. Show what people attempt and how they react.",
@@ -111,6 +111,7 @@ export function decodeTaggedSceneReply(
   const speakers = new Set(scene.contactGeneration?.actorIds ?? scene.activeIds);
   const aliases = new Map<string, { id: string; name?: string }>();
   const ambiguous = new Set<string>();
+  const recipients = new Map<string, string | null>([["player", "player"]]);
   const addAlias = (label: string, id: string, name?: string) => {
     const key = aliasKey(label);
     const previous = aliases.get(key);
@@ -120,6 +121,9 @@ export function decodeTaggedSceneReply(
   for (const { characterId, name } of scene.participants) {
     if (!speakers.has(characterId)) continue;
     addAlias(name, characterId);
+    const key = aliasKey(name);
+    const recipient = recipients.get(key);
+    recipients.set(key, recipient === undefined || recipient === characterId ? characterId : null);
     const npcName = readset.npcSpeakerNames?.[characterId];
     if (npcName) addAlias(npcName, characterId, npcName);
   }
@@ -523,21 +527,32 @@ export function decodeTaggedSceneReply(
         ...(choice || work ? { targetId: "player" } : {}),
       };
       let valid = true;
-      for (const tag of meta) {
+      for (const rawTag of meta) {
+        const tag = rawTag.trim();
         const index = tag.indexOf(" ");
-        const kind = index < 0 ? tag : tag.slice(0, index),
-          target = tag.slice(index + 1).trim();
+        const kind = (index < 0 ? tag : tag.slice(0, index)).toLowerCase();
+        const recipientText = tag.slice(index + 1).trim();
+        const target =
+          recipientText === "player" || speakers.has(recipientText) || newcomers.has(recipientText)
+            ? recipientText
+            : recipients.get(aliasKey(recipientText));
         if (tag === "shout" && !beat.delivery) beat.delivery = "shout";
         else if (tag === "aside" && !beat.presentation) beat.presentation = "aside";
         else if (tag === "introduce" && introduction && !beat.introduceName) beat.introduceName = true;
         else if (tag === "appointment" && appointment && !beat.offerAppointment) beat.offerAppointment = true;
         else if (tag === "work" && work && !beat.offerWork) beat.offerWork = true;
-        else if (kind === "name" && !readset.explicitNpcIntroduction && index >= 0 && target && !beat.speakerLabel)
-          beat.speakerLabel = target;
+        else if (
+          kind === "name" &&
+          !readset.explicitNpcIntroduction &&
+          index >= 0 &&
+          recipientText &&
+          !beat.speakerLabel
+        )
+          beat.speakerLabel = recipientText;
         else if (
           (kind === "whisper" || kind === "to") &&
           index >= 0 &&
-          (target === "player" || speakers.has(target) || newcomers.has(target)) &&
+          target &&
           target !== speakerId &&
           !beat.delivery &&
           (beat.targetId === undefined || beat.targetId === target)
