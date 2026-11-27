@@ -181,7 +181,7 @@ async function fixture() {
     scope,
     send,
     apply,
-    input: () => readPersonalMailInput(queued[0].input),
+    input: (index = 0) => readPersonalMailInput(queued[index].input),
     get requests() {
       return requests;
     },
@@ -286,6 +286,35 @@ await runCase("social-mail/visitor", async () => {
   assert.equal(saved.visitors?.[0].visitPreference?.kind, "invite");
   assert.equal(continuityRelationships(saved, at)[0].scores[0].romanticInterest, 1);
   assert.deepEqual(await f.apply(input, result), saved, "recovery cannot extend the invitation");
+  const distanceRequest = "Please give me a week to myself.";
+  const distanceReply = "I will stay away this week.";
+  await f.send("misplaced-preference", distanceRequest);
+  f.answer({
+    content: JSON.stringify({
+      reply: { text: distanceReply },
+      replyVisitPreference: { kind: "space", requestQuote: "I invented this request.", replyQuote: distanceReply },
+    }),
+    finishReason: "stop",
+  });
+  const next = f.input(1);
+  const recoveredLetter = (await f.service.handler.generate(next)) as PersonalMailResult;
+  assert.equal(recoveredLetter.replyText, distanceReply);
+  assert.equal(recoveredLetter.visitPreference, undefined);
+  const invalid = await f.apply(next, recoveredLetter);
+  assert.deepEqual(invalid.visitors?.[0].visitPreference, saved.visitors?.[0].visitPreference);
+  await f.send("verified-misplaced-preference", distanceRequest);
+  f.answer({
+    content: JSON.stringify({
+      reply: { text: distanceReply },
+      replyVisitPreference: { kind: "space", requestQuote: distanceRequest, replyQuote: distanceReply },
+    }),
+    finishReason: "stop",
+  });
+  const verifiedInput = f.input(2);
+  const verifiedReply = (await f.service.handler.generate(verifiedInput)) as PersonalMailResult;
+  assert.equal(verifiedReply.visitPreference?.kind, "space");
+  const latest = await f.apply(verifiedInput, verifiedReply);
+  assert.equal(latest.visitors?.[0].visitPreference?.kind, "space");
   const roster = createResidentRoster({
     readVillageState: f.read,
     mutateVillageState: f.mutate,
@@ -299,9 +328,9 @@ await runCase("social-mail/visitor", async () => {
   assert.equal(promoted.villagers[0].incarnation, input.incarnation);
   assert.equal(promoted.startingHistory.reviewed.ada, input.incarnation);
   assert.equal(continuityRelationships(promoted, at)[0].scores[0].romanticInterest, 1);
-  assert.deepEqual(promoted.mailbox, saved.mailbox);
+  assert.deepEqual(promoted.mailbox, latest.mailbox);
   assert.equal((await f.service.readMailbox({ scope: f.scope })).letters[0].thread.residentName, "Ada");
-  assert.equal(f.requests, 1);
+  assert.equal(f.requests, 3);
 });
 
 await runCase("social-mail/one-request", async () => {

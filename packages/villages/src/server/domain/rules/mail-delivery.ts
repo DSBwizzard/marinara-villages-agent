@@ -2,13 +2,15 @@ import type { VillageState } from "../models/world.js";
 import type { MailContinuityPlan, MailRoomContext } from "../models/social-mail.js";
 import type { ContinuityCapture } from "../models/continuity-model.js";
 import { continuityActor } from "./continuity-actors.js";
-import { acceptMailContinuity, type MailPublication } from "./mail-continuity.js";
+import { acceptMailContinuity, MailProtectionChanged, type MailPublication } from "./mail-continuity.js";
+import { readMailboxState } from "../decoding/mailbox-codec.js";
+import { gmEpisodeView } from "./episodes.js";
 import { mailStagePublication } from "./mail-context.js";
 import { continuityContextScopeKey } from "./continuity-context.js";
 import { episodeContextRooms } from "./episode-sources.js";
 import { continuityHolderKey, continuityProtectionFingerprint } from "./continuity.js";
 import { readNarrationEffectHeader } from "./narration-contract.js";
-import { mailSourceHash, type MailIdentity } from "./mail-evidence.js";
+import { mailReceipt, mailSourceHash, type MailIdentity } from "./mail-evidence.js";
 import { asRecord } from "./coerce.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { applyVisitPreference } from "./visitors.js";
@@ -284,21 +286,50 @@ export function acceptMailExchange(state: VillageState, exchange: MailExchange, 
 export function readDeliveredLetter(state: VillageState, id: string, at: string) {
   const letter = state.mailbox.messages[id];
   memoryRequire(letter?.status === "delivered" && letter.to.id === "player", "that delivered letter is unavailable");
-  if (letter.readAt) return;
+  memoryRequire(
+    continuityActor(state, "player")?.incarnation === letter.to.incarnation,
+    "mail correspondent incarnation changed",
+  );
+  if (letter.readAt || letter.withheld) return;
   memoryRequire(letter.reading, "delivered letter lost its saved reading work");
-  requireAccepted(
-    acceptMailContinuity(
-      state,
-      {
-        ...letter.reading,
-        mail: { id: letter.id, at: letter.at, from: letter.from, to: letter.to },
-        text: letter.text,
-        requestId: letter.requestId,
-        ...(letter.replyTo ? { replyTo: letter.replyTo } : {}),
-        phase: "read",
+  const receipt = mailReceipt(state.seed, letter, letter.text, "written", memoryHash(letter.reading));
+  const written = state.episodes.records.find((row) => row.id === receipt.id);
+  memoryRequire(
+    written?.commandReceipts.some((row) => memoryHash(row) === memoryHash(receipt)),
+    "delivered letter lost its writing receipt",
+  );
+  const body = gmEpisodeView(written, state.continuity, [{ kind: "actor", ...letter.from }], state.episodes);
+  if (body?.letters?.some((row) => row.id === "mail:" + receipt.mail!.sourceHash)) {
+    try {
+      requireAccepted(
+        acceptMailContinuity(
+          state,
+          {
+            ...letter.reading,
+            mail: { id: letter.id, at: letter.at, from: letter.from, to: letter.to },
+            text: letter.text,
+            requestId: letter.requestId,
+            ...(letter.replyTo ? { replyTo: letter.replyTo } : {}),
+            phase: "read",
+          },
+          at,
+        ),
+      );
+      return;
+    } catch (error) {
+      if (!(error instanceof MailProtectionChanged)) throw error;
+    }
+  }
+  state.mailbox = readMailboxState(
+    {
+      ...state.mailbox,
+      revision: state.mailbox.revision + 1,
+      messages: {
+        ...state.mailbox.messages,
+        [id]: { ...letter, withheld: "protection-changed" },
       },
-      at,
-    ),
+    },
+    state.seed,
   );
 }
 
