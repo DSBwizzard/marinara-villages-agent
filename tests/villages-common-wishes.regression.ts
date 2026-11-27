@@ -23,7 +23,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/founding-circumstances.js";
 import { createFoundingPreparation } from "../packages/villages/src/server/features/founding/preparation-service.js";
 import { createResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
-import { foundingSlot } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
+import { foundingSlot, foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 const at = "2026-11-09T12:00:00.000Z",
   wish = "Mara wants to sail her own boat because choosing her destination matters to her, once she feels ready.";
@@ -148,9 +148,11 @@ async function fixture(value: string | null = wish, screening?: "clear" | "uncer
       beforeModel = work;
     },
     prepare: async () => {
-      const captured = continuityPreparationContext(await repository.readAuthority({ memories: true }), "mara", at);
+      const authority = await repository.readAuthority({ memories: true });
+      const captured = continuityPreparationContext(authority, "mara", at);
       await feature.queueFoundingWish("mara", {
         ...input,
+        sourceRevision: foundingTaskRevision(authority, "mara", "routine"),
         continuity: {
           fingerprint: captured.fingerprint,
           sources: captured.sources,
@@ -458,6 +460,7 @@ await runCase("common-wishes/founding-coordinator", async () => {
         const state = await f.cold(),
           continuity = continuityPreparationContext(state, "mara", at);
         return {
+          sourceRevision: foundingTaskRevision(state, "mara", "routine"),
           continuity: {
             fingerprint: continuity.fingerprint,
             sources: continuity.sources,
