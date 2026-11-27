@@ -2715,6 +2715,7 @@ export async function verifyFoundingLayout(group) {
         const keptVenues = await page.evaluate(() => structuredClone(window.featureController.setupVenues));
         const existingVenues = keptVenues.slice(0, 5);
         await page.evaluate((rows) => window.featureController.setSetupVenues(rows), existingVenues);
+        await expect(venueList.locator("[data-venue-id]")).toHaveCount(existingVenues.length);
         const savedPins = await readPins();
         await expect(button("Draft All Venues")).toBeEnabled();
         assert.equal(suggestions, 0);
