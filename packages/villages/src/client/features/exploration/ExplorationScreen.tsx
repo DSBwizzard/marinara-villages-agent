@@ -417,14 +417,16 @@ export function ExplorationScreen({
                 <div className={`${ELEMENT_TAG}-map-tools`}>
                   <button
                     type="button"
-                    aria-label="Choose map"
+                    aria-label={selectedMap ? `Switch map, ${selectedMap.name}` : "Switch map"}
                     ref={mapChoice}
                     disabled={busy}
                     onClick={() => setShowAllMaps(true)}
                   >
                     <MapIcon name="map" />
-                    <span>{selectedMap?.name ?? "Maps"}</span>
-                    <span aria-hidden="true">▾</span>
+                    <span>
+                      <strong>Switch map</strong>
+                      {selectedMap ? <small>{selectedMap.name}</small> : null}
+                    </span>
                   </button>
                   <details
                     onClick={(event) => {

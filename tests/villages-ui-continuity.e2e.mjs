@@ -15,6 +15,7 @@ import {VillageActivity,useCapabilityVisibility} from './packages/villages/src/c
 import {RetainedView} from './packages/villages/src/client/shared/RetainedView.js';
 import {request} from './packages/villages/src/client/shared/api.js';
 import {VillagerDossier} from './packages/villages/src/client/features/residents/villages-dossier.js';
+import {DISCLOSURE_STYLES} from './packages/villages/src/client/shared/DisclosureSummary.js';
 import {DOSSIER_STYLES} from './packages/villages/src/client/features/residents/villages-dossier-styles.js';
 import {VillagerWishJournal} from './packages/villages/src/client/features/residents/villages-wish-journal.js';
 import {VillagerMemoriesPanel} from './packages/villages/src/client/features/residents/MemoriesPanel.js';
@@ -39,7 +40,7 @@ function Harness(){
  const noChange=useCallback(()=>{},[]);
  useSceneSelectionReset({snapshot:{isFounded:true,village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active'}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
  window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,regenerate,agendas,validate:setValidating,navigateWish:()=>setNavigation({actorId:actor,returnTo:'home',wishId:actor+'-wish'})};
- return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}><style>{DOSSIER_STYLES}</style>
+ return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}><style>{DOSSIER_STYLES + DISCLOSURE_STYLES}</style>
  <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={personProfile} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
  portrait={null} request={request} venues={[]} links={[]} controls={<input aria-label='Identity draft'/>} spriteManager={sprites?<button onClick={()=>setSprites(false)}>Back to profile</button>:undefined}
  onInspectSection={setInspection} onVenue={id=>window.h.openedVenue=id} inspectors={{
@@ -503,7 +504,7 @@ await withBrowser(browser, async () => {
     await clickCharacterTool(page, "Inspect");
     await expect(relationships.getByText("PRIVATE eli perspective", { exact: true })).toBeVisible();
     await expect(relationships.getByText("PRIVATE mara perspective", { exact: true })).toHaveCount(0);
-    const sources = relationships.getByText("Sources", { exact: true });
+    const sources = relationships.locator("summary").filter({ hasText: "Show sources" });
     await sources.focus();
     await page.keyboard.press("Enter");
     await expect(relationships.getByText("Private directional source.", { exact: false })).toBeVisible();

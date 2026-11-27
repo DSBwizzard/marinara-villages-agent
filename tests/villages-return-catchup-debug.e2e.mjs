@@ -150,6 +150,10 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Copy JSON" }).click();
     await expect(page.getByText(/Copy unavailable/)).toBeVisible();
     await expect(page.getByText(/RAW-ONLY-SECRET/)).toBeVisible();
+    await page.getByText("Hide raw JSON", { exact: true }).click();
+    await expect(page.getByText(/RAW-ONLY-SECRET/)).toBeHidden();
+    await page.getByText("Show raw JSON", { exact: true }).click();
+    await expect(page.getByText(/RAW-ONLY-SECRET/)).toBeVisible();
     account = {
       id: "empty",
       status: "completed",

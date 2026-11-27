@@ -176,9 +176,14 @@ await withBrowser(browser, async () => {
   await expect(page.getByRole("heading", { name: "Needs attention (1)" })).toBeVisible();
   await expect(page.getByText("0 active · 0 paused · 1 need attention", { exact: true })).toBeVisible();
   await expect(page.getByText("Finished Wish check", { exact: true })).not.toBeVisible();
-  await page.getByText("Completed (1)", { exact: true }).click();
+  const completed = page.locator("summary").filter({ hasText: "Show completed jobs (1)" });
+  await completed.press("Enter");
+  await expect(page.getByText("Hide completed jobs (1)", { exact: true })).toBeVisible();
   await expect(page.getByText("Finished Wish check", { exact: true })).toBeVisible();
-  await page.getByText("Completed (1)", { exact: true }).click();
+  await expect(completed).toBeFocused();
+  await completed.press("Space");
+  await expect(page.getByText("Show completed jobs (1)", { exact: true })).toBeVisible();
+  await expect(page.getByText("Finished Wish check", { exact: true })).toBeHidden();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry unfinished work" })).toBeVisible();

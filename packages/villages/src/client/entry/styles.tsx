@@ -1,4 +1,5 @@
 import { EXPLORATION_STYLES } from "../features/exploration/villages-exploration-styles.js";
+import { DISCLOSURE_STYLES } from "../shared/DisclosureSummary.js";
 import { VILLAGES_FORGING_STYLES } from "../features/founding/villages-forging-styles.js";
 import { DOSSIER_STYLES } from "../features/residents/villages-dossier-styles.js";
 import { VILLAGES_SCENE_STYLES } from "../features/scenes/villages-scene-styles.js";
@@ -115,6 +116,10 @@ ${ELEMENT_TAG} ::selection { color: var(--primary-foreground); background: var(-
   color: var(--primary);
   box-shadow: inset 0 0 0 1px var(--primary);
 }
+
+${DISCLOSURE_STYLES}
+.${ELEMENT_TAG}-lore-report-title { margin: 7px 0 5px; line-height: 1.25; overflow-wrap: anywhere; }
+.${ELEMENT_TAG}-lore-report-title small { display: block; margin-top: 3px; color: var(--muted-foreground); }
 .${ELEMENT_TAG}-menu-body { display: flex; flex-direction: column; gap: 1rem; }
 .${ELEMENT_TAG}-roster { display: flex; flex-direction: column; gap: .375rem; margin-top: .75rem; }
 .${ELEMENT_TAG}-roster-entry { min-width: 0; border: 1px solid var(--border); border-radius: .75rem; padding: .5rem .625rem; background: color-mix(in srgb, var(--popover) 92%, transparent); }
@@ -1901,11 +1906,6 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-setup-venue-card strong, .${ELEMENT_TAG}-setup-venue-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .${ELEMENT_TAG}-setup-venue-editor { display: grid; gap: .65rem; border-top: 1px solid var(--border); padding-top: .75rem; }
 .${ELEMENT_TAG}-setup-image-preview { display: block; width: min(100%, 18rem); aspect-ratio: 3 / 2; object-fit: cover; border-radius: .5rem; }
-.${ELEMENT_TAG}-preparing { display: grid; place-items: center; min-height: 100%; padding: 2rem; text-align: center; background: radial-gradient(circle at 50% 65%, #584a2e, #241e24 70%); color: #fff4dd; }
-.${ELEMENT_TAG}-preparing-house { font-size: clamp(4rem, 13vw, 7rem); animation: ${ELEMENT_TAG}-settle 2.5s ease-in-out infinite; }
-@keyframes ${ELEMENT_TAG}-settle { 50% { transform: translateY(-.35rem) rotate(2deg); } }
-@media (prefers-reduced-motion: reduce) { .${ELEMENT_TAG}-preparing-house { animation: none; } }
-
 .${ELEMENT_TAG}-root.${ELEMENT_TAG}-room-screen { box-sizing: border-box; padding: 0; overflow: hidden; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { position: relative; align-self: center; width: min(58rem, 100%); margin-top: auto; padding: .6rem; box-sizing: border-box; border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); border-radius: 1rem; background: var(--marinara-chat-chrome-panel-bg, color-mix(in srgb, var(--popover) 88%, transparent)); backdrop-filter: blur(14px); box-shadow: 0 .75rem 2rem #0007; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-card { background: color-mix(in srgb, var(--background) 62%, transparent); box-shadow: none; }

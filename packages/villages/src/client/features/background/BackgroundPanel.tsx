@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { BackgroundWork } from "../../../shared/contracts/village.js";
 import { messageFrom } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { DisclosureSummary } from "../../shared/DisclosureSummary.js";
 
 function waitingTime(timestamp: string): string {
   const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(timestamp)) / 60_000));
@@ -111,7 +112,10 @@ export function BackgroundWorkPanel({
       ) : null}
       {completed.length ? (
         <details className={ELEMENT_TAG + "-background-group"}>
-          <summary>Completed ({completed.length})</summary>
+          <DisclosureSummary
+            show={`Show completed jobs (${completed.length})`}
+            hide={`Hide completed jobs (${completed.length})`}
+          />
           {renderJobs(completed)}
         </details>
       ) : null}

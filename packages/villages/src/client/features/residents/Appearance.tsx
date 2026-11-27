@@ -15,6 +15,7 @@ import { createVillagesClientId } from "../../shared/request-id.js";
 import type { Portrait } from "../../shared/types.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import { APPEARANCE_STYLES } from "./appearance-styles.js";
+import { DisclosureSummary } from "../../shared/DisclosureSummary.js";
 
 type Choice = {
   useSprites: boolean;
@@ -582,7 +583,7 @@ export function Appearance({
                 </button>
               </div>
               <details className="appearance-sprite-body">
-                <summary>Manage expressions</summary>
+                <DisclosureSummary show="Show expressions" hide="Hide expressions" />
                 <div className="appearance-actions">
                   {typeof openCharacter === "function" ? (
                     <button

@@ -1,4 +1,5 @@
 import { HistoryClarifications } from "../../shared/HistoryClarifications.js";
+import { DisclosureSummary } from "../../shared/DisclosureSummary.js";
 import { useVillageActivity } from "../../shared/activity.js";
 import { invalidatesRead } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
@@ -57,7 +58,7 @@ export function RelationshipEntries({
           </small>
           {entry.support?.length ? (
             <details>
-              <summary>Sources</summary>
+              <DisclosureSummary show="Show sources" hide="Hide sources" />
               {entry.support.map((source) => (
                 <blockquote key={source.id}>
                   {source.speaker ? <strong>{source.speaker.name}: </strong> : null}
@@ -351,6 +352,7 @@ export function VillagesRelationships({
               ) : null}
               <HistoryClarifications
                 conflicts={debug.conflicts}
+                sourceSummary={<DisclosureSummary show="Show source IDs" hide="Hide source IDs" />}
                 disabled={
                   saving ||
                   debug.processing.some(
