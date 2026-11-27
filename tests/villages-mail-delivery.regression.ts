@@ -179,8 +179,11 @@ await runCase("mail-delivery/frozen-reading", () => {
     { forget: true },
   );
   const before = structuredClone(f.state);
-  assert.throws(() => readDeliveredLetter(f.state, reply.id, later), /protection changed/);
-  assert.deepEqual(f.state, before);
+  readDeliveredLetter(f.state, reply.id, later);
+  assert.equal(f.state.mailbox.messages[reply.id].withheld, "protection-changed");
+  assert.equal(f.state.mailbox.messages[reply.id].readAt, undefined);
+  assert.deepEqual(f.state.episodes, before.episodes);
+  assert.deepEqual(f.state.continuity, before.continuity);
   const g = fixture();
   acceptMailExchange(g.state, g.exchange, at);
   g.state.villagers[0].incarnation = "replacement";
