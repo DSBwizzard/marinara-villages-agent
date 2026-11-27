@@ -336,8 +336,8 @@ try {
   const rebuild = () =>
     app.inject({
       method: "POST",
-      url: "/api/villages/agendas/rebuild",
-      payload: { actionId: "fresh-sleep", characterIds: ["a", "b"] },
+      url: "/api/villages/agendas/a/regenerate",
+      payload: { actionId: "fresh-sleep", rebuild: true, characterIds: ["a", "b"] },
     });
   const completedMarker = structuredClone(records.get("villages-village").data.foundingPreparation);
   const rebuilt = await rebuild();
