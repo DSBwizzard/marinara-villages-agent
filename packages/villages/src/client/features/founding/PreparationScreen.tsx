@@ -27,7 +27,7 @@ export function PreparationScreen({
     if (ready) lineRef.current?.focus({ preventScroll: true });
   }, [ready, farewell]);
 
-  const pose = farewell ? "wave" : "happy";
+  const pose = farewell ? "playful" : "happy";
   return (
     <div
       className={`${ELEMENT_TAG}-root villages-forging-v2 villages-forging-preparing`}

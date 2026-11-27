@@ -34,14 +34,6 @@ const script: Record<SettingBeat, readonly string[]> = {
     "Where should your first Map take us? Give that spot a name and tell me what we’d see when we get there.",
   ],
 };
-const expressions = {
-  welcome: ["wave", "happy", "playful", "presenting"],
-  "world-overview": ["presenting", "neutral"],
-  world: ["thoughtful"],
-  lorebooks: ["presenting", "thoughtful"],
-  "village-overview": ["presenting", "thoughtful"],
-  village: ["happy-side", "presenting", "thoughtful"],
-} as const;
 export function settingBeat(workspace: FoundingScreenController["setupWorkspace"]): SettingBeat {
   return workspace.settingBeat ?? (workspace.suggestionRequest?.draftSetting ? "village" : "welcome");
 }
@@ -165,14 +157,16 @@ export function FoundingSettingScene({
         ? lines.length - 1
         : 0,
   );
-  const expression =
-    beat === "village" && replaceStep === "confirm"
-      ? "neutral"
-      : beat === "village" && (draftDialogue || error)
-        ? "thoughtful"
-        : expressions[beat][lineIndex]!;
-  useEffect(() => onExpressionChange(expression), [expression, onExpressionChange]);
   const lastLine = lineIndex === lines.length - 1;
+  const expression =
+    beat === "welcome" && lineIndex === 0
+      ? "wave"
+      : beat === "world-overview"
+        ? "presenting"
+        : beat === "village" && lastLine && replaceStep !== "confirm" && (draftDialogue || error)
+          ? "thoughtful"
+          : "neutral";
+  useEffect(() => onExpressionChange(expression), [expression, onExpressionChange]);
   const namingVillage = beat === "village-overview" && lastLine;
   const finishVillage = () => {
     if (onValidateVillage()) moveTo("village");

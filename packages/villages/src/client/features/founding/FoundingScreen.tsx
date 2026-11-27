@@ -48,26 +48,11 @@ const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-se
 const PHONE_LAYOUT = "(max-width:727px)";
 const CHAPTER_MENUS = [undefined, "people", "maps", "venues", "review"] as const;
 const VENUE_INTRO = [
-  {
-    text: "There’s our Map. Now let’s give your Villagers somewhere to go. A café is a Venue. Its counter and back patio are Zones, where Scenes happen.",
-    pose: "presenting",
-  },
-  {
-    text: "Got a place in mind? Choose **Add Venue**. Or choose **Draft All Venues** and I’ll sketch a starting set.",
-    pose: "thoughtful",
-  },
-  {
-    text: "Put your places on the Map, then open **Assignments** to choose who lives and works where. Look at us, doing municipal planning.",
-    pose: "playful",
-  },
+  "There’s our Map. Now let’s give your Villagers somewhere to go. A café is a Venue. Its counter and back patio are Zones, where Scenes happen.",
+  "Got a place in mind? Choose **Add Venue**. Or choose **Draft All Venues** and I’ll sketch a starting set.",
+  "Put your places on the Map, then open **Assignments** to choose who lives and works where. Look at us, doing municipal planning.",
 ] as const;
 type ReviewStage = "people" | "setting" | "map" | "confirm";
-const REVIEW_POSES = {
-  people: "neutral",
-  setting: "thoughtful",
-  map: "presenting",
-  confirm: "proud",
-} as const satisfies Record<ReviewStage, Parameters<typeof foundingMariSprite>[0]>;
 
 function FoundingChapter({
   step,
@@ -239,7 +224,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   const chapterMenu = CHAPTER_MENUS[setupStep];
   const [venueIntroIndex, setVenueIntroIndex] = useState<number | null>(null);
   const venueIntroPage = venueIntroIndex ?? 0;
-  const venueIntro = VENUE_INTRO[venueIntroPage]!;
   const explainingStarters =
     setupStep === FOUNDING_STEP.Venues &&
     (venueIntroIndex !== null || (phone && setupWorkspace.mobileMenu !== chapterMenu)) &&
@@ -294,16 +278,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       ? "looking-up"
       : setupStep === FOUNDING_STEP.Setting
         ? settingExpression
-        : explainingStarters
-          ? venueIntro.pose
-          : setupStep === FOUNDING_STEP.People
-            ? "happy"
-            : setupStep === FOUNDING_STEP.Review
-              ? REVIEW_POSES[reviewStage]
-              : setupStep === FOUNDING_STEP.Maps
-                ? "presenting"
-                : "neutral";
-  const mariFacing = mariPose === "happy-side" ? "left" : mariPose === "looking-up" ? "right" : "front";
+        : explainingStarters || setupStep === FOUNDING_STEP.Maps
+          ? "presenting"
+          : "neutral";
+  const mariFacing = mariPose === "looking-up" ? "right" : "front";
   const mariFlipEnabled = snapshot?.settings.spriteCardFlipEnabled !== false;
   useEffect(() => {
     if (!fading && !turning) return;
@@ -1327,7 +1305,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           }
         >
           {explainingStarters
-            ? venueIntro.text
+            ? VENUE_INTRO[venueIntroPage]!
             : setupStep === FOUNDING_STEP.Review
               ? reviewScene
                 ? "Ready to found " + setupName + "?"
@@ -1393,7 +1371,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           <CardFlipSprite
             url={foundingMariSprite(mariPose)}
             facing={mariFacing}
-            mirrored={mariFacing === "left"}
+            mirrored={false}
             view={mariFacing === "front" ? "front" : "side"}
             framing="full"
             enabled={mariFlipEnabled}

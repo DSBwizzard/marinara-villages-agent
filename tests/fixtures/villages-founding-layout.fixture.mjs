@@ -486,13 +486,13 @@ export async function verifyFoundingLayout(group) {
             await advance();
             const addOrDraft = guide.getByText(/^Got a place in mind/);
             await expect(addOrDraft).toBeVisible();
-            await expectPose("thoughtful");
+            await expectPose("presenting");
             await expect(passage).not.toHaveAttribute("data-reader-next-page");
             await expect(work).toHaveCount(0);
             await advance();
             const assignments = guide.getByText(/^Put your places on the Map/);
             await expect(assignments).toBeVisible();
-            await expectPose("playful");
+            await expectPose("presenting");
             await expect(passage).not.toHaveAttribute("data-reader-next-page");
             await expect(work).toHaveCount(0);
             if (view.width === 1366 || (view.width === 390 && view.height === 844)) {
@@ -674,7 +674,7 @@ export async function verifyFoundingLayout(group) {
           if (phase !== "setting" && !phone) {
             const guide = root.locator(".villages-chapter-guide");
             const sprite = await expectPose(
-              { people: "happy", maps: "presenting", venues: "neutral", review: "neutral" }[phase],
+              { people: "neutral", maps: "presenting", venues: "neutral", review: "neutral" }[phase],
             );
             const workBox = await root.locator(".villages-forging-body").boundingBox();
             const spriteBox = await sprite.boundingBox();
@@ -1031,17 +1031,17 @@ export async function verifyFoundingLayout(group) {
         await expect(button("Draft with Mari")).toHaveCount(0);
         await nextLine();
         await expect(line).toHaveText(/^Welcome to Villages\./);
-        await expectPose("happy");
+        await expectPose("neutral");
         await nextLine();
         await expect(line).toHaveText(/make a life with a community/);
         assert.equal(
           await finishPassage(scene),
           "You’ll make a life with a community here. That could mean a dockside town, a spaceship crew, or six neighbors with one catastrophically shared laundry room.",
         );
-        await expectPose("playful");
+        await expectPose("neutral");
         await nextLine();
         await expect(line).toHaveText(/^Let’s give your people a place to call home/);
-        const greetingPose = await expectPose("presenting");
+        const greetingPose = await expectPose("neutral");
         await expect(button("Set it up myself")).toHaveCount(0);
         await expect(button("Draft with Mari")).toHaveCount(0);
         if (phone) {
@@ -1159,7 +1159,7 @@ export async function verifyFoundingLayout(group) {
         await nextLine();
         await expect(line).toHaveText(/^The World is the big backdrop/);
         await expect(hierarchy).toBeVisible();
-        await expectPose("neutral");
+        await expectPose("presenting");
         await finishPassage(scene);
         const worldIntroEnd = await line.textContent();
         await page.evaluate(() => {
@@ -1172,7 +1172,7 @@ export async function verifyFoundingLayout(group) {
           };
         });
         await nextLine();
-        const facingPlayer = await expectPose("thoughtful");
+        const facingPlayer = await expectPose("neutral");
         await expect(facingPlayer).toHaveAttribute("data-facing", "front");
         assert.deepEqual(
           await page.evaluate(() => window.mariFlips),
@@ -1181,12 +1181,12 @@ export async function verifyFoundingLayout(group) {
             : [
                 [
                   "out",
-                  "mari-founding-neutral.webp",
+                  "mari-founding-presenting.webp",
                   [{ transform: "rotateY(0deg) scaleX(1)" }, { transform: "rotateY(90deg) scaleX(1)" }],
                 ],
                 [
                   "in",
-                  "mari-founding-thoughtful.webp",
+                  "mari-founding-neutral.webp",
                   [{ transform: "rotateY(-90deg) scaleX(1)" }, { transform: "rotateY(0deg) scaleX(1)" }],
                 ],
               ],
@@ -1281,7 +1281,7 @@ export async function verifyFoundingLayout(group) {
         else await nextLine();
         await layer("World");
         await expect(line).toHaveText(/^Got Lorebooks\?/);
-        await expectPose("presenting");
+        await expectPose("neutral");
         await expect(button("Choose lorebooks")).toHaveCount(0);
         if (draftWithLore) {
           await scene.getByRole("button", { name: "Back", exact: true }).click();
@@ -1294,7 +1294,7 @@ export async function verifyFoundingLayout(group) {
         const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
         const picker = phone ? loreDialog : scene.getByRole("region", { name: "Village Lorebooks", exact: true });
         await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
-        await expectPose("thoughtful");
+        await expectPose("neutral");
         if (phone) await expect(picker.locator("header")).toBeFocused();
         const loreResults = picker.getByRole("group", { name: "Lorebooks", exact: true });
         const lorePageSize = phone ? 6 : 12;
@@ -1450,7 +1450,7 @@ export async function verifyFoundingLayout(group) {
           );
         await picker.getByRole("button", { name: "Next", exact: true }).click();
         await layer("Village");
-        await expectPose("presenting");
+        await expectPose("neutral");
         await expect(line).toHaveText(/^The Village is your whole community/);
         await expect(villageName).toBeHidden();
         await nextLine();
@@ -1512,15 +1512,14 @@ export async function verifyFoundingLayout(group) {
         await villageBrief.fill(initialBrief);
         await finishNaming();
         await layer("Map");
-        const mapPose = await expectPose("happy-side");
-        await expect(mapPose).toHaveAttribute("data-facing", "left");
-        await expect(mapPose).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
+        const mapPose = await expectPose("neutral");
+        await expect(mapPose).toHaveAttribute("data-facing", "front");
         const mapPortrait = await mapPose.boundingBox();
         assert.ok(
           phone
             ? treeBox.y + treeBox.height <= mapPortrait.y + mapPortrait.height * 0.43
             : treeBox.x + treeBox.width <= mapPortrait.x + 0.5,
-          "Mari’s left-facing gesture clears the chart",
+          "Mari clears the chart when introducing the first Map",
         );
         assert.ok(Math.abs(mapPortrait.y + mapPortrait.height - portraitBox.y - portraitBox.height) < 0.5);
         await expect(line).toHaveText(/^A Map is where we actually play/);
@@ -2179,6 +2178,9 @@ export async function verifyFoundingLayout(group) {
           await expect(sheet).toBeVisible();
           await expect(sheet.getByLabel("Venue Name", { exact: true })).toBeEditable();
           await expect(sheet.getByRole("button", { name: /^(Edit|Done)$/ })).toHaveCount(0);
+          const nobody = sheet.getByRole("button", { name: "Runs this Venue Nobody", exact: true }).getByText("Nobody");
+          await expect(nobody).toHaveCSS("white-space", "nowrap");
+          assert.ok(await nobody.evaluate((label) => label.scrollWidth <= label.clientWidth + 1));
           await expect(sheet.getByRole("button", { name: "Redraft Venue", exact: true })).toHaveCount(0);
           await expect(sheet.getByRole("button", { name: "Remove Venue", exact: true })).toHaveCount(0);
           await closeVenue();
@@ -2942,7 +2944,7 @@ export async function verifyFoundingLayout(group) {
           });
         await overview.getByRole("button", { name: "Next", exact: true }).click();
         await expect(overview).toHaveAttribute("data-page", "setting");
-        await expectPose("thoughtful");
+        await expectPose("neutral");
         await overview.getByRole("button", { name: "Back", exact: true }).click();
         await expect(overview).toHaveAttribute("data-page", "people");
         await overview.getByRole("button", { name: "Next", exact: true }).click();
@@ -3008,7 +3010,7 @@ export async function verifyFoundingLayout(group) {
           });
         await advance();
         await expect(root).toHaveAttribute("data-review-stage", "map");
-        await expectPose("presenting");
+        await expectPose("neutral");
         await expect(overview).toHaveCount(0);
         await retreat();
         await expect(overview).toHaveAttribute("data-page", "setting");
@@ -3080,7 +3082,7 @@ export async function verifyFoundingLayout(group) {
           });
         await advance();
         await expect(root).toHaveAttribute("data-review-stage", "confirm");
-        await expectPose("proud");
+        await expectPose("neutral");
         await expect(root.getByText("Ready to found Coastal Community?", { exact: true })).toBeVisible();
         await retreat();
         await expect(root).toHaveAttribute("data-review-stage", "map");
@@ -3113,7 +3115,7 @@ export async function verifyFoundingLayout(group) {
         if (view.width === 1366) {
           await expect(root.getByRole("alert")).toContainText("Fixture founding failure.");
           await expect(root).toHaveAttribute("data-review-stage", "confirm");
-          await expectPose("proud");
+          await expectPose("neutral");
           await button("Found village").click();
         }
         await expect(root).toHaveAttribute("data-step", "preparation");
@@ -3138,7 +3140,7 @@ export async function verifyFoundingLayout(group) {
           confirmationReaderStyle,
           "Mari's farewell uses the Founding reader style",
         );
-        await expectPose("wave");
+        await expectPose("playful");
         await expect(root.locator(".villages-setting-dialogue")).toBeInViewport({ ratio: 1 });
         await expect(button("Enter village")).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)
