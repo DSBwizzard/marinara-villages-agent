@@ -195,7 +195,7 @@ await runCase("gm-effects/tagged-memory-and-wish", async () => {
 });
 
 await runCase("gm-effects/relationship-answer", async () => {
-  for (const variant of ["conclude", "native"]) {
+  for (const variant of ["conclude", "native", "missing-command-beat"]) {
     const host = await packagedSceneServer();
     const native = variant !== "conclude";
     const answer = "I enjoy how curious you are when we talk.";
@@ -223,7 +223,7 @@ await runCase("gm-effects/relationship-answer", async () => {
                   {
                     id: "close",
                     type: "scene.end",
-                    at: "exit",
+                    at: variant === "missing-command-beat" ? "invented-segment" : "exit",
                     source: [{ input: departure, ground: { kind: "visible-action", to: ["mara"] } }],
                   },
                 ],

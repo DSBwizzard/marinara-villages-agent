@@ -368,6 +368,7 @@ export function sceneAgendaEvidence(
   write: ContinuityWrite,
   readset: NarrationReadset,
   sources: ContinuityEvidence[],
+  acceptedAt: string,
 ) {
   const evidence = write.agenda;
   if (!evidence) return;
@@ -425,6 +426,13 @@ export function sceneAgendaEvidence(
         ).getTime() > Date.parse(readset.calendar.instant),
       "The appointment needs a future slot and a supplied location",
     );
+    if (readset.compactSceneDecisions && evidence.confirmable) {
+      const player = continuityActor(world, "player");
+      memoryRequire(
+        player && !appointmentConflict(world, resident, player, time, dateAt(world, new Date(acceptedAt))),
+        "The offered appointment is unavailable",
+      );
+    }
     return;
   }
   memoryRequire(!write.offer && write.class === "information", "Agenda discoveries describe existing routines");
@@ -524,6 +532,54 @@ function currentAppointments(world: VillageState, now: ZonedDate) {
   });
 }
 
+function appointmentConflict(
+  world: VillageState,
+  resident: VillageState["villagers"][number],
+  player: { incarnation: string },
+  time: AgendaTime,
+  now: ZonedDate,
+  replacingId?: string,
+) {
+  const rows = currentAppointments(world, now);
+  const residentId = resident.characterId;
+  const start = calendarAt(now, time.date, time.startMinute);
+  const end = calendarAt(now, time.date, time.endMinute);
+  if (!(
+    (rows.length < 64 || rows.some((row) => row.id === replacingId)) &&
+    resident.agenda &&
+    start.getTime() > now.getTime() &&
+    end.getTime() - start.getTime() === (time.endMinute - time.startMinute) * 60_000 &&
+    start.getHours() * 60 + start.getMinutes() === time.startMinute &&
+    visitFits(world, residentId, time, now) &&
+    visitFits(world, "player", time, now) &&
+    zoneActivityFits(
+      world,
+      [residentId],
+      time.venueId,
+      time.zoneId ?? "exterior",
+      time.startMinute,
+      time.endMinute,
+      start,
+    ) &&
+    !rows.some(
+      (row) =>
+        !row.cancelled &&
+        (row.playerIncarnation === player.incarnation || row.resident.id === residentId) &&
+        row.time.date === time.date &&
+        row.time.startMinute < time.endMinute &&
+        row.time.endMinute > time.startMinute,
+    )
+  ))
+    return "The appointment is past, inaccessible, or overlaps another commitment";
+  let covered = time.startMinute;
+  for (const block of agendaBlocksFor(resident.agenda, start)) {
+    if (block.endMinute <= covered || block.startMinute >= time.endMinute) continue;
+    if (block.startMinute > covered || !flexibleAgendaBlock(block) || restingAgendaBlock(block)) break;
+    covered = block.endMinute;
+  }
+  if (covered < time.endMinute) return "That resident is already committed during this appointment";
+}
+
 function appointmentCancellationToken(
   world: VillageState,
   entry: NonNullable<VillageState["residentPlans"]["appointments"]>[number],
@@ -561,44 +617,8 @@ export function confirmAgendaAppointment(world: VillageState, actorId: string, t
       throw conflict("That appointment was already booked with a different slot.", "APPOINTMENT_CHANGED");
     return false;
   }
-  const start = calendarAt(now, time.date, time.startMinute);
-  const end = calendarAt(now, time.date, time.endMinute);
-  if (!(
-    (rows.length < 64 || !!previous) &&
-    live?.agenda &&
-    start.getTime() > now.getTime() &&
-    end.getTime() - start.getTime() === (time.endMinute - time.startMinute) * 60_000 &&
-    start.getHours() * 60 + start.getMinutes() === time.startMinute &&
-    visitFits(world, resident.id, time, now) &&
-    visitFits(world, player.id, time, now) &&
-    zoneActivityFits(
-      world,
-      [resident.id],
-      time.venueId,
-      time.zoneId ?? "exterior",
-      time.startMinute,
-      time.endMinute,
-      start,
-    ) &&
-    !rows.some(
-      (row) =>
-        !row.cancelled &&
-        (row.playerIncarnation === player.incarnation || row.resident.id === resident.id) &&
-        row.time.date === time.date &&
-        row.time.startMinute < time.endMinute &&
-        row.time.endMinute > time.startMinute,
-    )
-  ))
-    throw conflict("The appointment is past, inaccessible, or overlaps another commitment", "APPOINTMENT_UNAVAILABLE");
-  let covered = time.startMinute;
-  for (const block of agendaBlocksFor(live.agenda, start)) {
-    if (block.endMinute <= covered || block.startMinute >= time.endMinute) continue;
-    if (block.startMinute > covered || !flexibleAgendaBlock(block) || restingAgendaBlock(block)) break;
-    covered = block.endMinute;
-  }
-  if (covered < time.endMinute) {
-    throw conflict("That resident is already committed during this appointment", "APPOINTMENT_UNAVAILABLE");
-  }
+  const unavailable = appointmentConflict(world, live, player, time, now, previous?.id);
+  if (unavailable) throw conflict(unavailable, "APPOINTMENT_UNAVAILABLE");
   world.residentPlans.appointments = [
     ...rows.filter((row) => row.id !== id),
     {

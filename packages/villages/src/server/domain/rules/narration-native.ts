@@ -227,7 +227,11 @@ export function prepareNarrationNative(
           effect.failure = "Use Move or Visit to change location, or Conclude to end the Scene.";
           return undefined;
         }
-        const segment = reply.segments.findIndex((line) => line.id === command.at);
+        // The explicit Leave action owns the closure position. The command still needs its admitted player source.
+        const segment =
+          command.type === "scene.end" && readset.playerNavigation === "conclude"
+            ? reply.segments.length - 1
+            : reply.segments.findIndex((line) => line.id === command.at);
         memoryRequire(segment >= 0, "native command needs its actual supplied segment");
         if (command.type === "circumstance" && command.situation) {
           const damage = new Set(command.conditions?.flatMap((row) => row.roomKeeps ?? []));
@@ -451,17 +455,7 @@ export function prepareNarrationNative(
         : applyNarrationMove(candidate, command, readset, context, sources, receiptId, row.segment);
     }
     if (command.type === "scene.end" || command.type === "contact.end")
-      return applyNarrationScene(
-        candidate,
-        command,
-        readset,
-        context,
-        sources,
-        receiptId,
-        command.type === "scene.end" && readset.playerNavigation === "conclude"
-          ? context.lines.length - 1
-          : row.segment,
-      );
+      return applyNarrationScene(candidate, command, readset, context, sources, receiptId, row.segment);
     if (command.type === "place.discover") {
       const kind = "discovery",
         limit = kind === "discovery" ? 2 : 8;

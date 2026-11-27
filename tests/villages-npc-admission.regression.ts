@@ -983,7 +983,17 @@ await runCase("npc-admission/name", () => {
     lineId: savedQuote.segments[0].id,
   });
 
-  const spoken = reply(`[${npc.id}] [introduce]:\n[${npc.id}]: Take a seat.`, "named", true, true);
+  const nameReadset = {
+    ...strictProse,
+    explicitNpcIntroduction: true as const,
+    npcSpeakerNames: { [npc.id]: npc.name },
+  };
+  const nested = `[${npc.id}]: [introduce]:\n[${npc.id}]: Take a seat.`;
+  assert.deepEqual(
+    decodeTaggedSceneReply(nested, nameReadset).value,
+    decodeTaggedSceneReply(`[${npc.id}] [introduce]:\n[${npc.id}]: Take a seat.`, nameReadset).value,
+  );
+  const spoken = reply(nested, "named", true, true);
   assert.equal(spoken.segments[0].content, "My name is Rasha Dunmore.");
   assert.deepEqual(
     spoken.segments.map(({ speakerId, name }) => [speakerId, name]),

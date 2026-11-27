@@ -166,8 +166,11 @@ export function decodeTaggedSceneReply(
       anchor = undefined;
       continue;
     }
-    const [, narration, speaker, tags, text] = header;
+    const [, narration, speaker, tags, body] = header;
     const meta = [...(tags ?? "").matchAll(/\[([^\]]+)\]/gu)].map((part) => part[1]);
+    const nestedIntroduction = readset.explicitNpcIntroduction && speaker && !meta.length && body === "[introduce]:";
+    if (nestedIntroduction) meta.push("introduce");
+    const text = nestedIntroduction ? "" : body;
     const control = speaker?.trim().toLowerCase();
     const reserved = reservedControl(speaker ?? "");
     if (reserved && reserved !== "action") {
@@ -411,7 +414,7 @@ export function decodeTaggedSceneReply(
           : appointment
             ? "Appointment offered."
             : work
-              ? "I've put the shift terms in Work for review."
+              ? "Work proposed."
               : text,
         requires: requirements,
         ...(choice || work ? { targetId: "player" } : {}),
@@ -485,6 +488,8 @@ export function decodeTaggedSceneReply(
           } else if (work && readset.access.some((row) => row.venueId === scene.placeId)) {
             const terms = venueWorkSchema.safeParse(record);
             if (terms.success && terms.data.characterId !== "player") {
+              const { activity, days, startMinute, endMinute } = terms.data;
+              beat.text = `The proposed shift is ${activity}, ${days.join(", ")}, ${workTime(startMinute)} to ${workTime(endMinute)}.`;
               commands.push({
                 id: effectId,
                 type: "access.decide",

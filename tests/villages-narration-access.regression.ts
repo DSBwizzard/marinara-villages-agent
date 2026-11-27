@@ -787,7 +787,9 @@ await runCase("narration-access/work-consent", () => {
     );
     assert.equal(
       result.episode!.segments[0].content,
-      playerWork ? "The work offer is still unsettled." : "I've put the shift terms in Work for review.",
+      playerWork
+        ? "The work offer is still unsettled."
+        : "The proposed shift is Keep the library, Monday, 09:00 to 17:00.",
     );
   }
   const unadmitted = fixture(true);

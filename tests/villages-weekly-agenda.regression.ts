@@ -347,7 +347,11 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
             "[mara] [appointment]: " +
             JSON.stringify({
               activity: "Look through maps",
-              time: valid ? schedule : { ...schedule, zoneId: "unfitted-zone" },
+              time: valid
+                ? schedule
+                : calls === 3
+                  ? { ...schedule, zoneId: "unfitted-zone" }
+                  : { ...schedule, startMinute: 600, endMinute: 630 },
             }) +
             (valid
               ? "\nNarration: A breeze lifts a page.\n[keep]: " +
@@ -459,27 +463,34 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
         });
         assert.equal(stale.statusCode, 409, stale.body);
       }
-      const unfitted = await host.app.inject({
-        method: "POST",
-        url: "/api/villages/rooms/turn",
-        payload: {
-          sessionId: "browser",
-          submissionId: randomUUID(),
-          message: "Could we move tomorrow's meeting elsewhere?",
-          mode: "chat",
-          targetId: "",
-          expectedSceneRevision: host.scene().sceneRevision,
-        },
-      });
-      assert.equal(unfitted.statusCode, 200, unfitted.body);
-      assert(
-        unfitted
-          .json()
-          .session.lines.some(({ content }: { content: string }) => content === "The appointment is still unsettled."),
-      );
-      const current = fixtureVillageState(host.records.get("villages-village").data, host.records);
-      assert.equal(agendaWeek(current, "mara", new Date(), false).pending, undefined);
-      assert.equal(calls, 3);
+      for (const message of [
+        "Could we move tomorrow's meeting elsewhere?",
+        "Could we meet here tomorrow from ten until ten thirty?",
+      ]) {
+        const unavailable = await host.app.inject({
+          method: "POST",
+          url: "/api/villages/rooms/turn",
+          payload: {
+            sessionId: "browser",
+            submissionId: randomUUID(),
+            message,
+            mode: "chat",
+            targetId: "",
+            expectedSceneRevision: host.scene().sceneRevision,
+          },
+        });
+        assert.equal(unavailable.statusCode, 200, unavailable.body);
+        assert(
+          unavailable
+            .json()
+            .session.lines.some(
+              ({ content }: { content: string }) => content === "The appointment is still unsettled.",
+            ),
+        );
+        const current = fixtureVillageState(host.records.get("villages-village").data, host.records);
+        assert.equal(agendaWeek(current, "mara", new Date(), false).pending, undefined);
+      }
+      assert.equal(calls, 4);
     } finally {
       await host.stop();
     }

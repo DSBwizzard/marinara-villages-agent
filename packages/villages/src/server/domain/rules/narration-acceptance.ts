@@ -843,7 +843,7 @@ export function acceptNarrationContinuity(
                 evidence.confirmable,
                 "use the explicit appointment offer beat for the resident's decision",
               );
-            sceneAgendaEvidence(scheduledWorld, write, readset, keep.sources);
+            sceneAgendaEvidence(scheduledWorld, write, readset, keep.sources, acceptedAt);
             memoryRequire(evidence.activity.trim(), "An Agenda item needs its actual activity");
           }
           const owner = write.owner;
