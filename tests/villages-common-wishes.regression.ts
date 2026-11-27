@@ -477,6 +477,9 @@ await runCase("common-wishes/founding-coordinator", async () => {
       },
       preparePrivateSpaces: async () => {},
       reportFoundingProgress: async () => {},
+      queueFoundingAgendas: async () => {
+        throw Error("Completed Agenda must not be regenerated");
+      },
       queueVillagerAgenda: async () => {
         throw Error("Completed routine must not be regenerated");
       },

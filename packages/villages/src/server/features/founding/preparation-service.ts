@@ -1,11 +1,14 @@
 import type { FoundingRetry, FoundingTaskKind } from "../../../shared/contracts/founding-tasks.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import type { VillageSnapshot } from "../../domain/models/world.js";
+import type { VillageSnapshot, VillageState } from "../../domain/models/world.js";
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { badRequest, conflict, safeFailureMessage } from "../../domain/rules/errors.js";
 import {
   completeFoundingTask,
+  FOUNDING_AGENDA_SLOT,
+  FOUNDING_AGENDA_SUBJECT,
   foundingReadyForPlay,
   foundingSlot,
   foundingTaskRevision,
@@ -45,6 +48,7 @@ export interface FoundingPreparationPorts {
   settleBackgroundWork: typeof settleBackgroundWork;
   queueStartingTies?(): Promise<void>;
   queueVillagerAgenda(characterId: string, finite?: boolean, origin?: "founding"): Promise<void>;
+  queueFoundingAgendas(ids: readonly string[], seed: string): Promise<void>;
 }
 /** One application owns the first-founding sequence and its deliberate retries. */
 export function createFoundingPreparation(ports: FoundingPreparationPorts) {
@@ -99,7 +103,8 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
         });
       }
       await initializeTasks(initial.seed);
-      let connectionBlocked = false;
+      const batch = await prepareAgendaBatch(initial.seed);
+      let connectionBlocked = batch.connectionBlocked;
       for (const kind of ["routine", "wish"] as const) {
         for (const villager of initial.villagers) {
           const latest = await readVillageState({ memories: true }),
@@ -110,6 +115,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           if (
             !task ||
             task.status === "completed" ||
+            (kind === "routine" && batch.ids.includes(id)) ||
             (marker.selectedTasks?.length && !marker.selectedTasks.includes(kind + ":" + id))
           )
             continue;
@@ -252,6 +258,110 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       });
     return foundingWork;
   }
+  async function prepareAgendaBatch(seed: string) {
+    const state = await readVillageState({ memories: true });
+    const marker = state.foundingPreparation;
+    if (state.seed !== seed || marker?.status !== "pending") return { ids: [], connectionBlocked: false };
+    const open = state.villagers.flatMap(({ characterId: id }) => {
+      const task = marker.tasks?.[id]?.routine;
+      return task && task.status !== "completed" ? [{ id, task }] : [];
+    });
+    const selected = (id: string) => !marker.selectedTasks?.length || marker.selectedTasks.includes("routine:" + id);
+    const prior = await backgroundJobSnapshot("weekly-agenda", FOUNDING_AGENDA_SUBJECT);
+    const resumeBatch =
+      prior?.seed === seed && open.some(({ id, task }) => selected(id) && task.jobId === FOUNDING_AGENDA_SLOT);
+    const candidates = await Promise.all(
+      open.map(async ({ id, task }) => {
+        if (!selected(id) && !(resumeBatch && task.jobId === FOUNDING_AGENDA_SLOT)) return [];
+        if (task.jobId !== FOUNDING_AGENDA_SLOT) {
+          // A saved individual Founding job keeps its own recovery path.
+          const individual = await backgroundJobSnapshot("agenda", id);
+          if (individual?.seed === seed && individual.revision === task.revision && individual.status !== "obsolete")
+            return [];
+        }
+        return [{ id, revision: task.revision, linked: task.jobId === FOUNDING_AGENDA_SLOT }];
+      }),
+    );
+    const eligible = candidates.flat();
+    const ids = eligible.map(({ id }) => id);
+    if (!ids.length) return { ids, connectionBlocked: false };
+    const revisionOf = (rows: typeof eligible) => backgroundRevision(rows.map(({ id, revision }) => [id, revision]));
+    const linked = eligible.filter(({ linked }) => linked);
+    const savedRevision = prior?.replacement?.revision ?? prior?.revision;
+    const members = resumeBatch && linked.length && revisionOf(linked) === savedRevision ? linked : eligible;
+    const revision = revisionOf(members);
+    const report = (attempt?: number, error?: string) => (live: VillageState) => {
+      const current = live.foundingPreparation;
+      if (live.seed !== seed || current?.status !== "pending") return;
+      for (const member of members) {
+        const task = current.tasks?.[member.id]?.routine;
+        if (task?.revision !== member.revision) continue;
+        if (attempt !== undefined) task.attempt = attempt;
+        if (task.status !== "completed") {
+          task.status = error ? "failed" : "running";
+          task.error = error ?? "";
+        }
+      }
+    };
+    await reportFoundingProgress(seed, {
+      phase: "residents",
+      currentId: "",
+      currentTask: "routine",
+      currentVenueId: "",
+      currentZoneId: "",
+      stage: "reading",
+      attempt: undefined,
+      modelName: undefined,
+      loreEntryCount: undefined,
+    });
+    try {
+      const actionId = marker.retryActions?.at(-1);
+      if (
+        actionId &&
+        prior?.seed === seed &&
+        (prior.replacement?.revision ?? prior.revision) === revision &&
+        ["failed", "interrupted", "paused"].includes(prior.status)
+      ) {
+        await mutateVillageState(report(prior.attempt + 1));
+        await retryBackgroundJob(FOUNDING_AGENDA_SLOT, prior.attempt, actionId, prior.instanceId);
+      } else {
+        await ports.queueFoundingAgendas(
+          members.map(({ id }) => id),
+          seed,
+        );
+        await settleBackgroundWork();
+        const held = await backgroundJobSnapshot("weekly-agenda", FOUNDING_AGENDA_SUBJECT);
+        if (
+          actionId &&
+          held?.seed === seed &&
+          held.instanceId === prior?.instanceId &&
+          held.replacement?.revision === revision &&
+          ["failed", "interrupted", "paused"].includes(held.status)
+        )
+          await retryBackgroundJob(FOUNDING_AGENDA_SLOT, held.attempt, actionId, held.instanceId);
+      }
+      await settleBackgroundWork();
+      const summary = (await backgroundWorkSummaries()).find(({ id }) => id === FOUNDING_AGENDA_SLOT);
+      await mutateVillageState(
+        report(
+          summary?.attempt,
+          summary?.error
+            ? safeFailureMessage(new Error(summary.error)).slice(0, 300)
+            : "Preparation interrupted. Retry deliberately.",
+        ),
+      );
+      return {
+        ids,
+        connectionBlocked:
+          summary?.failure?.connectionIssue === "configuration" ||
+          connectionFailureKind(summary?.error ?? "", true) === "configuration" ||
+          (summary?.status === "paused" && !!summary.connectionPaused),
+      };
+    } catch (error) {
+      await mutateVillageState(report(undefined, safeFailureMessage(error).slice(0, 300)));
+      return { ids, connectionBlocked: connectionFailureKind(error, true) === "configuration" };
+    }
+  }
   async function retryFoundedVillagePreparation(input: FoundingRetry = {}): Promise<VillageSnapshot> {
     await recoverFoundingPreparation();
     const requested = await readVillageState(),
@@ -345,7 +455,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             marker.tasks[resident.characterId][kind] = {
               contract: 1,
               revision,
-              jobId: foundingSlot(kind, resident.characterId),
+              jobId: prior?.jobId ?? foundingSlot(kind, resident.characterId),
               status: "pending",
               attempt: 0,
               error: "",

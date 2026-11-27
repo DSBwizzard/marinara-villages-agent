@@ -662,6 +662,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     complete: completeWithRoom,
     now: villageNow,
     readVillageLore,
+    readVillageState,
   });
   const residentAgendas = createResidentAgendas({
     readVillageState,
@@ -957,7 +958,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["wish", wishService.handler],
         ["personal-mail", personalMail.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
-        ["weekly-agenda", bindActivationService(weeklyAgenda.handler)],
+        ["weekly-agenda", bindActivationService(residentAgendas.weeklyAgendaBackgroundHandler)],
         ["resident-planning", bindActivationService(residentPlanning.handler)],
         ["world-development", bindActivationService(narrative.handler)],
       ],
@@ -1010,6 +1011,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       settleBackgroundWork,
       queueStartingTies: startingTies.queue,
       queueVillagerAgenda,
+      queueFoundingAgendas: residentAgendas.queueFoundingAgendas,
     }),
   );
   const releaseGraph = () => {

@@ -38,6 +38,9 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
 }
 export const foundingSlot = (kind: FoundingTaskKind, id: string) =>
   "villages-background-" + backgroundRevision([kind === "routine" ? "agenda" : "wish", id]);
+export const FOUNDING_AGENDA_SUBJECT = "founding";
+export const FOUNDING_AGENDA_SLOT =
+  "villages-background-" + backgroundRevision(["weekly-agenda", FOUNDING_AGENDA_SUBJECT]);
 export function ownsFoundingTask(state: VillageState, id: string, kind: FoundingTaskKind, revision: string): boolean {
   const marker = state.foundingPreparation,
     task = marker?.tasks?.[id]?.[kind];

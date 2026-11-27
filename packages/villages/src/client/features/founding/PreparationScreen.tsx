@@ -32,10 +32,14 @@ export function PreparationScreen({
           ? "this private space"
           : preparation?.currentTask === "wish"
             ? "an Initial Wish"
-            : "an Agenda";
+            : current
+              ? "an Agenda"
+              : "Agendas";
     const stageText =
       preparation?.stage === "reading"
-        ? "Reading the character card"
+        ? phase === "residents" && !current
+          ? "Reading character cards"
+          : "Reading the character card"
         : preparation?.stage === "lore"
           ? "Selecting relevant entries from the founding lorebooks"
           : preparation?.stage === "resolving"

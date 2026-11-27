@@ -2,7 +2,7 @@ import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.f
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
-import { keyedStarterReply } from "./helpers/agenda.fixture.js";
+import { keyedFoundingSetup, keyedStarterReply } from "./helpers/agenda.fixture.js";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -128,10 +128,10 @@ const model = {
                     },
                   }
                 : {}),
-              setup: {
+              setup: keyedFoundingSetup(packet, {
                 ...plan!.setup,
                 identityDescription: "A patient resident with a lasting interest in local history.",
-              },
+              }),
             },
       ),
     };
@@ -206,7 +206,7 @@ try {
     "missing_result",
     "a complete saved malformed reply has a known parser failure, not an unknown provider outcome",
   );
-  assert.equal(calls, 5, "The failed Wish receives exactly one automatic replacement.");
+  assert.equal(calls, 4, "Both Agendas share one request. The failed Wish receives one automatic retry.");
   assert.equal(marker.status, "failed");
   assert.equal((await enter()).statusCode, 409, "An unfinished Wish still blocks entry");
   assert.equal(marker.tasks.a.routine.status, "completed");
@@ -292,7 +292,7 @@ try {
     },
   });
   assert.equal(oversizedDescription.statusCode, 400);
-  assert.equal(calls, 5, "Editing uses no model request.");
+  assert.equal(calls, 4, "Editing uses no model request.");
   const before = calls;
   await stop!();
   app = Fastify();

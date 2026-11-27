@@ -30,6 +30,12 @@ export function keyedStarterReply(
   };
 }
 
+export function keyedFoundingSetup<T>(request: { residents: { setup?: { id: string } }[] }, setup: T) {
+  return Object.fromEntries(
+    request.residents.flatMap((resident) => (resident.setup ? [[resident.setup.id, setup]] : [])),
+  );
+}
+
 export function agendaFixture(value: Partial<VillageAgenda> = {}): VillageAgenda {
   const week = completeAgendaWeek(
     value.week ?? Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, value.day ?? []])),

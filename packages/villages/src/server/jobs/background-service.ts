@@ -611,7 +611,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       memories:
         ["starting-ties", "wish", "agenda", "personal-mail", "resident-planning", "world-development"].includes(
           job.kind,
-        ) || !!catchupBatchId(job),
+        ) ||
+        (job.kind === "weekly-agenda" && job.finite && !job.automaticDate) ||
+        !!catchupBatchId(job),
     };
     if (handlers.get(job.kind)?.authority === "raw" && ports.readVillageAuthority)
       return ports.readVillageAuthority(options);
@@ -629,13 +631,20 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           sourceJobs,
         })
       : mutateVillageState(update, {
-          memories: ["wish", "resident-planning", "world-development"].includes(job.kind) ? true : undefined,
+          memories:
+            ["wish", "resident-planning", "world-development"].includes(job.kind) ||
+            (job.kind === "weekly-agenda" && job.finite && !job.automaticDate)
+              ? true
+              : undefined,
           sourceJobs,
         });
   }
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;
-    if (["world-development", "weekly-agenda"].includes(job.kind) && state.backgroundPace === "off")
+    if (
+      (job.kind === "world-development" || (job.kind === "weekly-agenda" && job.automaticDate)) &&
+      state.backgroundPace === "off"
+    )
       throw new Paused("Pace is Off. The admitted world source is preserved.");
     const batchId = catchupBatchId(job),
       batch = state.returnCatchup?.batch;
@@ -646,7 +655,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       holding &&
       !batchId &&
       (!job.finite ||
-        ["resident-planning", "weekly-agenda"].includes(job.kind) ||
+        job.kind === "resident-planning" ||
+        (job.kind === "weekly-agenda" && !!job.automaticDate) ||
         (job.kind === "agenda" && typeof asRecord(job.input).weekActionId === "string"))
     )
       throw new Paused("Waiting for Village catch-up.");
@@ -732,7 +742,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           )
             return previous;
           if (previous && work.kind === "weekly-agenda" && previous.seed === work.seed) {
-            if (running.has(id) || !weeklyAgendaDue(previous, work.seed, work.automaticDate ?? "")) return previous;
+            if (running.has(id) || (work.automaticDate && !weeklyAgendaDue(previous, work.seed, work.automaticDate)))
+              return previous;
             if (uncertainAttempt(previous)) {
               previous.replacement = copyBackgroundWork(work);
               return holdReplacement(previous);

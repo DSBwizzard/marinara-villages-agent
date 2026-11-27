@@ -2,6 +2,7 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -9,6 +10,7 @@ import {
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import {
   completeFoundingTask,
+  FOUNDING_AGENDA_SLOT,
   foundingCompletedIds,
   foundingSlot,
   foundingTaskRevision,
@@ -85,6 +87,7 @@ function fixture(name: string) {
       instanceId: jobs.get(slot)?.instanceId ?? "40000000-0000-4000-8000-000000000000",
       kind: kind === "routine" ? "agenda" : "wish",
       subjectId: id,
+      seed: state.seed,
       attempt,
       status: fail ? "interrupted" : "completed",
       error: fail ? "Unknown paid outcome" : "",
@@ -98,6 +101,33 @@ function fixture(name: string) {
         resident.agenda!.generatedAt = stamp;
       }
       completeFoundingTask(state, id, kind, revision);
+    }
+  }
+  function finishAgendas(ids: readonly string[], attempt = 1) {
+    const members = ids.map((id) => {
+      const task = state.foundingPreparation!.tasks![id]!.routine!;
+      task.jobId = FOUNDING_AGENDA_SLOT;
+      return { id, revision: task.revision };
+    });
+    jobs.set(FOUNDING_AGENDA_SLOT, {
+      id: FOUNDING_AGENDA_SLOT,
+      instanceId: "40000000-0000-4000-8000-000000000000",
+      kind: "weekly-agenda",
+      subjectId: "founding",
+      seed: state.seed,
+      attempt,
+      status: fail ? "interrupted" : "completed",
+      error: fail ? "Unknown paid outcome" : "",
+      input: { foundingContract: 1, members },
+      revision: backgroundRevision(members.map(({ id, revision }) => [id, revision])),
+    });
+    if (!fail) {
+      for (const { id, revision } of members) {
+        const agenda = state.villagers.find((resident) => resident.characterId === id)!.agenda!;
+        agenda.personalizationPending = false;
+        agenda.generatedAt = stamp;
+        completeFoundingTask(state, id, "routine", revision);
+      }
     }
   }
   const ports: FoundingPreparationPorts = {
@@ -131,7 +161,16 @@ function fixture(name: string) {
         circumstances: { worldRules: state.worldRules },
       }) as any,
     backgroundJobSnapshot: async (kind, id) =>
-      structuredClone(jobs.get(foundingSlot(kind === "agenda" ? "routine" : "wish", id)) ?? null),
+      structuredClone(
+        jobs.get(
+          kind === "weekly-agenda" ? FOUNDING_AGENDA_SLOT : foundingSlot(kind === "agenda" ? "routine" : "wish", id),
+        ) ?? null,
+      ),
+    queueFoundingAgendas: async (ids, seed) => {
+      assert.equal(seed, state.seed);
+      calls.push(ids.join(","));
+      finishAgendas(ids);
+    },
     queueVillagerAgenda: async (id, finite) => {
       assert.equal(finite, true);
       calls.push(id);
@@ -148,7 +187,12 @@ function fixture(name: string) {
       assert.equal(instanceId, job.instanceId);
       assert.ok(requestId);
       retries.push(id);
-      finish(job.kind === "agenda" ? "routine" : "wish", job.subjectId, job.attempt + 1);
+      if (job.kind === "weekly-agenda")
+        finishAgendas(
+          job.input.members.map(({ id }: { id: string }) => id),
+          job.attempt + 1,
+        );
+      else finish(job.kind === "agenda" ? "routine" : "wish", job.subjectId, job.attempt + 1);
       return {} as any;
     },
   };
@@ -182,7 +226,7 @@ async function independentFounding() {
     await pendingB;
     assert.equal(b.state().foundingPreparation?.status, "ready");
     assert.deepEqual(b.state().foundingPreparation?.completedIds, ["first", "second"]);
-    assert.deepEqual(b.calls, ["first", "second"], "resident order is unchanged");
+    assert.deepEqual(b.calls, ["first,second"], "the batch preserves resident order");
     assert.match(b.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /B$/);
     assert.equal(a.state().foundingPreparation?.status, "pending");
     assert.equal(a.counts().preparationRequests, 1);
@@ -190,21 +234,16 @@ async function independentFounding() {
     await pendingA;
     assert.equal(a.state().foundingPreparation?.status, "failed");
     assert.match(a.state().foundingPreparation!.error, /Resident preparation incomplete/);
-    assert.deepEqual(a.calls, ["first", "second"], "request failure leaves other tasks eligible");
+    assert.deepEqual(a.calls, ["first,second"], "request failure leaves both Wishes eligible");
     await a.service.foundingPreparationSnapshot();
     await a.service.prepareFoundedVillage();
-    assert.deepEqual(a.calls, ["first", "second"], "discovery does not retry an interrupted paid request");
+    assert.deepEqual(a.calls, ["first,second"], "discovery does not retry an interrupted paid request");
     await assert.rejects(a.service.assertFoundedVillageReady(), /Finish Founding preparation/);
     a.setFailure(false);
     await a.service.retryFoundedVillagePreparation();
     await a.service.prepareFoundedVillage();
-    assert.deepEqual(a.retries, [
-      foundingSlot("routine", "first"),
-      foundingSlot("routine", "second"),
-      foundingSlot("wish", "first"),
-      foundingSlot("wish", "second"),
-    ]);
-    assert.deepEqual(a.calls, ["first", "second"]);
+    assert.deepEqual(a.retries, [FOUNDING_AGENDA_SLOT, foundingSlot("wish", "first"), foundingSlot("wish", "second")]);
+    assert.deepEqual(a.calls, ["first,second"]);
     assert.equal(a.counts().seedRequests, 0, "preparation never regenerates reviewed physical descriptions");
     assert.match(a.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /A$/);
     assert.equal(a.state().foundingPreparation?.status, "ready");
@@ -212,15 +251,10 @@ async function independentFounding() {
     await a.service.retryFoundedVillagePreparation();
     assert.deepEqual(
       a.retries,
-      [
-        foundingSlot("routine", "first"),
-        foundingSlot("routine", "second"),
-        foundingSlot("wish", "first"),
-        foundingSlot("wish", "second"),
-      ],
+      [FOUNDING_AGENDA_SLOT, foundingSlot("wish", "first"), foundingSlot("wish", "second")],
       "repeated retry after completion sends no request",
     );
-    assert.deepEqual(b.calls, ["first", "second"], "another world's retry leaves this owner intact");
+    assert.deepEqual(b.calls, ["first,second"], "another world's retry leaves this owner intact");
   } finally {
     a.gate.resolve();
     b.gate.resolve();
@@ -260,7 +294,7 @@ async function scopedAndDefaultDispatch() {
     const snapshot = await ownerB.run(() => foundingPreparationSnapshot());
     assert.equal(snapshot.name, "scoped-B");
     await ownerB.run(() => prepareFoundedVillage());
-    assert.deepEqual(b.calls, ["first", "second"]);
+    assert.deepEqual(b.calls, ["first,second"]);
   } finally {
     a.gate.resolve();
     b.gate.resolve();
@@ -285,7 +319,7 @@ async function pendingSnapshotResumes() {
   f.gate.resolve();
   await pending;
   assert.equal(f.state().foundingPreparation?.status, "ready");
-  assert.deepEqual(f.calls, ["first", "second"]);
+  assert.deepEqual(f.calls, ["first,second"]);
 }
 async function partialOpeningCount() {
   const f = fixture("partial-opening");
@@ -366,7 +400,7 @@ async function main() {
   assert.equal(historyAdmissions, 2);
   await history.service.retryFoundedVillagePreparation();
   assert.equal(historyAdmissions, 3, "A saved ready marker can recover a missing history job");
-  assert.deepEqual(history.calls, ["first", "second"], "Retrying history preserves successfully generated Agendas");
+  assert.deepEqual(history.calls, ["first,second"], "Retrying history preserves successfully generated Agendas");
   await foundingDoesNotPopulateNpcs();
   await interactiveOpeningNeedsNoIdeas();
   await partialOpeningCount();

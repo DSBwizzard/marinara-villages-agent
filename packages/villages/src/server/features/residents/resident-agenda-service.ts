@@ -11,6 +11,7 @@ import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domain/models/world.js";
 import { scheduledAgendaActivity, unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { agendaDateKey, bookedAgendaDays } from "../../domain/rules/agenda-week.js";
 import type {
   CompactFoundingResult,
@@ -19,6 +20,8 @@ import type {
 import { notFound } from "../../domain/rules/errors.js";
 import {
   completeFoundingTask,
+  FOUNDING_AGENDA_SLOT,
+  FOUNDING_AGENDA_SUBJECT,
   foundingSlot,
   foundingTaskRevision,
   ownsFoundingTask,
@@ -49,7 +52,7 @@ export interface ResidentAgendaPorts {
   proposeCompactFounding: typeof proposeCompactFounding;
   weeklyAgenda: Pick<
     ReturnType<typeof createWeeklyAgenda>,
-    "handler" | "queueResidentWeek" | "captureStartingWeek" | "planner"
+    "handler" | "queueResidentWeek" | "captureStartingWeek" | "captureFoundingBatch" | "planner"
   >;
 }
 /** A resident Agenda owns its specific saved-world, schedule, job and generation connections. */
@@ -89,7 +92,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     });
     return changed;
   }
-  async function readFoundingResidentContext(characterId: string) {
+  async function readFoundingResidentContext(characterId: string, agendaBatchSize = 1) {
     const village = await readVillageState({ memories: true });
     const villager = village.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
@@ -151,7 +154,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           ...routineVenues(village.venues).map((venue) => venue.name),
         ].join("\n"),
         undefined,
-        village.loreTokenBudget,
+        Math.floor(village.loreTokenBudget / agendaBatchSize),
         {
           inspect: (report) => {
             loreInspection = report;
@@ -289,6 +292,114 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     },
   };
 
+  type FoundingBatch = {
+    foundingContract: 1;
+    seed: string;
+    weekPlan: ReturnType<typeof weeklyAgenda.captureFoundingBatch>;
+    members: Array<{
+      id: string;
+      revision: string;
+      descriptionRevision?: string;
+      lore: ReturnType<typeof inspectedLoreUse>;
+    }>;
+  };
+  async function queueFoundingAgendas(ids: readonly string[], seed: string) {
+    const contexts = await Promise.all(ids.map((id) => readFoundingResidentContext(id, ids.length)));
+    const admitted = contexts.map((context) => {
+      if (!context) throw new Error("Character identity is unavailable.");
+      return context;
+    });
+    const state = await readVillageState({ memories: true });
+    const members: FoundingBatch["members"] = admitted.map((context) => ({
+      id: context.characterId,
+      revision: context.sourceRevision,
+      descriptionRevision: context.identityDescriptionRevision,
+      lore: context.loreUse,
+    }));
+    const valid = (live: VillageState) =>
+      live.seed === seed && members.every(({ id, revision }) => ownsFoundingTask(live, id, "routine", revision));
+    if (!valid(state)) throw new Error("Resident context changed. Retry the Agendas.");
+    const start = agendaCalendar(state, state.setupAt ? new Date(state.setupAt) : villageNow());
+    const weekPlan = weeklyAgenda.captureFoundingBatch(
+      state,
+      start,
+      admitted.map(({ characterId, identityDescriptionRevision, lore }) => ({
+        id: characterId,
+        describe: !!identityDescriptionRevision,
+        lore,
+      })),
+    );
+    await mutateVillageState(
+      (live) => {
+        if (!valid(live) || live.foundingPreparation?.status !== "pending")
+          throw new Error("Resident context changed. Retry the Agendas.");
+        for (const { id } of members) {
+          const task = live.foundingPreparation.tasks![id]!.routine!;
+          task.jobId = FOUNDING_AGENDA_SLOT;
+          task.status = "running";
+        }
+      },
+      { memories: true },
+    );
+    await reportFoundingProgress(seed, { stage: "queued" });
+    await queueBackgroundJob({
+      kind: "weekly-agenda",
+      subjectId: FOUNDING_AGENDA_SUBJECT,
+      seed,
+      revision: backgroundRevision(members.map(({ id, revision }) => [id, revision])),
+      finite: true,
+      label: "Founding Agendas",
+      retryActionId: state.foundingPreparation?.retryActions?.at(-1),
+      input: { foundingContract: 1, seed, weekPlan, members } satisfies FoundingBatch,
+    });
+  }
+  const weeklyAgendaBackgroundHandler: Handler = {
+    ...weeklyAgenda.handler,
+    async generate(input) {
+      if (input.foundingContract !== 1) return weeklyAgenda.handler.generate(input);
+      const { seed, weekPlan } = input as FoundingBatch;
+      await reportFoundingProgress(seed, { stage: "resolving" });
+      const result = await weeklyAgenda.planner.generate(
+        weekPlan,
+        async (modelName) => {
+          await reportFoundingProgress(seed, { stage: "model", modelName });
+        },
+        FOUNDING_AGENDA_SUBJECT,
+      );
+      await reportFoundingProgress(seed, { stage: "applying" });
+      return result.starters;
+    },
+    recoverSavedResult(input, steps) {
+      return input.foundingContract === 1
+        ? weeklyAgenda.planner.recoverSavedResult(input.weekPlan, steps)?.starters
+        : weeklyAgenda.handler.recoverSavedResult!(input, steps);
+    },
+    refreshRetryInput(input, readState) {
+      if (input.foundingContract === 1) return Promise.resolve(undefined);
+      return weeklyAgenda.handler.refreshRetryInput!(input, readState);
+    },
+    valid(state, input, admission) {
+      if (input.foundingContract !== 1) return weeklyAgenda.handler.valid(state, input, admission);
+      return (input as FoundingBatch).members.every(
+        ({ id, revision }) =>
+          state.foundingPreparation?.tasks?.[id]?.routine?.jobId === FOUNDING_AGENDA_SLOT &&
+          ownsFoundingTask(state, id, "routine", revision),
+      );
+    },
+    apply(state, input, result, context) {
+      if (input.foundingContract !== 1) return weeklyAgenda.handler.apply(state, input, result, context);
+      for (const [index, { id, revision, descriptionRevision, lore }] of (input as FoundingBatch).members.entries()) {
+        const starter = (result as CompactFoundingResult[])[index]!;
+        const task = state.foundingPreparation!.tasks![id]!.routine!;
+        task.lore = lore;
+        const resident = state.villagers.find((row) => row.characterId === id)!;
+        applyInitialIdentityDescription(resident, descriptionRevision, starter.identityDescription);
+        applyAgenda(state, id, starter.agenda, starter.starterWeek);
+        completeFoundingTask(state, id, "routine", revision);
+      }
+    },
+  };
+
   /**
    * Put one agenda on one villager's record.
    *
@@ -390,7 +501,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
 
   /** Record a deliberate agenda revision before queuing it; repeated action IDs reuse the intent. */
   async function clearVillagerAgenda(characterId: string, actionId = randomVillageSeed()): Promise<void> {
-    const village = await readVillageState();
+    const village = await readVillageState({ memories: true });
     const resident = village.villagers.find((entry) => entry.characterId === characterId);
     if (!resident) throw notFound("That villager does not live here.");
     if (resident.agendaGeneration === actionId || resident.agenda?.manualWeek?.actionId === actionId) return;
@@ -418,6 +529,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     buildVillageAgendas,
     clearVillagerAgenda,
     agendaBackgroundHandler,
+    weeklyAgendaBackgroundHandler,
+    queueFoundingAgendas,
   };
 }
 export type ResidentAgendas = ReturnType<typeof createResidentAgendas>;
