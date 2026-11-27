@@ -186,12 +186,14 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     uploadSetupImage,
   } = controller;
   const pendingSetting = setupWorkspace.suggestionRequest?.draftSetting && !setupWorkspace.suggestionRequest.failure;
-  const rawSetupProblem =
-    currentSetupProblem ||
-    (setupStep === FOUNDING_STEP.Venues && !setupWorkspace.suggestionRequest?.draftSetting
-      ? setupWorkspace.suggestionRequest?.failure
-      : "") ||
-    "";
+  const failedSuggestion = setupWorkspace.suggestionRequest;
+  const retryDraft =
+    failedSuggestion?.failure &&
+    !failedSuggestion.draftSetting &&
+    (!failedSuggestion.venueId || setupVenues.some((venue) => venue.id === failedSuggestion.venueId))
+      ? failedSuggestion
+      : undefined;
+  const rawSetupProblem = currentSetupProblem || (setupStep === FOUNDING_STEP.Venues ? retryDraft?.failure : "") || "";
   const venueConnectionUnavailable =
     setupStep === FOUNDING_STEP.Venues && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
   const setupProblem = venueConnectionUnavailable
@@ -1166,8 +1168,12 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                   pending={
                     !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
                   }
-                  failed={!!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting}
-                  onGenerate={() => void suggestSetupVenues({ plan: true })}
+                  failed={!!retryDraft}
+                  onGenerate={() =>
+                    void suggestSetupVenues(
+                      retryDraft?.venueId ? { venueId: retryDraft.venueId, fullVenue: true } : { plan: true },
+                    )
+                  }
                 />
               )}
             </>
