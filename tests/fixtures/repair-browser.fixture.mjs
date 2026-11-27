@@ -349,8 +349,22 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
         title: `${people.find((row) => row.id === owner)?.name ?? owner} → ${first ? "You" : "Ellis"}`,
         summary: "Relationship scores",
         fields: [
-          { key: "warmth", label: "Warmth", type: "number", min: -100, max: 100, value: first ? 50 : -25 },
-          { key: "romance", label: "Romantic interest", type: "number", min: -20, max: 20, value: first ? 3 : -4 },
+          {
+            key: "warmth",
+            label: "Warmth",
+            type: "number",
+            min: -100,
+            max: 100,
+            value: owner === "ellis" ? 0 : first ? 50 : -25,
+          },
+          {
+            key: "romance",
+            label: "Romantic interest",
+            type: "number",
+            min: -20,
+            max: 20,
+            value: owner === "ellis" ? 0 : first ? 3 : -4,
+          },
           ...(first
             ? [
                 {
@@ -448,10 +462,15 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
             : section === "agenda"
               ? agenda
               : section === "relationships"
-                ? [
-                    recordFor(JSON.stringify(["relationship", person, "player"]), person),
-                    ...(person === "nora" ? [recordFor('["relationship","nora","ellis"]', person)] : []),
-                  ]
+                ? person === "player"
+                  ? [
+                      recordFor('["relationship","nora","player"]', person),
+                      recordFor('["relationship","ellis","player"]', person),
+                    ]
+                  : [
+                      recordFor(JSON.stringify(["relationship", person, "player"]), person),
+                      ...(person === "nora" ? [recordFor('["relationship","nora","ellis"]', person)] : []),
+                    ]
                 : section === "details"
                   ? [person === "guest" ? visitor : letter]
                   : section === "home"

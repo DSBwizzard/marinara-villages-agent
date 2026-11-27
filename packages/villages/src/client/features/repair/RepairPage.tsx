@@ -864,12 +864,12 @@ export function RepairPage({
       ) : null}
     </section>
   ) : null;
-  const reviewPageSize = compact ? 1 : small ? 1 : 3;
+  const reviewPageSize = compact || small ? (isRelationship ? 2 : 1) : 3;
+  const reviewEffects = c.review?.affected.filter((effect) => !isRelationship || effect !== c.review?.title) ?? [];
+  const switchReviewSide = small && !isRelationship;
   const reviewPages = [
     ...(c.review?.changes ?? []),
-    ...(c.review?.affected.length
-      ? [{ label: "Linked effects", before: "", after: c.review.affected.join("\n") }]
-      : []),
+    ...(reviewEffects.length ? [{ label: "Linked effects", before: "", after: reviewEffects.join("\n") }] : []),
   ];
   const reviewStep = Math.min(step, Math.max(0, Math.ceil(reviewPages.length / reviewPageSize) - 1));
   const history = c.index?.history ?? [];
@@ -1043,19 +1043,19 @@ export function RepairPage({
             {c.view === "review" && c.review ? (
               <section className="repair-review">
                 <h2>Review changes</h2>
-                {!small ? <p>{short(c.review.title)}</p> : null}
+                {!small || isRelationship ? <p>{short(c.review.title)}</p> : null}
                 {reviewPages
                   .slice(reviewStep * reviewPageSize, (reviewStep + 1) * reviewPageSize)
                   .map((change, index) =>
                     change.label === "Linked effects" ? (
                       <section key={index}>
                         <h3>Linked effects</h3>
-                        <PagedText label="Linked effects" value={change.after} readOnly rows={proseRows} />
+                        <PagedText label="Linked effects" value={change.after} displayOnly rows={proseRows} />
                       </section>
                     ) : (
-                      <div className="repair-comparison" data-mobile={small} key={index}>
+                      <div className="repair-comparison" data-mobile={switchReviewSide} key={index}>
                         <h3>{change.label}</h3>
-                        {small ? (
+                        {switchReviewSide ? (
                           <>
                             <nav className="repair-review-sides" aria-label="Compare change">
                               {(["before", "after"] as const).map((side) => (
@@ -1072,7 +1072,7 @@ export function RepairPage({
                             <PagedText
                               label={change.label + " " + reviewSide}
                               value={change[reviewSide] || "None"}
-                              readOnly
+                              displayOnly
                               rows={proseRows}
                             />
                           </>
@@ -1083,7 +1083,7 @@ export function RepairPage({
                               <PagedText
                                 label={`${change.label} before`}
                                 value={change.before || "None"}
-                                readOnly
+                                displayOnly
                                 rows={compact ? 2 : 3}
                               />
                             </div>
@@ -1092,7 +1092,7 @@ export function RepairPage({
                               <PagedText
                                 label={`${change.label} after`}
                                 value={change.after || "None"}
-                                readOnly
+                                displayOnly
                                 rows={compact ? 2 : 3}
                               />
                             </div>
@@ -1112,7 +1112,9 @@ export function RepairPage({
                     Replace Village progress with this snapshot
                   </label>
                 ) : null}
-                <Pages page={reviewStep} size={reviewPageSize} total={reviewPages.length} onPage={setStep} />
+                {reviewPages.length > reviewPageSize ? (
+                  <Pages page={reviewStep} size={reviewPageSize} total={reviewPages.length} onPage={setStep} />
+                ) : null}
               </section>
             ) : c.view === "loading" ? (
               <section className="repair-card" aria-busy={c.busy}>
@@ -1938,7 +1940,9 @@ export function RepairPage({
           </>
         ) : editing ? (
           <>
-            <span role="status">{c.canReview ? "Unsaved changes" : c.notice || "No changes"}</span>
+            <span className={c.notice ? undefined : "repair-sr"} role="status">
+              {c.notice}
+            </span>
             {showPageButtons ? (
               <button
                 type="button"

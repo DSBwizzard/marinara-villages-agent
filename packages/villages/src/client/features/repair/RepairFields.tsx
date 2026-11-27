@@ -101,6 +101,7 @@ export function PagedText({
   label,
   disabled,
   readOnly = false,
+  displayOnly = false,
   rows = 4,
   id,
 }: {
@@ -109,16 +110,18 @@ export function PagedText({
   label: string;
   disabled?: boolean;
   readOnly?: boolean;
+  displayOnly?: boolean;
   rows?: number;
   id?: string;
 }) {
   const control = useRef<HTMLTextAreaElement>(null);
+  const display = useRef<HTMLParagraphElement>(null);
   const [page, setPage] = useState(0);
   const caret = useRef<number | undefined>(undefined);
   const [layout, setLayout] = useState({ value, pages: [value] });
   const [metrics, setMetrics] = useState({ width: 400, font: "16px Segoe UI" });
   useLayoutEffect(() => {
-    const element = control.current;
+    const element = control.current ?? display.current;
     if (!element) return;
     const update = () => {
       const css = getComputedStyle(element);
@@ -132,11 +135,17 @@ export function PagedText({
     observer.observe(element);
     update();
     return () => observer.disconnect();
-  }, []);
+  }, [displayOnly]);
   useLayoutEffect(() => {
     setLayout({
       value,
-      pages: textPages(value, metrics.width, metrics.font, Math.max(1, rows), control.current?.parentElement),
+      pages: textPages(
+        value,
+        metrics.width,
+        metrics.font,
+        Math.max(1, rows),
+        (control.current ?? display.current)?.parentElement,
+      ),
     });
   }, [value, metrics, rows]);
   const pages = useMemo(() => (layout.value === value ? layout.pages : [value]), [layout, value]);
@@ -161,21 +170,27 @@ export function PagedText({
   }, [pages, current, value, layout.value]);
   return (
     <div className="repair-prose">
-      <textarea
-        autoComplete="off"
-        ref={control}
-        id={id}
-        aria-label={label}
-        rows={rows}
-        disabled={disabled}
-        readOnly={readOnly}
-        value={pages[current]}
-        onChange={(event) => {
-          const updated = editPage(pages[current]!, event.target.value);
-          caret.current = start + rawOffset(updated, event.target.selectionStart);
-          onChange?.(value.slice(0, start) + updated + value.slice(start + pages[current]!.length));
-        }}
-      />
+      {displayOnly ? (
+        <p ref={display} id={id} className="repair-prose-display" role="group" aria-label={label}>
+          {pages[current]}
+        </p>
+      ) : (
+        <textarea
+          autoComplete="off"
+          ref={control}
+          id={id}
+          aria-label={label}
+          rows={rows}
+          disabled={disabled}
+          readOnly={readOnly}
+          value={pages[current]}
+          onChange={(event) => {
+            const updated = editPage(pages[current]!, event.target.value);
+            caret.current = start + rawOffset(updated, event.target.selectionStart);
+            onChange?.(value.slice(0, start) + updated + value.slice(start + pages[current]!.length));
+          }}
+        />
+      )}
       {pages.length > 1 ? (
         <nav className="repair-text-pages" aria-label={`${label} pages`}>
           <button

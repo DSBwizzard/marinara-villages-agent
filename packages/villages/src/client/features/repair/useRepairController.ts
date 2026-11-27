@@ -365,8 +365,18 @@ export function useRepairController(
   };
   const draft = selected ? drafts[draftKey(selected.id, agendaPick)] : undefined;
   const fields = selected ? editorFields(selected, agendaPick) : [];
+  const relationship = selected?.id.startsWith('["relationship",');
+  const invalidScore =
+    relationship &&
+    fields.some(({ key, value, type, min, max }) => {
+      if (type !== "number") return false;
+      const next = draft?.values[key] ?? value;
+      const score = Number(next);
+      return next === "" || !Number.isInteger(score) || score < (min ?? -Infinity) || score > (max ?? Infinity);
+    });
   const hasFieldChanges = fields.some(({ key, value, type }) => {
     const next = draft?.values[key] ?? value;
+    if (relationship && type === "number") return Number(next) !== Number(value);
     if (type === "clock") {
       const before = repairClockMinutes(String(value));
       if (before !== undefined) return repairClockMinutes(String(next)) !== before;
@@ -376,6 +386,7 @@ export function useRepairController(
   const canReview = Boolean(
     selected &&
     draft?.action &&
+    !invalidScore &&
     (draft.action !== "teach" ||
       (draft.knowers.length === 1 && selected.recipients?.some((person) => person.id === draft.knowers[0]))) &&
     !failure?.noChanges &&

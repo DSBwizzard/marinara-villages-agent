@@ -1,4 +1,4 @@
-// Test cases: repair-mobile/compact, repair-mobile/phone
+// Test cases: repair-mobile/compact, repair-mobile/phone, repair-mobile/relationship-review
 import { mkdir } from "node:fs/promises";
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
@@ -74,7 +74,7 @@ await withBrowser(browser, async () => {
       await fits();
       if (name === "compact") {
         await page.setViewportSize({ width, height: 425 });
-        await field.scrollIntoViewIfNeeded();
+        await field.evaluate((element) => element.scrollIntoView({ block: "center" }));
         await expect(field).toBeInViewport({ ratio: 1 });
         await expect(page.getByRole("button", { name: "Review changes", exact: true })).toBeInViewport({ ratio: 1 });
         await expect(page.getByRole("button", { name: "← Return to village", exact: true })).toBeInViewport({
@@ -122,4 +122,56 @@ await withBrowser(browser, async () => {
       await page.close();
     });
   }
+  await runCase("repair-mobile/relationship-review", async () => {
+    for (const [width, height] of [
+      [320, 568],
+      [360, 720],
+    ]) {
+      const f = await repairBrowserFixture(browser, width, height, { mobile: true });
+      const { page } = f;
+      await page.getByRole("button", { name: "Repair Your Persona", exact: true }).tap();
+      await page.getByRole("combobox", { name: "Relationship with" }).selectOption('["relationship","ellis","player"]');
+      const warmth = page.getByRole("spinbutton", { name: "Warmth", exact: true });
+      const slider = page.getByRole("slider", { name: "Adjust Warmth", exact: true });
+      const romance = page.getByRole("slider", { name: "Adjust Romantic interest", exact: true });
+      const reviewButton = page.getByRole("button", { name: "Review changes", exact: true });
+      const footer = page.locator(".repair-footer");
+      await expect(warmth).toHaveValue("0");
+      await expect(reviewButton).toBeDisabled();
+      const restingHeight = (await footer.boundingBox()).height;
+      await slider.press("ArrowRight");
+      await expect(warmth).toHaveValue("1");
+      await expect(reviewButton).toBeEnabled();
+      await expect(reviewButton).toHaveCSS("background-color", "rgb(237, 169, 103)");
+      expect((await footer.boundingBox()).height).toBe(restingHeight);
+      await expect(footer).not.toContainText(/No changes|Unsaved changes/);
+      await expect(romance).toBeInViewport({ ratio: 1 });
+      await slider.press("ArrowLeft");
+      await expect(warmth).toHaveValue("0");
+      await expect(reviewButton).toBeDisabled();
+      await warmth.fill("");
+      await expect(reviewButton).toBeDisabled();
+      await warmth.fill("0");
+      await expect(reviewButton).toBeDisabled();
+      expect(f.calls.filter((call) => call.path.endsWith("/review"))).toHaveLength(0);
+
+      await romance.press("ArrowRight");
+      await reviewButton.tap();
+      const review = page.locator(".repair-review");
+      await expect(review.getByRole("group", { name: "Romantic interest before" })).toHaveText("0");
+      await expect(review.getByRole("group", { name: "Romantic interest after" })).toHaveText("1");
+      await expect(review.getByRole("heading", { name: "Warmth", exact: true })).toHaveCount(0);
+      await expect(review.locator("textarea,input,[contenteditable]")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeInViewport({ ratio: 1 });
+      await noRepairScroll(page);
+
+      await page.getByRole("button", { name: "Back", exact: true }).tap();
+      await slider.press("ArrowLeft");
+      await reviewButton.tap();
+      await expect(review.getByRole("group", { name: "Warmth after" })).toHaveText("-1");
+      await expect(review.getByRole("group", { name: "Romantic interest after" })).toBeInViewport({ ratio: 1 });
+      await expect(review.getByRole("navigation", { name: "Pages" })).toHaveCount(0);
+      await page.close();
+    }
+  });
 });
