@@ -106,6 +106,7 @@ const message = z
     status: z.enum(["pending", "delivered", "cancelled", "undeliverable"]),
     deliveredAt: at.optional(),
     readAt: at.optional(),
+    withheld: z.literal("protection-changed").optional(),
     replyTo: z.string().min(1).max(512).optional(),
     error: z.string().min(1).max(4000).optional(),
     admissionFailed: z.literal(true).optional(),
@@ -151,7 +152,8 @@ export function readMailboxState(raw: unknown, seed: string): MailboxState {
       (row.status === "delivered") === Boolean(row.deliveredAt) &&
         (!row.deliveredAt || row.at <= row.deliveredAt) &&
         (!row.readAt || (row.deliveredAt && row.deliveredAt <= row.readAt)) &&
-        (!row.admissionFailed || row.status === "pending"),
+        (!row.admissionFailed || row.status === "pending") &&
+        (!row.withheld || (row.status === "delivered" && row.to.id === "player" && row.reading && !row.readAt)),
       "invalid native letter delivery state",
     );
     if (row.replyTo) {
