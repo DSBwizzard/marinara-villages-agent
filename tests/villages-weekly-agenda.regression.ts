@@ -102,10 +102,11 @@ function fixture({ oldCompactCapture = false } = {}) {
     authority = world,
     source = scene,
     instant = at,
+    captured = authority,
   ) {
-    const context = narrationContinuityContext(authority, source, venue, operation, input, instant);
+    const context = narrationContinuityContext(captured, source, venue, operation, input, instant);
     const readset = fittedNarrationReadset(
-      authority,
+      captured,
       context,
       context.parts.flatMap(({ block }) => (block.evidenceId ? [block.evidenceId] : [])),
     );
@@ -301,11 +302,12 @@ await runCase("weekly-agenda/agreement", () => {
 
   const originalEpisodes = structuredClone(state.episodes);
   const oldCancellation = agendaWeek(state, "mara", when, false).confirmed![0]!.token;
+  const beforeRepair = structuredClone(state);
   repairSceneAppointment(
     state,
     booking.id,
     { time: { ...booking.time, startMinute: 780, endMinute: 840 }, activity: "Read maps together" },
-    at,
+    new Date(Date.parse(at) + 500).toISOString(),
     "repair-booking",
   );
   let repaired = coerceVillageState(JSON.parse(JSON.stringify(state)));
@@ -320,6 +322,37 @@ await runCase("weekly-agenda/agreement", () => {
   assert.throws(() => confirmAgendaAppointment(repaired, "mara", pending[0]!.token, when), /changed/);
   assert(!recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
   assert.deepEqual(repaired.episodes, originalEpisodes);
+
+  const withdrawal = {
+    segments: [{ id: "withdrawal", kind: "dialogue", speakerId: "mara", text: "I need to cancel our appointment." }],
+    keep: [
+      {
+        id: "close-agreement",
+        replace: booking.id,
+        for: ["mara", "player"],
+        closeOffer: { by: "mara", reason: "withdrawn" },
+        source: [{ segment: "withdrawal", act: "withdraw" }],
+      },
+    ],
+  };
+  const sceneCancellation = structuredClone(repaired);
+  const stale = publish(
+    withdrawal,
+    "stale-withdrawal",
+    "Can we still meet?",
+    sceneCancellation,
+    scene,
+    at,
+    beforeRepair,
+  );
+  assert(
+    stale.rejected.some((row) => row.reason.includes("appointment changed")),
+    JSON.stringify(stale.rejected),
+  );
+  assert.equal(agendaWeek(sceneCancellation, "mara", when, false).confirmed![0]!.activity, "Read maps together");
+  const fresh = publish(withdrawal, "fresh-withdrawal", "Can we still meet?", sceneCancellation, scene, later);
+  assert.equal(fresh.held, false, JSON.stringify(fresh.rejected));
+  assert.equal(agendaWeek(sceneCancellation, "mara", when, false).confirmed, undefined);
 
   const nativeCancellation = coerceVillageState(JSON.parse(JSON.stringify(repaired)));
   cancelAgendaAppointment(nativeCancellation, "mara", correctedAgenda.confirmed![0]!.token, when);

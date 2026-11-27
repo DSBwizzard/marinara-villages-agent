@@ -39,7 +39,12 @@ import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms, sceneEpisodeId } from "./episode-sources.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
-import { applySceneAppointment, cloneAppointmentState, sceneAgendaEvidence } from "./agenda-overview.js";
+import {
+  applySceneAppointment,
+  assertFreshAppointmentDecision,
+  cloneAppointmentState,
+  sceneAgendaEvidence,
+} from "./agenda-overview.js";
 
 export type NarrationPublication = {
   readset: NarrationReadset;
@@ -875,6 +880,7 @@ export function acceptNarrationContinuity(
             );
             write = { ...write, relationship: changes };
           }
+          assertFreshAppointmentDecision(scheduledWorld, write, readset.capturedAt);
           const next = applyContinuityWrite(continuity, write, keep.admission);
           if (write.closeOffer && (!readset.explicitSceneEvidence || write.closeOffer.by !== "player")) {
             const candidate = cloneAppointmentState(scheduledWorld);

@@ -521,6 +521,14 @@ export function cloneAppointmentState(state: VillageState): VillageState {
   };
 }
 
+export function assertFreshAppointmentDecision(world: VillageState, write: ContinuityWrite, capturedAt: string) {
+  const repair = write.closeOffer && write.target && world.residentPlans.appointmentRepairs?.[write.target.id];
+  memoryRequire(
+    !repair || Date.parse(capturedAt) > Date.parse(repair.at),
+    "The appointment changed after this decision was captured.",
+  );
+}
+
 export function applySceneAppointment(
   world: VillageState,
   continuity: VillageState["continuity"],
