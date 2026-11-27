@@ -34,6 +34,7 @@ export type FoundingWorkspaceState = {
     draftSetting?: boolean;
     settingReplacement?: FoundingSetting;
     failure?: string;
+    failureCode?: string;
   };
 
   view: "map" | "details";

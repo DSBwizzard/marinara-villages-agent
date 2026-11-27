@@ -80,7 +80,7 @@ export function usePickSetupTownMap(ports: {
         setSetupMapReviewed(false);
         updateSetupMapRequest(null);
       } catch (cause) {
-        setSetupMapProblem(townMapUploadError(messageFrom(cause, MAP_UPLOAD_FALLBACK)));
+        setSetupMapProblem(townMapUploadError(cause, messageFrom(cause, MAP_UPLOAD_FALLBACK)));
       } finally {
         setSetupMapBusy(false);
       }
