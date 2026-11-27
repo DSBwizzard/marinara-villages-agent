@@ -465,6 +465,7 @@ export async function verifyFoundingLayout(group) {
             const passage = guide.locator(".villages-setting-dialogue");
             const introduction = guide.getByText(venueIntroOpening);
             await expect(introduction).toBeVisible();
+            await expectPose("presenting");
             await expect(passage).not.toHaveAttribute("data-reader-next-page");
             await expect(work).toHaveCount(0);
             await layer("Venue");
@@ -485,11 +486,13 @@ export async function verifyFoundingLayout(group) {
             await advance();
             const addOrDraft = guide.getByText(/^Got a place in mind/);
             await expect(addOrDraft).toBeVisible();
+            await expectPose("thoughtful");
             await expect(passage).not.toHaveAttribute("data-reader-next-page");
             await expect(work).toHaveCount(0);
             await advance();
             const assignments = guide.getByText(/^Put your places on the Map/);
             await expect(assignments).toBeVisible();
+            await expectPose("playful");
             await expect(passage).not.toHaveAttribute("data-reader-next-page");
             await expect(work).toHaveCount(0);
             if (view.width === 1366 || (view.width === 390 && view.height === 844)) {
@@ -647,14 +650,9 @@ export async function verifyFoundingLayout(group) {
           await field.fill(ideas);
           await dialog.getByRole("button", { name: "Add Venue", exact: true }).click();
         };
-        const editProfile = async () => {
-          const edit = sheet.getByRole("button", { name: "Edit", exact: true });
-          if (await edit.count()) await edit.click();
-        };
         const manageVenue = async () => {
           await parentVenue();
           await sheet.getByRole("button", { name: "About", exact: true }).click();
-          await editProfile();
         };
 
         const bounds = async (phase) => {
@@ -676,7 +674,7 @@ export async function verifyFoundingLayout(group) {
           if (phase !== "setting" && !phone) {
             const guide = root.locator(".villages-chapter-guide");
             const sprite = await expectPose(
-              { people: "happy", maps: "playful", venues: "playful", zones: "playful", review: "proud" }[phase],
+              { people: "happy", maps: "presenting", venues: "neutral", review: "neutral" }[phase],
             );
             const workBox = await root.locator(".villages-forging-body").boundingBox();
             const spriteBox = await sprite.boundingBox();
@@ -1040,10 +1038,10 @@ export async function verifyFoundingLayout(group) {
           await finishPassage(scene),
           "You’ll make a life with a community here. That could mean a dockside town, a spaceship crew, or six neighbors with one catastrophically shared laundry room.",
         );
-        await expectPose("happy");
+        await expectPose("playful");
         await nextLine();
         await expect(line).toHaveText(/^Let’s give your people a place to call home/);
-        const greetingPose = await expectPose("neutral");
+        const greetingPose = await expectPose("presenting");
         await expect(button("Set it up myself")).toHaveCount(0);
         await expect(button("Draft with Mari")).toHaveCount(0);
         if (phone) {
@@ -1161,7 +1159,7 @@ export async function verifyFoundingLayout(group) {
         await nextLine();
         await expect(line).toHaveText(/^The World is the big backdrop/);
         await expect(hierarchy).toBeVisible();
-        await expect(presenting).toHaveAttribute("data-flipping", "false");
+        await expectPose("neutral");
         await finishPassage(scene);
         const worldIntroEnd = await line.textContent();
         await page.evaluate(() => {
@@ -1183,7 +1181,7 @@ export async function verifyFoundingLayout(group) {
             : [
                 [
                   "out",
-                  "mari-founding-presenting.webp",
+                  "mari-founding-neutral.webp",
                   [{ transform: "rotateY(0deg) scaleX(1)" }, { transform: "rotateY(90deg) scaleX(1)" }],
                 ],
                 [
@@ -1283,7 +1281,7 @@ export async function verifyFoundingLayout(group) {
         else await nextLine();
         await layer("World");
         await expect(line).toHaveText(/^Got Lorebooks\?/);
-        await expectPose("thoughtful");
+        await expectPose("presenting");
         await expect(button("Choose lorebooks")).toHaveCount(0);
         if (draftWithLore) {
           await scene.getByRole("button", { name: "Back", exact: true }).click();
@@ -1296,7 +1294,7 @@ export async function verifyFoundingLayout(group) {
         const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
         const picker = phone ? loreDialog : scene.getByRole("region", { name: "Village Lorebooks", exact: true });
         await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
-        await expectPose("happy");
+        await expectPose("thoughtful");
         if (phone) await expect(picker.locator("header")).toBeFocused();
         const loreResults = picker.getByRole("group", { name: "Lorebooks", exact: true });
         const lorePageSize = phone ? 6 : 12;
@@ -1582,9 +1580,11 @@ export async function verifyFoundingLayout(group) {
           const originalStage = phone ? null : await stage.boundingBox();
           const advanceReplacementWarning = async () => {
             await expect(line).toHaveText(/^Hang on,.*first Map details\.$/);
+            await expectPose("thoughtful");
             await expect(scene.getByRole("button")).toHaveText(["Next"]);
             await scene.getByRole("button", { name: "Next", exact: true }).click();
             await expect(line).toHaveText("Want me to go ahead?");
+            await expectPose("neutral");
             await expect(scene.getByRole("button")).toHaveText(["Back", "Replace and draft"]);
           };
           await button("Suggest").click();
@@ -2177,6 +2177,8 @@ export async function verifyFoundingLayout(group) {
           await expect(button("Edit Venue")).toHaveCount(0);
           await editVenue(added.id);
           await expect(sheet).toBeVisible();
+          await expect(sheet.getByLabel("Venue Name", { exact: true })).toBeEditable();
+          await expect(sheet.getByRole("button", { name: /^(Edit|Done)$/ })).toHaveCount(0);
           await expect(sheet.getByRole("button", { name: "Redraft Venue", exact: true })).toHaveCount(0);
           await expect(sheet.getByRole("button", { name: "Remove Venue", exact: true })).toHaveCount(0);
           await closeVenue();
@@ -2544,7 +2546,6 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.getByRole("group", { name: "Whose space is it?" })).toHaveCount(0);
         await expect(sheet.getByRole("navigation", { name: "Zone sections" })).toHaveCount(0);
         await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toHaveCount(0);
-        await editProfile();
         await expect(sheet.getByRole("button", { name: "← Your home", exact: true })).toBeVisible();
         await expect(sheet.locator(".villages-zone-map-canvas")).toHaveCount(0);
         await expect(
@@ -2816,7 +2817,6 @@ export async function verifyFoundingLayout(group) {
         await sheet.getByRole("button", { name: "Zones", exact: true }).click();
         await common.click();
         await expect(sheet.getByRole("button", { name: "← Your home", exact: true })).toBeFocused();
-        await editProfile();
         const purpose = sheet.getByLabel("Used for", { exact: true });
         const savedPurpose = await purpose.inputValue();
         await purpose.fill("");
@@ -2844,10 +2844,10 @@ export async function verifyFoundingLayout(group) {
         await advance();
 
         await expect(root).toHaveAttribute("data-step", "4");
-        await expectPose("proud");
+        await expectPose("neutral");
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
-            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `mari-proud-${view.width}-${view.height}.png`),
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `mari-review-people-${view.width}-${view.height}.png`),
           });
         await enterChapter();
         const overview = root.locator(".villages-founding-review");
@@ -2942,6 +2942,7 @@ export async function verifyFoundingLayout(group) {
           });
         await overview.getByRole("button", { name: "Next", exact: true }).click();
         await expect(overview).toHaveAttribute("data-page", "setting");
+        await expectPose("thoughtful");
         await overview.getByRole("button", { name: "Back", exact: true }).click();
         await expect(overview).toHaveAttribute("data-page", "people");
         await overview.getByRole("button", { name: "Next", exact: true }).click();
@@ -3007,6 +3008,7 @@ export async function verifyFoundingLayout(group) {
           });
         await advance();
         await expect(root).toHaveAttribute("data-review-stage", "map");
+        await expectPose("presenting");
         await expect(overview).toHaveCount(0);
         await retreat();
         await expect(overview).toHaveAttribute("data-page", "setting");
@@ -3037,6 +3039,9 @@ export async function verifyFoundingLayout(group) {
         const homeMarker = root.locator('[data-pin-id="founding-home:player"]');
         await homeMarker.press("Enter");
         await expect(sheet.getByRole("button", { name: "About", exact: true })).toBeVisible();
+        await expect(sheet.getByLabel("Venue Name", { exact: true })).toBeEditable();
+        await expect(sheet.getByLabel("Description", { exact: true })).toBeEditable();
+        await expect(sheet.getByRole("button", { name: /^(Edit|Done)$/ })).toHaveCount(0);
         await expect(sheet.getByRole("button", { name: "Zones", exact: true })).toBeVisible();
         await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toBeVisible();
         await sheet.getByRole("button", { name: "← Map", exact: true }).click();
@@ -3075,6 +3080,7 @@ export async function verifyFoundingLayout(group) {
           });
         await advance();
         await expect(root).toHaveAttribute("data-review-stage", "confirm");
+        await expectPose("proud");
         await expect(root.getByText("Ready to found Coastal Community?", { exact: true })).toBeVisible();
         await retreat();
         await expect(root).toHaveAttribute("data-review-stage", "map");
@@ -3120,7 +3126,7 @@ export async function verifyFoundingLayout(group) {
         }
         await expect(root.getByText(/Coastal Community is ready for you/)).toBeVisible();
         assert.deepEqual(await readerStyle(), confirmationReaderStyle, "Mari's return uses the Founding reader style");
-        await expectPose("presenting");
+        await expectPose("happy");
         await expect(button("Next")).toBeInViewport({ ratio: 1 });
         await button("Next").press("Enter");
         await expect(root.getByText("Maybe I'll see you there!", { exact: true })).toBeVisible();
@@ -3132,7 +3138,7 @@ export async function verifyFoundingLayout(group) {
           confirmationReaderStyle,
           "Mari's farewell uses the Founding reader style",
         );
-        await expectPose("playful");
+        await expectPose("wave");
         await expect(root.locator(".villages-setting-dialogue")).toBeInViewport({ ratio: 1 });
         await expect(button("Enter village")).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)

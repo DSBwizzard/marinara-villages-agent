@@ -35,12 +35,12 @@ const script: Record<SettingBeat, readonly string[]> = {
   ],
 };
 const expressions = {
-  welcome: ["wave", "happy", "happy", "neutral"],
-  "world-overview": ["presenting", "presenting"],
+  welcome: ["wave", "happy", "playful", "presenting"],
+  "world-overview": ["presenting", "neutral"],
   world: ["thoughtful"],
-  lorebooks: ["thoughtful", "happy"],
-  "village-overview": ["presenting", "neutral"],
-  village: ["happy-side", "happy-side", "presenting"],
+  lorebooks: ["presenting", "thoughtful"],
+  "village-overview": ["presenting", "thoughtful"],
+  village: ["happy-side", "presenting", "thoughtful"],
 } as const;
 export function settingBeat(workspace: FoundingScreenController["setupWorkspace"]): SettingBeat {
   return workspace.settingBeat ?? (workspace.suggestionRequest?.draftSetting ? "village" : "welcome");
@@ -165,7 +165,12 @@ export function FoundingSettingScene({
         ? lines.length - 1
         : 0,
   );
-  const expression = expressions[beat][Math.min(lineIndex, expressions[beat].length - 1)]!;
+  const expression =
+    beat === "village" && replaceStep === "confirm"
+      ? "neutral"
+      : beat === "village" && (draftDialogue || error)
+        ? "thoughtful"
+        : expressions[beat][lineIndex]!;
   useEffect(() => onExpressionChange(expression), [expression, onExpressionChange]);
   const lastLine = lineIndex === lines.length - 1;
   const namingVillage = beat === "village-overview" && lastLine;

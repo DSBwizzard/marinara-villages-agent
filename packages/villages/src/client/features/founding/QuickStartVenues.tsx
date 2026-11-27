@@ -90,7 +90,6 @@ export function QuickStartVenues({
   const [arrangementPage, setArrangementPage] = useState<ArrangementPage | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [section, setSection] = useState<VenueSection>("about");
-  const [editingAbout, setEditingAbout] = useState(false);
   const [zoneDetails, setZoneDetails] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -136,7 +135,6 @@ export function QuickStartVenues({
   const selectSection = (next: VenueSection) => {
     setArrangementPage(null);
     setSection(next);
-    setEditingAbout(false);
     setConnectionsOpen(false);
     setZoneDetails(false);
     setChoiceError("");
@@ -145,7 +143,6 @@ export function QuickStartVenues({
     const opener = document.activeElement;
     setArrangementPage(null);
     setZoneId(id);
-    setEditingAbout(false);
     setZoneDetails(true);
     setChoiceError("");
     requestAnimationFrame(() => {
@@ -186,7 +183,6 @@ export function QuickStartVenues({
     );
     setArrangementPage(field === "assignment" ? { kind: "home" } : null);
     setZoneDetails(field !== "sleep" && !!focusIssue.zoneId);
-    setEditingAbout(true);
     setEditorOpen(true);
   }, [focusIssue, inlineVenue]);
   useEffect(() => {
@@ -194,10 +190,9 @@ export function QuickStartVenues({
     openedFromPin.current = true;
     setMapOpen(true);
     selectSection("about");
-    if (drawer) setEditingAbout(true);
     setEditorOpen(true);
     onMapOpened?.();
-  }, [drawer, onMapOpened, openFromMap, selected?.id]);
+  }, [onMapOpened, openFromMap, selected?.id]);
   useEffect(() => {
     if (!open || (!inlineOpen && !focusIssue)) return;
     const frame = requestAnimationFrame(() => {
@@ -273,7 +268,6 @@ export function QuickStartVenues({
             onClick={() => {
               onSelect(venue);
               selectSection("about");
-              setEditingAbout(true);
               setEditorOpen(true);
             }}
           >
@@ -486,44 +480,33 @@ export function QuickStartVenues({
           >
             {!arrangementPage && !zoneDetails && section === "about" ? (
               <section className="villages-manage" aria-label="About this venue">
-                <div className="villages-people-actions">
-                  <button type="button" disabled={busy || imageBusy} onClick={() => setEditingAbout(!editingAbout)}>
-                    {editingAbout ? "Done" : "Edit"}
-                  </button>
-                </div>
-                {editingAbout ? (
-                  <fieldset className="villages-manage-form" disabled={busy || imageBusy}>
-                    <label>
-                      Venue name
-                      <input
-                        autoComplete="off"
-                        aria-label="Venue Name"
-                        {...errorProps("name")}
-                        maxLength={60}
-                        value={selected.name}
-                        onChange={(e) => patch({ ...selected, name: e.target.value })}
-                      />
-                      {fieldError("name")}
-                    </label>
-                    <label>
-                      Description
-                      <textarea
-                        autoComplete="off"
-                        aria-label="Description"
-                        {...errorProps("form")}
-                        maxLength={2000}
-                        rows={2}
-                        value={selected.form ?? ""}
-                        onChange={(e) => patch({ ...selected, form: e.target.value })}
-                      />
-                      {fieldError("form")}
-                    </label>
-                  </fieldset>
-                ) : (
-                  <>
-                    <p>{selected.form}</p>
-                  </>
-                )}
+                <fieldset className="villages-manage-form" disabled={busy || imageBusy}>
+                  <label>
+                    Venue name
+                    <input
+                      autoComplete="off"
+                      aria-label="Venue Name"
+                      {...errorProps("name")}
+                      maxLength={60}
+                      value={selected.name}
+                      onChange={(e) => patch({ ...selected, name: e.target.value })}
+                    />
+                    {fieldError("name")}
+                  </label>
+                  <label>
+                    Description
+                    <textarea
+                      autoComplete="off"
+                      aria-label="Description"
+                      {...errorProps("form")}
+                      maxLength={2000}
+                      rows={2}
+                      value={selected.form ?? ""}
+                      onChange={(e) => patch({ ...selected, form: e.target.value })}
+                    />
+                    {fieldError("form")}
+                  </label>
+                </fieldset>
                 <VenueRunnersRow
                   ids={foundingAccess(selected).managerIds}
                   nameOf={(id) => actors.find((row) => row.id === id)?.name || id}

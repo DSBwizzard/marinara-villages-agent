@@ -20,14 +20,14 @@ export function PreparationScreen({
   const { snapshot } = controller;
   const preparation = snapshot?.foundingPreparation;
   const ready = !!snapshot?.isFounded && (preparation?.canPlay ?? true);
-  const [playful, setPlayful] = useState(false);
+  const [farewell, setFarewell] = useState(false);
   const lineRef = useRef<HTMLParagraphElement>(null);
   useLetterFont("lora");
   useEffect(() => {
     if (ready) lineRef.current?.focus({ preventScroll: true });
-  }, [ready, playful]);
+  }, [ready, farewell]);
 
-  const pose = playful ? "playful" : "presenting";
+  const pose = farewell ? "wave" : "happy";
   return (
     <div
       className={`${ELEMENT_TAG}-root villages-forging-v2 villages-forging-preparing`}
@@ -56,8 +56,8 @@ export function PreparationScreen({
               lineRef={lineRef}
               replies={
                 <>
-                  {playful ? (
-                    <button type="button" data-reader-direction="back" onClick={() => setPlayful(false)}>
+                  {farewell ? (
+                    <button type="button" data-reader-direction="back" onClick={() => setFarewell(false)}>
                       Back
                     </button>
                   ) : null}
@@ -65,14 +65,14 @@ export function PreparationScreen({
                     type="button"
                     className="villages-forging-primary villages-founding-next-reply"
                     data-reader-direction="next"
-                    onClick={playful ? onEnter : () => setPlayful(true)}
+                    onClick={farewell ? onEnter : () => setFarewell(true)}
                   >
-                    {playful ? "Enter village" : "Next"}
+                    {farewell ? "Enter village" : "Next"}
                   </button>
                 </>
               }
             >
-              {playful
+              {farewell
                 ? "Maybe I'll see you there!"
                 : `Look at that. ${snapshot.village.name} is ready for you. Have fun! Professor’s orders.`}
             </FoundingGuide>
