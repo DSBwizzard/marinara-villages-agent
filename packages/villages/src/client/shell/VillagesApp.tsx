@@ -347,7 +347,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     return true;
   };
   return (
-    <VillagesFrame controller={navigation}>
+    <VillagesFrame controller={navigation} mapVisible={controller.screen === "home" && active === null}>
       <DeskLeaveGuard value={guardRegistration}>
         <DeskWorkspace
           active={active}

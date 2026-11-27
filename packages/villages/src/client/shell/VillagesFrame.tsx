@@ -6,7 +6,7 @@ import { ReturnCatchup } from "../features/background/ReturnCatchup.js";
 import { LoreActivity } from "../shared/LoreActivity.js";
 import { useMenuDaylight } from "../shared/useVillageLighting.js";
 type FrameProps = { controller: ReturnType<typeof useVillageController>; children: ReactNode };
-export function VillagesFrame({ controller, children }: FrameProps) {
+export function VillagesFrame({ controller, children, mapVisible = false }: FrameProps & { mapVisible?: boolean }) {
   const daylight = useMenuDaylight(controller.snapshot);
   return (
     <VillageActivity
@@ -27,6 +27,7 @@ export function VillagesFrame({ controller, children }: FrameProps) {
         <LoreActivity
           key={controller.snapshot?.worldScope ?? ""}
           enabled={
+            !mapVisible &&
             controller.screen !== "setup" &&
             controller.screen !== "preparing" &&
             controller.snapshot?.settings.lorebookChipsEnabled !== false
