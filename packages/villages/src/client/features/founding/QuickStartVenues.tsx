@@ -261,12 +261,13 @@ export function QuickStartVenues({
     }
   };
   const cards = ordered.map((venue) => {
+    const home = venue.occupancy.playerHome || !!venue.residentIds?.length;
     if (drawer)
       return (
         <div className="villages-venue-drawer-item" key={venue.id}>
           <button
             type="button"
-            className="villages-quick-venue-card villages-venue-drawer-row"
+            className="villages-venue-drawer-row"
             data-venue-id={venue.id}
             disabled={busy || imageBusy}
             onClick={() => {
@@ -276,7 +277,10 @@ export function QuickStartVenues({
               setEditorOpen(true);
             }}
           >
-            {venue.name || "Venue"}
+            <span className="villages-venue-drawer-icon">
+              <VillageIcon name={home ? "places" : "venue"} />
+            </span>
+            <strong className="villages-selected-name">{venue.name || "Venue"}</strong>
           </button>
           {onRemove && (
             <button
@@ -292,7 +296,6 @@ export function QuickStartVenues({
           )}
         </div>
       );
-    const home = venue.occupancy.playerHome || !!venue.residentIds?.length;
     return (
       <div className="villages-founding-venue-row" key={venue.id}>
         <button

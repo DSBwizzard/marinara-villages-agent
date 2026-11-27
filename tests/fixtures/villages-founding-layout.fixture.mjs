@@ -2137,7 +2137,7 @@ export async function verifyFoundingLayout(group) {
           const addedPin = root.locator(`[data-pin-id="${added.id}"]`);
           await expect(addedPin).toBeInViewport();
           await addedPin.press("Enter");
-          await expect(addedPin).toHaveAttribute("data-selected", "true");
+          await expect(addedPin).toHaveAttribute("data-selected", "false");
           await addedPin.press("ArrowRight");
           assert.equal(
             await page.evaluate(
@@ -2157,9 +2157,11 @@ export async function verifyFoundingLayout(group) {
           await closeVenue();
           const row = venueList.locator(`[data-venue-id="${added.id}"]`);
           const trash = venueList.getByRole("button", { name: "Remove New Venue", exact: true });
+          await expect(row.locator("svg")).toBeVisible();
           const trashBounds = await trash.boundingBox();
           const rowBounds = await row.boundingBox();
           assert.ok(trashBounds.x >= rowBounds.x + rowBounds.width && trashBounds.width >= 44);
+          assert.ok(Math.abs(trashBounds.y + trashBounds.height / 2 - rowBounds.y - rowBounds.height / 2) <= 1);
           await trash.click();
           const removal = page.getByRole("dialog", { name: "Confirm", exact: true });
           await expect(removal).toContainText("Remove New Venue");
@@ -2349,13 +2351,15 @@ export async function verifyFoundingLayout(group) {
           await showVenuePin("founding-home:player");
         }
         await marker.scrollIntoViewIfNeeded();
+        const markerPoint = marker.locator(".marinara-capability-villages-map-point");
+        await markerPoint.click();
+        await expect(mapCanvas.locator('[data-pin-id][data-selected="true"]')).toHaveCount(0);
+        await expect(sheet).toHaveCount(0);
         const beforeDrag = await page.evaluate(
           () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
         );
         const drag = async (dx, dy) => {
-          await marker.press("Enter");
-          await expect(marker).toHaveAttribute("data-selected", "true");
-          const box = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
+          const box = await markerPoint.boundingBox();
           await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
           await page.mouse.down();
           await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { steps: 5 });
@@ -2542,7 +2546,7 @@ export async function verifyFoundingLayout(group) {
           };
           const beforeTouch = await readPosition();
           await marker.locator(".marinara-capability-villages-map-point").tap();
-          await expect(marker).toHaveAttribute("data-selected", "true");
+          await expect(marker).toHaveAttribute("data-selected", "false");
           const point = await pinPoint();
           await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
           await touch.send("Input.dispatchTouchEvent", {
@@ -3007,6 +3011,7 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toBeVisible();
         await sheet.getByRole("button", { name: "← Map", exact: true }).click();
         await expect(reviewMap.locator("img")).toHaveAttribute("style", camera);
+        await expect(reviewMap.locator('[data-pin-id][data-selected="true"]')).toHaveCount(0);
         assert.deepEqual(
           await page.evaluate(() =>
             window.featureController.setupVenues.map((venue) => [venue.id, venue.presentation.x, venue.presentation.y]),
