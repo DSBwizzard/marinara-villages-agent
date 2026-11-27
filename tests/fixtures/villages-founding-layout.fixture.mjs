@@ -3000,7 +3000,8 @@ export async function verifyFoundingLayout(group) {
         }
         await showVenuePin("founding-home:player");
         const camera = await reviewMap.locator("img").getAttribute("style");
-        await root.locator('[data-pin-id="founding-home:player"]').click();
+        const homeMarker = root.locator('[data-pin-id="founding-home:player"]');
+        await homeMarker.locator(".marinara-capability-villages-map-point").click();
         await expect(sheet.getByRole("button", { name: "About", exact: true })).toBeVisible();
         await expect(sheet.getByRole("button", { name: "Zones", exact: true })).toBeVisible();
         await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toBeVisible();
@@ -3013,7 +3014,6 @@ export async function verifyFoundingLayout(group) {
           positions,
           "Inspecting Venues preserves saved placements",
         );
-        const homeMarker = root.locator('[data-pin-id="founding-home:player"]');
         const homeX = positions.find(([id]) => id === "founding-home:player")[1];
         const currentHomeX = () =>
           page.evaluate(
