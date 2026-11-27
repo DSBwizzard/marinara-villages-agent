@@ -754,7 +754,7 @@ export const VILLAGES_FORGING_STYLES = `
   translate:calc(-1 * var(--shoe-center,50%)) 0;
   filter:drop-shadow(0 .15rem .3rem #170f2840);
 }
-.villages-setting-stage img[data-facing=left] { transform:scaleX(-1); }
+.villages-setting-stage img[data-mirrored] { transform:scaleX(-1); }
 .villages-setting-stage [src$="mari-founding-neutral.webp"] { --shoe-center:48.2%; }
 .villages-setting-stage [src$="mari-founding-happy.webp"] { --shoe-center:50.7%; }
 .villages-setting-stage [src$="mari-founding-looking-up.webp"] { --shoe-center:40.6%; }
@@ -978,8 +978,8 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2[data-desktop-map] .villages-chapter-guide { grid-area:3 / 2; align-content:start; min-height:0; }
 .villages-forging-v2[data-desktop-map] .villages-setting-dialogue { padding:.75rem 1rem; }
 .villages-forging-v2[data-desktop-map] .villages-setting-stage {
-  grid-area:4 / 2; place-self:end; position:relative; left:auto; bottom:auto; translate:none;
-  height:calc(100% - .5rem); max-height:min(60cqh,34rem,42cqw); margin-inline-end:clamp(.3rem,1.35cqw,1.75rem);
+  grid-area:4 / 2; place-self:end center; position:relative; left:auto; bottom:auto; translate:none;
+  height:calc(100% - .5rem); max-height:min(60cqh,34rem,42cqw); margin-inline-end:2rem;
 }
 .villages-forging-v2[data-desktop-map] .villages-forging-body { grid-area:3 / 4 / 5 / 5; align-self:stretch; height:auto; padding:0; }
 .villages-forging-v2[data-desktop-map] .villages-founding-map-artwork { height:100%; margin:0; }

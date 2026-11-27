@@ -676,6 +676,7 @@ export async function verifyFoundingLayout(group) {
             const sprite = await expectPose(
               { people: "neutral", maps: "presenting", venues: "neutral", review: "neutral" }[phase],
             );
+            if (phase === "maps") await expect(sprite).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
             const workBox = await root.locator(".villages-forging-body").boundingBox();
             const spriteBox = await sprite.boundingBox();
             const dialogueBox = await guide.locator(".villages-setting-dialogue").boundingBox();
@@ -1120,6 +1121,7 @@ export async function verifyFoundingLayout(group) {
         await expect(hierarchy).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
         if (daylight) await expect(hierarchy).toHaveCSS("background-color", palette(daylight).panel);
         const presenting = await expectPose("presenting");
+        await expect(presenting).toHaveCSS("transform", "none");
         const portraitBox = await presenting.boundingBox();
         const treeBox = await hierarchy.boundingBox();
         const railBox = await root.getByRole("list", { name: "Founding phases" }).boundingBox();
@@ -1450,10 +1452,11 @@ export async function verifyFoundingLayout(group) {
           );
         await picker.getByRole("button", { name: "Next", exact: true }).click();
         await layer("Village");
-        await expectPose("neutral");
+        await expectPose("presenting");
         await expect(line).toHaveText(/^The Village is your whole community/);
         await expect(villageName).toBeHidden();
         await nextLine();
+        await expectPose("presenting");
         const namingDialog = root.getByRole("dialog", { name: "Your Village", exact: true });
         const villageBrief = root.getByLabel("What is the village like?", { exact: true });
         const finishNaming = () =>
@@ -1512,8 +1515,9 @@ export async function verifyFoundingLayout(group) {
         await villageBrief.fill(initialBrief);
         await finishNaming();
         await layer("Map");
-        const mapPose = await expectPose("neutral");
+        const mapPose = await expectPose("presenting");
         await expect(mapPose).toHaveAttribute("data-facing", "front");
+        await expect(mapPose).toHaveCSS("transform", "none");
         const mapPortrait = await mapPose.boundingBox();
         assert.ok(
           phone
@@ -1534,8 +1538,10 @@ export async function verifyFoundingLayout(group) {
         await finishNaming();
         await nextLine();
         await expect(line).toHaveText(/^Each Map covers one locale/);
+        await expectPose("presenting");
         await nextLine();
         await expect(line).toHaveText(/^Where should your first Map take us/);
+        await expectPose("neutral");
         const mapMessage = await line.textContent();
         if (phone) {
           await expect(settingPanel).toBeHidden();
@@ -3010,7 +3016,8 @@ export async function verifyFoundingLayout(group) {
           });
         await advance();
         await expect(root).toHaveAttribute("data-review-stage", "map");
-        await expectPose("neutral");
+        const reviewPose = await expectPose(phone ? "neutral" : "presenting");
+        if (!phone) await expect(reviewPose).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
         await expect(overview).toHaveCount(0);
         await retreat();
         await expect(overview).toHaveAttribute("data-page", "setting");

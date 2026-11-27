@@ -161,7 +161,7 @@ export function FoundingSettingScene({
   const expression =
     beat === "welcome" && lineIndex === 0
       ? "wave"
-      : beat === "world-overview"
+      : beat === "world-overview" || beat === "village-overview" || (beat === "village" && !lastLine)
         ? "presenting"
         : beat === "village" && lastLine && replaceStep !== "confirm" && (draftDialogue || error)
           ? "thoughtful"

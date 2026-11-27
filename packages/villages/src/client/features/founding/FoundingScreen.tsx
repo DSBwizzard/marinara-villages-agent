@@ -278,10 +278,11 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       ? "looking-up"
       : setupStep === FOUNDING_STEP.Setting
         ? settingExpression
-        : explainingStarters || setupStep === FOUNDING_STEP.Maps
+        : explainingStarters || setupStep === FOUNDING_STEP.Maps || (reviewingMap && desktopMap)
           ? "presenting"
           : "neutral";
   const mariFacing = mariPose === "looking-up" ? "right" : "front";
+  const mariMirrored = mariPose === "presenting" && desktopMap;
   const mariFlipEnabled = snapshot?.settings.spriteCardFlipEnabled !== false;
   useEffect(() => {
     if (!fading && !turning) return;
@@ -1371,7 +1372,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           <CardFlipSprite
             url={foundingMariSprite(mariPose)}
             facing={mariFacing}
-            mirrored={false}
+            mirrored={mariMirrored}
             view={mariFacing === "front" ? "front" : "side"}
             framing="full"
             enabled={mariFlipEnabled}
