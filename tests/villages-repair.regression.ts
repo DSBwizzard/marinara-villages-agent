@@ -86,12 +86,6 @@ async function fixture() {
     createRepairService({
       gate,
       repository: repo,
-      resumeProject: async () => {
-        throw Error("No Project command in this fixture");
-      },
-      cancelProject: async () => {
-        throw Error("No Project command in this fixture");
-      },
       replaySaved: async () => {},
     });
   let api = makeService();
@@ -164,7 +158,9 @@ await runCase("repair/agenda", async () => {
     state.venues.push(hall);
   });
   const person = (await f.api.index()).people.find((row) => row.id === "aqua")!;
-  const dates = (await f.api.list("people", "", 0, person.id, "agenda")).records;
+  const agendaRecords = (await f.api.list("people", "", 0, person.id, "agenda")).records;
+  assert.ok(agendaRecords.some((record) => JSON.parse(record.id)[0] === "routine"));
+  const dates = agendaRecords.filter((record) => record.agendaDay);
   assert.equal(person.hasAgenda, true);
   assert.equal(dates.length, 7);
   assert.equal(dates[0]!.agenda?.today, true);
@@ -220,8 +216,8 @@ await runCase("repair/agenda", async () => {
   assert.ok(
     addToday.changes.some(
       (change) =>
-        change.before.includes("00:00–24:00 · Count the lanterns") &&
-        change.after.includes("13:00–14:00 · Refill the lanterns · hall · Entrance (1)"),
+        change.before.includes("00:00–24:00, Count the lanterns") &&
+        change.after.includes("13:00–14:00, Refill the lanterns, hall, Entrance (1)"),
     ),
   );
   await f.api.apply(addToday.id, addToday.token);
@@ -257,7 +253,7 @@ await runCase("repair/agenda", async () => {
   });
   const move = await f.prepare(edit(todayRecord.id, { "zone:1": "common" }, "move-existing"));
   assert.ok(
-    move.changes.some((row) => row.before.includes("hall · Entrance (1)") && row.after.includes("hall · Entrance (2)")),
+    move.changes.some((row) => row.before.includes("hall, Entrance (1)") && row.after.includes("hall, Entrance (2)")),
   );
   await f.api.apply(move.id, move.token);
   assert.equal((await f.read()).villagers[0]!.agenda!.activeDay!.blocks[1]!.zoneId, "common");
@@ -516,8 +512,12 @@ await runCase("repair/people", async () => {
   );
   assert.equal((await f.api.list("people")).records.length, 0);
   const before = await f.read();
-  assert.equal((await f.api.list("people", "compass", 0, "b")).total, 1);
-  assert.ok((await f.api.list("people", "", 0, "b")).records.some((record) => record.title.includes("harbor")));
+  assert.equal(
+    (await f.api.list("people", "compass", 0, "b")).total,
+    0,
+    "a subject does not own another person's account",
+  );
+  assert.ok(!(await f.api.list("people", "", 0, "b")).records.some((record) => record.title.includes("harbor")));
   assert.ok(!JSON.stringify(await f.api.list("people", "", 0, "player")).includes("compass"));
   assert.deepEqual(await f.api.list("all", "  "), { records: [], total: 0, next: null });
   assert.equal((await f.api.list("all", "compass nonexistent")).total, 0);
@@ -596,7 +596,7 @@ await runCase("repair/visitors", async () => {
   await f.api.apply(style.id, style.token);
   assert.equal((await f.read()).visitors![0]!.letterFontId, font);
   const visits = await f.api.inspect(repairId("visitor", "guest"), "guest");
-  assert.ok(visits.source.some((line) => line.startsWith("Visit ")));
+  assert.ok(visits.fields.some((field) => field.key === "arrivedAt" && field.type === "datetime"));
   const off = await f.prepare(edit(visits.id, { visitsEnabled: false }, "visitor-off"));
   assert.ok(off.affected.some((line) => line.includes("current visit ends")));
   await f.api.apply(off.id, off.token);
@@ -1126,6 +1126,21 @@ await runCase("repair/domain-editors", async () => {
     { memories: true },
   );
   const opening = await f.api.inspect(repairId("world"));
+  const settings = await f.api.list("world", "", 0, undefined, "setting");
+  assert.deepEqual(
+    settings.records.map((row) => row.id),
+    [opening.id],
+  );
+  const circumstances = await f.api.list("world", "", 0, undefined, "circumstances");
+  assert.ok(circumstances.records.some((row) => row.id === repairId("new-situation")));
+  const conditions = await f.api.list("world", "", 0, undefined, "conditions");
+  assert.ok(conditions.records.some((row) => row.id.startsWith('["new-condition",')));
+  assert.ok(!conditions.records.some((row) => row.id === opening.id));
+  const weather = await f.api.list("world", "", 0, undefined, "weather");
+  assert.deepEqual(
+    weather.records.map((row) => row.id),
+    [repairId("narrative-weather", "new")],
+  );
   assert.equal(opening.fields.find((field) => field.key === "worldRules")!.value, "Original standing rules");
   const founding = await f.prepare(
     edit(
@@ -1207,7 +1222,7 @@ await runCase("repair/domain-editors", async () => {
     s.venues = [...[oldHome, newHome], ...sharedVenuesFixture()];
   });
   const home = await f.prepare({
-    ...edit(repairId("home", "a"), { destination: repairId("new-home", "bedroom") }, "fix-home"),
+    ...edit(repairId("home", "a"), { homeId: "new-home", sleepZoneId: "bedroom" }, "fix-home"),
   });
   await f.api.apply(home.id, home.token);
   const housed = await f.read();

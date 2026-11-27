@@ -62,6 +62,7 @@ export const villagesDefinition = {
   assetPaths: [
     ...letterFontAssets,
     "villages-icon.png",
+    "repair-icon.png",
     "icon-licenses.txt",
     ...menuArtAssets,
     sceneSprite,
@@ -81,6 +82,7 @@ export const villagesDefinition = {
     },
     assets: {
       paths: [
+        "repair-icon.png",
         ...letterFontAssets.filter((path) => path.endsWith(".json")),
         ...menuArtAssets,
         sceneSprite,

@@ -62,6 +62,7 @@ export const sceneContinuityFields = [
   "playerPersonaId",
   "playerPersonaName",
   "playerPersonaIdentity",
+  "playerIdentityRepair",
   "playerBackground",
   "villagers",
   "visitors",
@@ -110,5 +111,10 @@ export function captureSceneContinuity(state: VillageState, scene: VenueScene, n
 export function sceneContinuityView(current: VillageState, scene: VenueScene): VillageState {
   const context = scene.continuity;
   if (!context || context.seed !== current.seed || scene.villageSeed !== current.seed) return current;
-  return { ...current, ...cloneSceneFacts(context.facts), visitors: context.facts.visitors ?? [] };
+  return {
+    ...current,
+    ...cloneSceneFacts(context.facts),
+    playerIdentityRepair: context.facts.playerIdentityRepair,
+    visitors: context.facts.visitors ?? [],
+  };
 }

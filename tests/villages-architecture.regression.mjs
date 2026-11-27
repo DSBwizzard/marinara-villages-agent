@@ -295,10 +295,10 @@ try {
   const serverOverride = await fixture(
     "server-override-client-default",
     {
-      "client/features/background/BackgroundPanel.tsx":
-        "export const BackgroundWorkPanel = () => null; export const privateHook = () => null;",
-      "client/features/world/public.ts": 'export { BackgroundWorkPanel } from "../background/BackgroundPanel.js";',
-      "client/features/world/private.ts": 'export { privateHook } from "../background/BackgroundPanel.js";',
+      "client/features/residents/PersonDirectoryCard.tsx":
+        "export const PersonDirectoryCard = () => null; export const privateHook = () => null;",
+      "client/features/world/public.ts": 'export { PersonDirectoryCard } from "../residents/PersonDirectoryCard.js";',
+      "client/features/world/private.ts": 'export { privateHook } from "../residents/PersonDirectoryCard.js";',
       "server/features/media/sprite-manager.ts": publicModule,
       "server/features/world/consumer.ts": allowedForms.named,
     },
@@ -308,7 +308,7 @@ try {
   assert.deepEqual(
     serverOverride.failures,
     [
-      "client/features/world/private.ts: private feature export client/features/background/BackgroundPanel.tsx#privateHook",
+      "client/features/world/private.ts: private feature export client/features/residents/PersonDirectoryCard.tsx#privateHook",
     ],
     "a server override retains the default client gate",
   );

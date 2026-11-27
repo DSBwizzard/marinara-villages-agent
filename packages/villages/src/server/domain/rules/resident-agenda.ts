@@ -42,15 +42,16 @@ export function planRoutineDays(state: VillageState, now: Date): void {
         continue;
       }
       const blocks = validateRoutineDay(
-        !agenda.calendarVersion && agenda.routineProfile
-          ? routineDay(
-              agenda.routineProfile,
-              agenda.generatedAt || agenda.routineSummary,
-              date,
-              agenda.scheduleInfluenceSnapshot,
-              influenceSettings(resident.scheduleInfluence),
-            )
-          : ordinaryAgendaBlocksFor(agenda, date),
+        agenda.repairedWeek?.[VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!] ??
+          (!agenda.calendarVersion && agenda.routineProfile
+            ? routineDay(
+                agenda.routineProfile,
+                agenda.generatedAt || agenda.routineSummary,
+                date,
+                agenda.scheduleInfluenceSnapshot,
+                influenceSettings(resident.scheduleInfluence),
+              )
+            : ordinaryAgendaBlocksFor(agenda, date)),
         resident,
         state,
         date,
@@ -125,6 +126,7 @@ export function keepAgendaPlaces(state: VillageState): void {
         ]),
       );
     villager.agenda.week = repair(villager.agenda.week);
+    if (villager.agenda.repairedWeek) villager.agenda.repairedWeek = repair(villager.agenda.repairedWeek);
     if (villager.agenda.activeDay) {
       villager.agenda.activeDay.blocks = villager.agenda.activeDay.blocks.map((part) =>
         part.venueId && !publicIds.has(part.venueId)

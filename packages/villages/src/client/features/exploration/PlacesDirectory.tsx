@@ -12,7 +12,7 @@ import { useVillageActivity } from "../../shared/activity.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
 import { StorybookHeading, StorybookSearchIcon } from "../../shared/StorybookHeading.js";
-import { VillageIcon } from "../../shared/VillageIcon.js";
+import { LocationDirectoryRow } from "../../shared/LocationDirectoryRow.js";
 import { MapIcon } from "./villages-exploration.js";
 import { LOCATIONS_DIRECTORY_STYLES } from "./locations-directory-styles.js";
 
@@ -304,31 +304,16 @@ export function PlacesDirectory({
               <ul>
                 {items.map((place) => (
                   <li key={place.id}>
-                    <button
-                      type="button"
-                      data-exploration-row={place.id}
-                      onClick={() => void select(place)}
+                    <LocationDirectoryRow
+                      id={place.id}
+                      name={place.name}
+                      mapName={snapshot.settings.maps.find((map) => map.id === place.mapId)?.name}
+                      venue={place.venue}
+                      report={place.report}
+                      visited={place.visited}
                       disabled={busy}
-                      aria-label={place.name + (place.venue ? " · Venue" : "")}
-                    >
-                      <VillageIcon name={place.venue ? "places" : "compass"} />
-                      <span className={P + "-location-caption"}>
-                        <strong>{place.name}</strong>
-                        <small>{snapshot.settings.maps.find((map) => map.id === place.mapId)?.name}</small>
-                      </span>
-                      <span className={P + "-location-status"}>
-                        {place.venue ? (
-                          <span className={P + "-venue-badge"}>Venue</span>
-                        ) : place.report ? (
-                          <small>Reported</small>
-                        ) : !place.visited ? (
-                          <small>Unvisited</small>
-                        ) : null}
-                      </span>
-                      <span aria-hidden="true" className={P + "-location-chevron"}>
-                        ›
-                      </span>
-                    </button>
+                      onOpen={() => void select(place)}
+                    />
                   </li>
                 ))}
               </ul>

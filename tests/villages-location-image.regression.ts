@@ -8,6 +8,7 @@ import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/serve
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
 import { clientImplementation } from "./client-source.js";
+import ts from "typescript";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 // Villages — proof for the pictures a place can have.
 //
@@ -1222,11 +1223,39 @@ async function main() {
     //
     // The shared image control identifies each Zone directly.
     const client = await clientImplementation();
-    for (const handler of ["drawPlaceImage", "keepPlaceImage", "dropPlaceImage"]) {
+    const manualHandlers = new Map([
+      ["drawPlaceImage", "onGenerate"],
+      ["keepPlaceImage", "onUpload"],
+      ["dropPlaceImage", "onRemove"],
+    ]);
+    const calls: string[] = [];
+    const parsed = ts.createSourceFile("client.tsx", client, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    function scanManualCalls(node: ts.Node) {
+      if (ts.isCallExpression(node)) {
+        const name = ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.name.text
+          : ts.isIdentifier(node.expression)
+            ? node.expression.text
+            : "";
+        const attribute = manualHandlers.get(name);
+        if (attribute) {
+          calls.push(name);
+          let ancestor: ts.Node | undefined = node.parent;
+          while (ancestor && !ts.isJsxAttribute(ancestor)) ancestor = ancestor.parent;
+          assert.ok(
+            ancestor && ts.isJsxAttribute(ancestor) && ancestor.name.getText() === attribute,
+            `${name} must run only from its manual image control`,
+          );
+        }
+      }
+      ts.forEachChild(node, scanManualCalls);
+    }
+    scanManualCalls(parsed);
+    for (const handler of manualHandlers.keys()) {
       assert.equal(
-        client.split(`${handler}(`).length - 1,
-        1,
-        `${handler} is invoked only by its manual control; forwarding it between components does not invoke it`,
+        calls.filter((name) => name === handler).length,
+        2,
+        `${handler} has one manual control in Locations and one in REPAIR`,
       );
     }
     assert.equal(

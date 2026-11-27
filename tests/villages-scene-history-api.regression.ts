@@ -594,8 +594,7 @@ for (const count of [1000, 10_000, 25_000]) {
     const repair = createRepairService({
       gate: f.gate,
       repository: worlds,
-      resumeProject: async () => {},
-      cancelProject: async () => {},
+
       replaySaved: async () => {},
     });
     const checkpoint = await repair.createCheckpoint("Closed Scene", "closed-scene");

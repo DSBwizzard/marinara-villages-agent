@@ -7,16 +7,15 @@ import { readProjectPlan } from "../../domain/rules/project-completion.js";
 import { plannedVenue, readRenovationChange } from "../../domain/rules/project-design.js";
 import {
   beginProject,
+  cancelProjectWork,
   finishConstruction,
   missingProjectAgreements,
   projectFor,
 } from "../../domain/rules/project-lifecycle-rules.js";
 import { changedZoneIds, venueDesignHash } from "../../domain/rules/project-structure.js";
-import { projectAgendaReservations, trimProjectFocus } from "../../domain/rules/project-focus.js";
 import { approvalScope, matchesProjectDesign, projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
 import { findLocation } from "../../domain/rules/places.js";
-import { removeNativeRoom } from "../../domain/rules/native-continuity.js";
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
 
 function projectDraftRequest(value: unknown) {
@@ -202,21 +201,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     await command(id, value, "resume", (state, project, row) => beginProject(state, project, row, true, now));
   }
   async function cancelProject(id: string, value: unknown, now = villageNow()) {
-    await command(id, value, "cancel", (state, project) => {
-      if (["complete", "cancelled"].includes(project.status)) throw conflict("This Project is already finished.");
-      trimProjectFocus(project, now.toISOString());
-      project.status = project.lifecycle.phase = "cancelled";
-      project.updatedAt = now.toISOString();
-      project.lifecycle.blockedReason = "";
-      if (project.kind === "new-venue") {
-        const site = state.venues.find((venue) => venue.buildProjectId === id);
-        if (site) {
-          for (const zone of site.zones ?? []) removeNativeRoom(state, site.id, zone.id, now.toISOString());
-          state.venues = state.venues.filter((venue) => venue !== site);
-        }
-      }
-      projectAgendaReservations(state);
-    });
+    await command(id, value, "cancel", (state, project) => cancelProjectWork(state, project, now.toISOString()));
   }
   async function debugCompleteProjectConstruction(id: string, value: unknown) {
     if (!ports.villagesDebugAgentsEnabled()) throw conflict("Project debug actions are unavailable.");

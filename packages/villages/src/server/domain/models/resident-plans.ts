@@ -17,5 +17,6 @@ export type ResidentPlans = {
   selectedDate: string;
   plans: SocialPlan[];
   appointments?: import("zod").infer<typeof import("../decoding/agenda-codec.js").playerAppointments>;
+  appointmentRepairs?: Record<string, { operationId: string; at: string }>;
   activities?: Record<string, SceneFollowup>;
 };

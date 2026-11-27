@@ -132,11 +132,9 @@ import { configureTownMapReview, prepareVillageMap } from "../features/media/tow
 import { createNarrative } from "../features/narrative/narrative-service.js";
 import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
 import {
-  cancelProject,
   configureProjectLifecycle,
   draftNewVenueProject,
   draftRenovationProject,
-  resumeProject,
 } from "../features/projects/project-lifecycle.js";
 import { createRepairService } from "../features/repair/repair-service.js";
 import { configureRepairs } from "../features/repair/repair.js";
@@ -912,8 +910,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createRepairService({
       gate: repairGate(),
       repository: villageRepository,
-      resumeProject,
-      cancelProject,
       replaySaved: replaySceneChanges,
     }),
   );

@@ -1,3 +1,4 @@
+import { readPlayerIdentity } from "./player-identity.js";
 import { venueWorkSchema, workOfferViewSchema } from "../../../shared/helpers/venue-work.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 import { z } from "zod";
@@ -434,7 +435,7 @@ export function applyNarrationAccess(
   }
   const person = (id: string) =>
     id === "player"
-      ? state.playerPersonaName || state.playerName || "Player"
+      ? readPlayerIdentity(state).name || "Player"
       : findCardCharacter(state, id)?.cardSnapshot.name || findNpc(state, id)?.name || "Former resident";
   const grant = venue.access.permissions.find((grant) => grant.id === receiptId);
   const destination =

@@ -20,7 +20,6 @@ import { MENU_PAGE_TITLES } from "./navigation.js";
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
   const confirmVillages = useConfirmation(controller.menuPage);
   const {
-    backgroundPanel,
     connections,
     busy,
     debugDiscardEnabled,
@@ -128,7 +127,20 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
         preparation={snapshot?.foundingPreparation}
         preparationProblem={preparationProblem}
         onRetryPreparation={retryPreparation}
-        onBack={() => rawOpenMenu("index")}
+        jobs={snapshot?.backgroundWork}
+        onRetryWork={controller.retryWork}
+        artwork={{
+          drawPlaceImage: controller.drawPlaceImage,
+          keepPlaceImage: controller.keepPlaceImage,
+          dropPlaceImage: controller.dropPlaceImage,
+          placeBusyId: controller.placeBusyId,
+          problem:
+            controller.placeProblem?.id === controller.repairController.selected?.artwork?.locationId
+              ? controller.placeProblem?.text
+              : undefined,
+        }}
+        onCharacterTools={(id) => controller.openPerson({ actorId: id, section: "tools", returnTo: "menu" })}
+        onBack={rawGoHome}
         onScene={room && room.status !== "closed" ? () => setScreen("room") : undefined}
       />
     );
@@ -269,7 +281,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             // reads the village afresh, so a panel is never stale by the time it
             // is opened.
             <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
-              {menuSection === "debug" ? backgroundPanel : null}
               {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
               {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
               {menuSection === "debug" ? <ReturnCatchupDebug snapshot={snapshot} /> : null}

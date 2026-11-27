@@ -139,7 +139,7 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
   return true;
 }
 
-function changeRoomOwner(
+export function changeRoomOwner(
   venue: import("../models/world.js").VillageVenue,
   zone: import("../models/world.js").VillageVenueZone,
   ownerId: string | undefined,

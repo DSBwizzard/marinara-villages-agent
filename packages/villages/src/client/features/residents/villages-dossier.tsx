@@ -18,7 +18,7 @@ type ProfileSection = DossierSection | "tools";
 export type DossierNavigation = {
   actorId: string;
   wishId?: string;
-  section?: DossierSection;
+  section?: ProfileSection;
   returnTo: "home" | "room" | "menu";
 };
 type Request = <T>(path: string, options?: RequestInit) => Promise<T>;

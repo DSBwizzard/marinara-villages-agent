@@ -176,17 +176,23 @@ function knownAgenda(world: VillageState, actorId: string, now: Date) {
       )
     )
       return [];
-    const reservation = world.residentPlans.appointments?.find(
+    const appointment = world.residentPlans.appointments?.find(
       (appointment) =>
         appointment.id === row.id &&
         appointment.playerIncarnation === player.incarnation &&
         appointment.resident.id === actor.id &&
-        appointment.resident.incarnation === actor.incarnation &&
-        memoryHash(appointment.time) === memoryHash(fact.time) &&
-        appointment.activity === fact.activity,
+        appointment.resident.incarnation === actor.incarnation,
     );
-    if (reservation?.cancelled && (!reservation.termsVersionId || reservation.termsVersionId === offer.termsVersionId))
-      return [];
+    const sameTerms = !appointment?.termsVersionId || appointment.termsVersionId === offer.termsVersionId;
+    if (world.residentPlans.appointmentRepairs?.[row.id] && sameTerms)
+      return appointment && !appointment.cancelled
+        ? [{ id: row.id, time: appointment.time, activity: appointment.activity, source: "agreed" as const }]
+        : [];
+    const reservation =
+      appointment && memoryHash(appointment.time) === memoryHash(fact.time) && appointment.activity === fact.activity
+        ? appointment
+        : undefined;
+    if (reservation?.cancelled && sameTerms) return [];
     const booked = !!reservation && !reservation.cancelled;
     const venue = findLocation(world, fact.time.venueId);
     const zone = venue && resolveVenueZone(venue, fact.time.zoneId ?? "exterior");
@@ -340,6 +346,73 @@ function visitFits(world: VillageState, actor: string, time: AgendaTime, at: Dat
   }).every(Boolean);
 }
 
+/** Administrative correction changes the current booking, retaining its original witnessed terms. */
+export function repairSceneAppointment(
+  world: VillageState,
+  id: string,
+  next: { time: AgendaTime; activity: string } | null,
+  instant: string,
+  operationId: string,
+) {
+  const rows = world.residentPlans.appointments ?? [],
+    row = rows.find((entry) => entry.id === id);
+  memoryRequire(row && !row.cancelled, "This agreed plan changed. Reopen the Agenda.");
+  (world.residentPlans.appointmentRepairs ??= {})[id] = { operationId, at: instant };
+  world.residentPlans.appointments = rows.filter((entry) => entry.id !== id);
+  projectAgendaReservations(world);
+  if (!next) return;
+  const now = dateAt(world, new Date(instant)),
+    { time, activity } = next;
+  const resident = world.villagers.find(
+    (entry) => entry.characterId === row.resident.id && entry.incarnation === row.resident.incarnation,
+  );
+  const start = calendarAt(now, time.date, time.startMinute),
+    end = calendarAt(now, time.date, time.endMinute);
+  memoryRequire(
+    resident?.agenda &&
+      row.playerIncarnation === continuityActor(world, "player")?.incarnation &&
+      activity.trim() &&
+      activity.length <= 240 &&
+      Number.isInteger(time.startMinute) &&
+      Number.isInteger(time.endMinute) &&
+      time.startMinute >= 0 &&
+      time.endMinute <= 1440 &&
+      time.endMinute > time.startMinute &&
+      start.getTime() > now.getTime() &&
+      end.getTime() - start.getTime() === (time.endMinute - time.startMinute) * 60000 &&
+      start.getHours() * 60 + start.getMinutes() === time.startMinute &&
+      visitFits(world, resident.characterId, time, now) &&
+      visitFits(world, "player", time, now) &&
+      zoneActivityFits(
+        world,
+        [resident.characterId],
+        time.venueId,
+        time.zoneId ?? "exterior",
+        time.startMinute,
+        time.endMinute,
+        start,
+      ) &&
+      !world.residentPlans.appointments.some(
+        (other) =>
+          !other.cancelled &&
+          other.time.date === time.date &&
+          (other.playerIncarnation === row.playerIncarnation || other.resident.id === resident.characterId) &&
+          other.time.startMinute < time.endMinute &&
+          other.time.endMinute > time.startMinute,
+      ),
+    "The agreed plan is past, inaccessible, or overlaps another commitment.",
+  );
+  let covered = time.startMinute;
+  for (const block of agendaBlocksFor(resident.agenda, start)) {
+    if (block.endMinute <= covered || block.startMinute >= time.endMinute) continue;
+    if (block.startMinute > covered || !flexibleAgendaBlock(block) || restingAgendaBlock(block)) break;
+    covered = block.endMinute;
+  }
+  memoryRequire(covered >= time.endMinute, "That person already has a commitment during this time.");
+  world.residentPlans.appointments.push({ ...row, time, activity });
+  projectAgendaReservations(world);
+}
+
 export function sceneAgendaEvidence(
   world: VillageState,
   write: ContinuityWrite,
@@ -476,6 +549,14 @@ export function cloneAppointmentState(state: VillageState): VillageState {
   };
 }
 
+export function assertFreshAppointmentDecision(world: VillageState, write: ContinuityWrite, capturedAt: string) {
+  const repair = write.closeOffer && write.target && world.residentPlans.appointmentRepairs?.[write.target.id];
+  memoryRequire(
+    !repair || Date.parse(capturedAt) > Date.parse(repair.at),
+    "The appointment changed after this decision was captured.",
+  );
+}
+
 export function applySceneAppointment(
   world: VillageState,
   continuity: VillageState["continuity"],
@@ -487,8 +568,8 @@ export function applySceneAppointment(
   const offer = continuity.records.find((row) => row.id === root)?.offer;
   const fact = offer && continuity.versions.find((row) => row.id === offer.termsVersionId)?.agenda;
   if (!root || !offer || fact?.kind !== "offer") return false;
-  const now = dateAt(world, new Date(instant));
   if (!write.closeOffer) return false;
+  const now = dateAt(world, new Date(instant));
   const rows = currentAppointments(world, now);
   if (!rows.some((row) => row.id === root && !row.cancelled)) return false;
   world.residentPlans.appointments = rows.filter((row) => row.id !== root);

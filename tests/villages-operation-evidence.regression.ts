@@ -326,8 +326,7 @@ for (const fault of ["before", "after"] as const) {
     const repair = createRepairService({
       gate: f.gate,
       repository: createVillageRepository(() => f.gate.documents),
-      resumeProject: async () => {},
-      cancelProject: async () => {},
+
       replaySaved: async () => {},
     });
     const parsedId = native.operation.checkpoints.parsed.id;

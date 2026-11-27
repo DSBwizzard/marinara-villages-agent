@@ -21,7 +21,7 @@ import { assertContinuityRetention } from "./continuity-retention.js";
 import { appendEpisode } from "./episodes.js";
 import { mailReceipt, mailEvidence, type MailIdentity } from "./mail-evidence.js";
 import { prepareContinuityKeep } from "./narration-keep.js";
-import { applySceneAppointment, cloneAppointmentState } from "./agenda-overview.js";
+import { applySceneAppointment, assertFreshAppointmentDecision, cloneAppointmentState } from "./agenda-overview.js";
 import { readContinuityProposal, readNarrationEffectHeader } from "./narration-contract.js";
 import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
@@ -300,6 +300,7 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     for (const id of selection.acceptedIds) {
       const keep = prepared.get(id)!;
       try {
+        assertFreshAppointmentDecision(scheduledWorld, keep.write, publication.admission.at);
         const next = applyContinuityWrite(continuity, keep.write, keep.admission);
         if (keep.write.accept || keep.write.closeOffer) {
           const candidate = cloneAppointmentState(scheduledWorld);

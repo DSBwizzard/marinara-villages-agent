@@ -1,4 +1,8 @@
-// Test cases: relationships/player-snapshot, relationships/scoring, relationships/daily-pacing, relationships/romantic-interest, relationships/answer-cadence, relationships/behavior-context, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
+import {
+  applyRelationshipRepair,
+  relationshipRepairRecords,
+} from "../packages/villages/src/server/domain/rules/repair-relationships.js";
+// Test cases: relationships/repair-baseline, relationships/player-snapshot, relationships/scoring, relationships/daily-pacing, relationships/romantic-interest, relationships/answer-cadence, relationships/behavior-context, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -774,4 +778,82 @@ await runCase("relationships/pure-reads", async () => {
   assert.equal(memoryHash([f.state.continuity, f.state.episodes, f.state.startingHistory]), before);
   await service.clarifyRelationships({ text: "An existing clarification" });
   assert.equal(clarified, 1);
+});
+
+await runCase("relationships/repair-baseline", () => {
+  const f = fixture(),
+    owner = f.actor("mara"),
+    subject = f.actor("player");
+  const repair = (warmth: number, romance: number, id: string) =>
+    applyRelationshipRepair(
+      f.state,
+      "mara",
+      "player",
+      {
+        operationId: id,
+        recordId: "",
+        action: "correct",
+        values: { warmth, romance, answer: "I enjoy your company." },
+        knowers: [],
+        expectedRecord: "",
+      },
+      at,
+    );
+  const admitted = f.state.continuity.revision;
+  repair(-100, 3, "baseline-first");
+  f.keep({
+    id: "loss",
+    owner,
+    holders: [owner],
+    about: [subject],
+    class: "perspective",
+    current: true,
+    text: "Mara feels more guarded after that exchange.",
+    relationship: { impact: "small-negative" },
+  });
+  repair(100, 3, "baseline-second");
+  f.keep({
+    id: "later-loss",
+    owner,
+    holders: [owner],
+    about: [subject],
+    class: "perspective",
+    current: true,
+    text: "Mara feels guarded again.",
+    relationship: { impact: "small-negative" },
+  });
+  repair(100, 3, "baseline-third");
+  const before = structuredClone(f.state.continuity);
+  f.cold();
+  assert.deepEqual(f.state.continuity, before, "baselines and daily usage survive immutable-page reload");
+  const score = f.profiles()[0].scores.find((row) => row.person.id === "player")!;
+  assert.equal(score.score, 100);
+  assert.equal(score.romanticInterest, 3);
+  assert.equal(score.answer, "I enjoy your company.");
+  const note = relationshipRepairRecords(f.state, "mara")
+    .find((record) => record.id === '["relationship","mara","player"]')!
+    .fields.find((field) => field.key === "answer")!;
+  assert.equal(note.label, "Perspective Note");
+  assert.equal(note.value, score.answer);
+  assert.equal(f.profiles()[1].scores.find((row) => row.person.id === "mara")!.score, 0);
+  assert.throws(
+    () =>
+      f.keep(
+        {
+          id: "stale-answer",
+          owner,
+          holders: [owner],
+          about: [subject],
+          class: "perspective",
+          current: true,
+          text: "Mara gives an outdated answer.",
+          relationship: { answer: "I prefer some distance." },
+        },
+        "mara",
+        undefined,
+        admitted,
+      ),
+    /relationship changed in REPAIR/,
+  );
+  assert.throws(() => repair(100.5, 3, "fraction"), /whole-number/);
 });

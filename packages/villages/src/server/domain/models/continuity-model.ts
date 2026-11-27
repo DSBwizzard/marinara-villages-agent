@@ -41,6 +41,7 @@ export type ContinuityVersion = {
     gained: number;
     lost: number;
     breach: number;
+    adjustment?: number;
   };
   relationshipAnswer?: string;
   relationshipAnswerScore?: number;
@@ -53,7 +54,7 @@ export type ContinuityVersion = {
   sources: ContinuityEvidence[];
   at: string;
   operationId: string;
-  administrative?: { holder: ContinuityHolder; at: string };
+  administrative?: { holder: ContinuityHolder; at: string; subjectsFrom?: string };
   offerEvents?: string[];
   closed?: { reason: "fulfilled" | "withdrawn" | "ended" };
   room?: { order: number; visibility: "observable" | "concealed"; expiresAt?: string };
@@ -93,6 +94,21 @@ export type ContinuityCollection = {
   records: ContinuityRecord[];
   versions: ContinuityVersion[];
   receipts: Record<string, { fingerprint: string; roots: string[]; versions: string[] }>;
+  relationshipBaselines?: Record<
+    string,
+    {
+      owner: { id: string; incarnation: string };
+      subject: { id: string; incarnation: string };
+      operationId: string;
+      at: string;
+      createdRevision: number;
+      relationshipScore: number;
+      romanticInterest: number;
+      relationshipDay?: ContinuityVersion["relationshipDay"];
+      romanticDay?: ContinuityVersion["romanticDay"];
+      answer?: { text: string; at: string; createdRevision: number; score: number };
+    }
+  >;
 };
 
 export type ContinuityTarget = { id: string; recordRevision: number; heads: Record<string, number> };

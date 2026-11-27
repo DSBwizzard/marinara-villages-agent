@@ -154,7 +154,7 @@ await withBrowser(browser, async () => {
       await page.evaluate((value) => (window.snapshot = value), snapshot);
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       await expect(page.getByRole("region", { name: "Locations directory" })).toBeVisible();
-      await page.getByRole("button", { name: "Village Hall · Venue", exact: true }).click();
+      await page.getByRole("button", { name: "Village Hall, Venue", exact: true }).click();
       await expect.poll(() => page.evaluate(() => window.venue)).toBe(venue.id);
       await page.getByLabel("Search locations", { exact: true }).fill(" Lantern ");
       await expect(page.getByRole("button", { name: "The Lantern", exact: true })).toBeVisible();
@@ -234,7 +234,7 @@ await withBrowser(browser, async () => {
       );
       await page.screenshot({ path: ".build-tmp/places/" + name + ".png", fullPage: true });
       await page.getByLabel("Search locations", { exact: true }).fill("New Venue");
-      await page.getByRole("button", { name: "New Venue · Venue", exact: true }).click();
+      await page.getByRole("button", { name: "New Venue, Venue", exact: true }).click();
       await expect(page.getByRole("alert")).toHaveText("Refresh the Village to open this Venue.");
       await page.getByLabel("Search locations", { exact: true }).fill("Lantern");
       await page.getByRole("button", { name: "The Lantern", exact: true }).click();

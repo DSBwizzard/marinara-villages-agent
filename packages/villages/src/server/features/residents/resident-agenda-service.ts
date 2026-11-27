@@ -1,3 +1,4 @@
+import { readPlayerIdentity } from "../../domain/rules/player-identity.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { continuityPreparationContext, continuityContextRevision } from "../../domain/rules/continuity-library.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
@@ -39,7 +40,7 @@ import { routineVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
-import { randomVillageSeed } from "../../domain/rules/village-clock.js";
+import { randomVillageSeed, VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
 import type { backgroundJobSnapshot, backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/background-work.js";
 import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
@@ -155,7 +156,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         worldRules: village.worldRules,
       },
       playerBackground: village.playerBackground,
-      playerPersonaName: village.playerPersonaName,
+      playerPersonaName: readPlayerIdentity(village).name,
       village: village.name,
       setting: [agendaSetting, village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : ""]
         .filter(Boolean)
@@ -571,7 +572,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       calendarVersion: 1,
       recentChanges: previous?.recentChanges,
       plannedDays: rebuildActionId
-        ? Object.fromEntries(Object.keys(booked).map((date) => [date, workingAgendaWeek().Monday!]))
+        ? Object.fromEntries(
+            Object.keys(booked).map((date) => {
+              const weekday = VILLAGE_WEEKDAYS[(calendarAt(now, date, 720).getDay() + 6) % 7]!;
+              return [date, previous?.repairedWeek?.[weekday] ?? workingAgendaWeek()[weekday]!];
+            }),
+          )
         : {
             ...booked,
             ...Object.fromEntries(
@@ -583,6 +589,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
             ),
           },
       repairedDays: rebuildActionId ? undefined : previous?.repairedDays,
+      repairedWeek: previous?.repairedWeek,
       reservations: previous?.reservations ?? [],
       activeDay: dayHasRolled ? undefined : previous?.activeDay,
       personalizationAttemptDate: today,
@@ -600,6 +607,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         const current = active.blocks.find((block) => block.startMinute <= minute && minute < block.endMinute);
         todayAfter = current && scheduledAgendaActivity(current) ? current.endMinute : minute;
         const cut = todayAfter;
+        const routine = villager.agenda.repairedWeek?.[active.weekday] ?? agenda.week![active.weekday]!;
         if (!previous?.reservations?.some((row) => row.dateKey === today && row.source !== "work"))
           villager.agenda.activeDay = {
             ...active,
@@ -607,8 +615,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
               ...active.blocks
                 .filter((block) => block.startMinute < cut)
                 .map((block) => ({ ...block, endMinute: Math.min(block.endMinute, cut) })),
-              ...agenda
-                .week![active.weekday]!.filter((block) => block.endMinute > cut)
+              ...routine
+                .filter((block) => block.endMinute > cut)
                 .map((block) => ({ ...block, startMinute: Math.max(block.startMinute, cut) })),
             ],
           };

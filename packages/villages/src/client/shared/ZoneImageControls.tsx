@@ -2,6 +2,14 @@ import { useRef, useState, type ReactNode } from "react";
 import { ModalDialog } from "./ModalDialog.js";
 import { ELEMENT_TAG as P } from "./constants.js";
 
+export type ZoneArtworkCommands = {
+  drawPlaceImage(locationId: string, zoneId: string): Promise<void>;
+  keepPlaceImage(locationId: string, zoneId: string, file: File | undefined): Promise<void>;
+  dropPlaceImage(locationId: string, zoneId: string): Promise<void>;
+  placeBusyId: string;
+  problem?: string;
+};
+
 export function ZoneImageControls({
   name,
   imageUrl,

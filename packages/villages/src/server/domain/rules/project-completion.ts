@@ -27,7 +27,12 @@ import { captureZoneObservation } from "./zone-observation.js";
 import { stageProjectRoomEdits } from "./project-room-edits.js";
 
 /** Only the saved committed design is applied; the lifecycle stages this transaction. */
-export function completeProject(state: VillageState, project: VillageProject, at: string): void {
+export function completeProject(
+  state: VillageState,
+  project: VillageProject,
+  at: string,
+  options: { administrative?: boolean } = {},
+): void {
   const flow = project.lifecycle!;
   const venue = findLocation(state, project.venueId);
   if (!venue) throw conflict("The Project site is missing.");
@@ -136,7 +141,8 @@ export function completeProject(state: VillageState, project: VillageProject, at
       targetId: project.id,
       revision: 1,
       text: project.title + " was completed.",
-      witnesses: flow.builderId && continuityActor(state, flow.builderId) ? [flow.builderId] : [],
+      witnesses:
+        !options.administrative && flow.builderId && continuityActor(state, flow.builderId) ? [flow.builderId] : [],
     },
     at,
     { about: flow.builderId ? [flow.builderId] : [] },

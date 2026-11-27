@@ -44,6 +44,7 @@ export function VillagesFrame({
               !mapVisible &&
               controller.screen !== "setup" &&
               controller.screen !== "preparing" &&
+              !(controller.screen === "menu" && controller.menuPage === "repair") &&
               controller.snapshot?.settings.lorebookChipsEnabled !== false
             }
             daylight={daylight}

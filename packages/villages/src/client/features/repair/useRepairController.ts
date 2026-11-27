@@ -1,32 +1,58 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   RepairBrowseItem,
+  RepairField,
   RepairIndex,
   RepairPerson,
+  RepairPersonSection,
   RepairRecord,
   RepairRecordPage,
   RepairRequest,
   RepairReview,
   RepairTopic,
   RepairValue,
+  RepairWorldSection,
 } from "../../../shared/contracts/repair.js";
 import { REPAIR_NO_CHANGES } from "../../../shared/contracts/repair.js";
 import { repairClockMinutes } from "../../../shared/helpers/repair-clock.js";
 import { request, messageFrom, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 
-type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: string; agendaToken?: string };
-type Section = "memories" | "agenda" | "details";
+type Draft = {
+  values: Record<string, RepairValue>;
+  knowers: string[];
+  action: string;
+  agendaToken?: string;
+  linkedChoices?: Map<string, RepairValue>;
+};
+type Section = RepairPersonSection | RepairWorldSection;
 type RecordTopic = RepairTopic | "all";
 type AgendaPick = { index: number | "new"; token?: string };
-type View = "hub" | "list" | "edit" | "review" | "done" | "history" | "checkpoints";
+type View = "hub" | "loading" | "list" | "edit" | "review" | "restored" | "history" | "checkpoints";
+
+function sameFieldValue({ key, type, value, multiline }: RepairField, next: RepairValue) {
+  if (next === value) return true;
+  if (type === "number") return next !== "" && value !== "" && Number(next) === Number(value);
+  if (type === "days") return String(next).split(",").sort().join(",") === String(value).split(",").sort().join(",");
+  if (type === "clock") {
+    const saved = repairClockMinutes(String(value));
+    return saved !== undefined && repairClockMinutes(String(next)) === saved;
+  }
+  if (key.startsWith("activity:")) return String(next).trim() === String(value).trim();
+  return (
+    type === "text" &&
+    multiline !== false &&
+    String(next).replace(/\r\n?/gu, "\n") === String(value).replace(/\r\n?/gu, "\n")
+  );
+}
+
 export function useRepairController(
   active: boolean,
   onApplied: (kind: RepairReview["kind"]) => Promise<{ title: string; text: string } | null>,
 ) {
   const [index, setIndex] = useState<RepairIndex | null>(null),
-    [topic, setTopic] = useState<RecordTopic>("memories"),
-    [view, setView] = useState<View>("hub");
+    [topic, setTopic] = useState<RecordTopic>("people"),
+    [view, setView] = useState<View>("list");
   const [person, setPerson] = useState<RepairPerson | null>(null),
     [section, setSection] = useState<Section>("memories");
   const [agendaPick, setAgendaPick] = useState<AgendaPick>();
@@ -37,6 +63,8 @@ export function useRepairController(
     [placePath, setPlacePath] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({}),
     [review, setReview] = useState<RepairReview | null>(null);
+  const [draftActions, setDraftActions] = useState<Record<string, string>>({});
+  const [memoryState, setMemoryState] = useState("remembered");
   const [failure, setFailure] = useState<{ message: string; field?: string; noChanges?: boolean }>(),
     [busy, setBusy] = useState(false),
     [saving, setSaving] = useState(false),
@@ -46,6 +74,8 @@ export function useRepairController(
     [checkpointTitle, setCheckpointTitle] = useState("");
   const [restoreAcknowledged, setRestoreAcknowledged] = useState(false),
     [preservedDraft, setPreservedDraft] = useState<{ title: string; text: string } | null>(null);
+  const [notice, setNotice] = useState("");
+  const [collectionQuery, setCollectionQuery] = useState("");
   const epoch = useRef(0),
     operation = useRef(0),
     world = useRef(""),
@@ -53,6 +83,7 @@ export function useRepairController(
   const pending = useRef<RepairRequest | null>(null),
     checkpointRequest = useRef<{ title: string; operationId: string } | null>(null);
   const reviewRef = useRef<Pick<RepairReview, "id" | "token"> | null>(null);
+  const savedRefresh = useRef<((ticket: number) => Promise<void>) | null>(null);
   const abandonReview = () => {
     const retained = reviewRef.current;
     reviewRef.current = null;
@@ -60,12 +91,19 @@ export function useRepairController(
     pending.current = null;
     setReview(null);
   };
-  const draftKey = (id: string, pick: AgendaPick | undefined) =>
-    JSON.stringify([world.current, person?.id ?? "", id, pick?.index]);
+  const recordKey = (id: string, pick: AgendaPick | undefined, who = person) =>
+    JSON.stringify([world.current, who?.id ?? "", id, pick?.index]);
+  const draftKey = (
+    id: string,
+    pick: AgendaPick | undefined,
+    action = draftActions[recordKey(id, pick)] ?? (pick?.index === "new" ? "add-activity" : "correct"),
+    who = person,
+  ) => JSON.stringify([recordKey(id, pick, who), action]);
   const editorFields = (record: RepairRecord, pick: AgendaPick | undefined) =>
     record.agendaDay ? record.fields.filter((field) => field.key.endsWith(`:${pick?.index}`)) : record.fields;
   const current = (ticket: number) => epoch.current === ticket;
   const invalidate = () => {
+    savedRefresh.current = null;
     abandonReview();
     setAgendaPick(undefined);
     epoch.current++;
@@ -76,6 +114,7 @@ export function useRepairController(
     setTotal(0);
     setFailure(undefined);
     setRestoreAcknowledged(false);
+    setNotice("");
   };
   const acceptIndex = (result: RepairIndex, ticket: number) => {
     if (!current(ticket)) return;
@@ -95,6 +134,7 @@ export function useRepairController(
     }
     world.current = identity;
     setIndex(result);
+    setPerson((prior) => (prior ? (result.people.find((entry) => entry.id === prior.id) ?? prior) : null));
   };
   const readIndex = async (historyOffset = 0, checkpointOffset = 0) => {
     const ticket = epoch.current;
@@ -127,6 +167,7 @@ export function useRepairController(
           setView("hub");
           setIndex(result);
           checkpointRequest.current = null;
+          savedRefresh.current = null;
           return;
         }
         world.current = identity;
@@ -138,10 +179,11 @@ export function useRepairController(
       });
     return () => abort.abort();
   }, [active]);
-  const act = async (fn: (ticket: number) => Promise<void>) => {
+  const act = async (fn: (ticket: number) => Promise<unknown>) => {
     const ticket = epoch.current,
       id = ++operation.current;
     setFailure(undefined);
+    setNotice("");
     setBusy(true);
     try {
       await fn(ticket);
@@ -163,11 +205,12 @@ export function useRepairController(
     who: RepairPerson | null,
     part: Section,
     ticket: number,
+    status = memoryState,
   ) => {
     if (!current(ticket)) return;
     if (nextTopic === "restore" || (nextTopic === "people" && !who)) return;
     const result = await request<RepairRecordPage>(
-      `/repair/records?topic=${nextTopic}&offset=${start}&query=${encodeURIComponent(search)}${who ? `&personId=${encodeURIComponent(who.id)}&section=${part}` : ""}${nextTopic === "places" ? "&browse=places" : ""}`,
+      `/repair/records?topic=${nextTopic}&offset=${start}&query=${encodeURIComponent(search)}${who ? `&personId=${encodeURIComponent(who.id)}&section=${part}${part === "memories" ? `&memoryState=${status}` : ""}` : nextTopic === "world" ? `&section=${part}` : ""}${nextTopic === "places" ? "&browse=places" : ""}`,
     );
     if (!current(ticket)) return;
     if (nextTopic === "places") setPlaceDirectory(result.directory ?? []);
@@ -175,53 +218,92 @@ export function useRepairController(
     setCreation(result.creation ?? result.records.find((row) => row.creating) ?? null);
     setOffset(start);
     setTotal(result.total);
+    return result;
   };
-  const load = (nextTopic: RecordTopic = topic, start = 0, search = query) => {
-    if (reviewRef.current) {
-      abandonReview();
-      epoch.current++;
-    }
-    return act(async (ticket) => {
+  const showRecords = async (
+    nextTopic: RecordTopic,
+    start: number,
+    search: string,
+    who: RepairPerson | null,
+    part: Section,
+    ticket: number,
+    openId?: string,
+  ) => {
+    const page = await fetchRecords(nextTopic, start, search, who, part, ticket);
+    if (!current(ticket)) return;
+    const id =
+      openId ??
+      (who && part === "home"
+        ? (page?.records.find((row) => row.id.startsWith('["home",')) ?? page?.records[0])?.id
+        : who && part === "relationships"
+          ? (page?.records.find((row) => row.id.startsWith('["relationship",')) ?? page?.records[0])?.id
+          : nextTopic === "world" && (part === "setting" || part === "weather")
+            ? page?.records[0]?.id
+            : undefined);
+    if (id) await fetchRecord(id, ticket, undefined, false, who);
+    else {
+      setSelected(null);
+      setAgendaPick(undefined);
       setView(nextTopic === "restore" ? "checkpoints" : "list");
-      await fetchRecords(nextTopic, start, search, person, section, ticket);
+    }
+  };
+  const load = (nextTopic: RecordTopic = topic, start = 0, search = collectionQuery, openId?: string) => {
+    savedRefresh.current = null;
+    abandonReview();
+    epoch.current++;
+    setView("loading");
+    return act(async (ticket) => {
+      await showRecords(nextTopic, start, search, person, section, ticket, openId);
     });
   };
-  const chooseTopic = (nextTopic: RecordTopic, search = "") => {
+  const searchRecords = (search: string, start = 0, status = memoryState) => {
+    savedRefresh.current = null;
+    setCollectionQuery(search);
+    setMemoryState(status);
+    abandonReview();
+    epoch.current++;
+    return act((ticket) => fetchRecords(topic, start, search, person, section, ticket, status));
+  };
+  const chooseTopic = (nextTopic: RecordTopic, search = "", worldPart: RepairWorldSection = "setting") => {
     invalidate();
     setPerson(null);
     setPlaceDirectory([]);
     setPlacePath([]);
-    setSection("memories");
+    const part = nextTopic === "world" ? worldPart : nextTopic === "restore" ? "snapshots" : "memories";
+    setSection(part);
     setQuery(search);
+    setCollectionQuery(search);
     setTopic(nextTopic);
     collection.current = nextTopic === "restore" ? "checkpoints" : "list";
-    setView(collection.current);
+    setView("loading");
     return act(async (ticket) => {
       await readIndex();
-      await fetchRecords(nextTopic, 0, search, null, "memories", ticket);
+      await showRecords(nextTopic, 0, search, null, part, ticket);
     });
   };
-  const choosePerson = (who: RepairPerson, part: Section = "memories") => {
+  const choosePerson = (who: RepairPerson, part: RepairPersonSection = "relationships", openId?: string) => {
     invalidate();
     setPerson(who);
     setTopic("people");
     setSection(part);
     setQuery("");
+    setCollectionQuery("");
     collection.current = "list";
-    setView("list");
+    setView("loading");
     return act(async (ticket) => {
       await readIndex();
-      await fetchRecords("people", 0, "", who, part, ticket);
+      await showRecords("people", 0, "", who, part, ticket, openId);
     });
   };
   const chooseSection = (part: Section) => {
     invalidate();
     setSection(part);
     setQuery("");
-    setView("list");
+    setCollectionQuery("");
+    setView("loading");
     return act(async (ticket) => {
       await readIndex();
-      await fetchRecords(topic, 0, "", person, part, ticket);
+      await showRecords(topic, 0, "", person, part, ticket);
     });
   };
   const showHub = () => {
@@ -239,30 +321,54 @@ export function useRepairController(
     setView("history");
     return act(() => readIndex());
   };
-  const fetchRecord = async (id: string, ticket: number, pick: AgendaPick | undefined) => {
+  const fetchRecord = async (
+    id: string,
+    ticket: number,
+    pick: AgendaPick | undefined,
+    resetDraft = false,
+    who = person,
+  ) => {
     if (!current(ticket)) return;
     const record = await request<RepairRecord>(
-      `/repair/record?id=${encodeURIComponent(id)}${person ? `&personId=${encodeURIComponent(person.id)}` : ""}`,
+      `/repair/record?id=${encodeURIComponent(id)}${who ? `&personId=${encodeURIComponent(who.id)}` : ""}`,
     );
+    if (pick)
+      record.actions = record.actions.filter((action) =>
+        pick.index === "new" ? action.id === "add-activity" : action.id !== "add-activity",
+      );
     if (!current(ticket)) return;
     if (pick && record.token !== pick.token) {
       await fetchRecords(topic, 0, "", person, section, ticket);
+      if (current(ticket)) {
+        setSelected(null);
+        setAgendaPick(undefined);
+        setView("list");
+      }
       throw new Error("This date changed. Select the activity again.");
     }
     setSelected(record);
+    setAgendaPick(pick);
     setView(pick ? "list" : "edit");
-    const key = draftKey(id, pick),
-      focus = record.people?.find((p) => p.id === person?.id),
+    const rememberedAction = draftActions[recordKey(id, pick, who)];
+    const action =
+        pick?.index === "new"
+          ? "add-activity"
+          : record.actions.some((option) => option.id === rememberedAction && option.id !== "add-activity")
+            ? rememberedAction!
+            : (record.actions[0]?.id ?? ""),
+      key = draftKey(id, pick, action, who),
+      focus = record.people?.find((p) => p.id === who?.id),
       values = Object.fromEntries(editorFields(record, pick).map((f) => [f.key, f.value]));
+    setDraftActions((prior) => ({ ...prior, [recordKey(id, pick, who)]: action }));
     setDrafts((prior) =>
-      prior[key]
+      prior[key] && !resetDraft
         ? prior
         : {
             ...prior,
             [key]: {
               values,
               knowers: focus ? [focus.id] : (record.people?.slice(0, 1).map((p) => p.id) ?? []),
-              action: pick?.index === "new" ? "add-activity" : (record.actions[0]?.id ?? ""),
+              action,
               ...(record.agendaDay ? { agendaToken: record.token } : {}),
             },
           },
@@ -276,38 +382,52 @@ export function useRepairController(
     setFailure(undefined);
   };
   const open = (id: string, pick?: AgendaPick) => {
-    if (pick) {
-      closeAgendaEditor();
-      setAgendaPick(pick);
-    } else {
-      invalidate();
-      setView("edit");
-    }
+    savedRefresh.current = null;
+    abandonReview();
+    epoch.current++;
     return act((ticket) => fetchRecord(id, ticket, pick));
   };
   const draft = selected ? drafts[draftKey(selected.id, agendaPick)] : undefined;
   const fields = selected ? editorFields(selected, agendaPick) : [];
-  const hasFieldChanges = fields.some(({ key, value, type }) => {
-    const next = draft?.values[key] ?? value;
-    if (type === "clock") {
-      const before = repairClockMinutes(String(value));
-      if (before !== undefined) return repairClockMinutes(String(next)) !== before;
-    }
-    return key.startsWith("activity:") ? String(next).trim() !== String(value).trim() : next !== value;
+  const relationship = selected?.id.startsWith('["relationship",');
+  const invalidScore =
+    relationship &&
+    fields.some(({ key, value, type, min, max }) => {
+      if (type !== "number") return false;
+      const next = draft?.values[key] ?? value;
+      const score = Number(next);
+      return next === "" || !Number.isInteger(score) || score < (min ?? -Infinity) || score > (max ?? Infinity);
+    });
+  const activeFields = fields.filter(({ key }) => {
+    const target = /^target:\d+:/u.exec(key)?.[0];
+    if (draft?.values.scope === "village" && (key === "venueId" || key === "zoneId" || target)) return false;
+    if (target && key !== target + "keep" && draft?.values[target + "keep"] === false) return false;
+    return true;
   });
+  const changedValues = Object.fromEntries(
+    activeFields.flatMap((field) => {
+      const next = draft?.values[field.key] ?? field.value;
+      return sameFieldValue(field, next) ? [] : [[field.key, next] as const];
+    }),
+  );
+  const hasFieldChanges = Object.keys(changedValues).length > 0;
+  const savedText = fields.find((field) => field.key === "text")?.value;
   const canReview = Boolean(
     selected &&
     draft?.action &&
+    !invalidScore &&
+    (draft.action !== "teach" ||
+      (draft.knowers.length === 1 && selected.recipients?.some((person) => person.id === draft.knowers[0]))) &&
     !failure?.noChanges &&
     (selected.topic === "memories" &&
     draft.action === "correct" &&
     !selected.creating &&
     selected.people?.some((p) => p.text !== undefined)
-      ? selected.people.some(
+      ? hasFieldChanges ||
+        selected.people.some(
           (person) =>
             draft.knowers.includes(person.id) &&
-            (person.forgotten ||
-              (person.text ?? selected.fields.find((field) => field.key === "text")?.value) !== draft.values.text),
+            (person.forgotten || (person.text ?? savedText) !== (changedValues.text ?? savedText)),
         )
       : draft.action === "correct" || draft.action === "add-activity" || selected.creating
         ? hasFieldChanges
@@ -315,11 +435,46 @@ export function useRepairController(
   );
   const update = (change: Partial<Draft>) => {
     if (!selected) return;
-    const key = draftKey(selected.id, agendaPick);
-    setDrafts((prior) => ({ ...prior, [key]: { ...prior[key], ...change } }));
+    const action = change.action ?? draft?.action ?? selected.actions[0]?.id ?? "";
+    const key = draftKey(selected.id, agendaPick, action);
+    if (change.action) setDraftActions((prior) => ({ ...prior, [recordKey(selected.id, agendaPick)]: action }));
+    setDrafts((prior) => ({
+      ...prior,
+      [key]: {
+        ...(prior[key] ?? {
+          values: Object.fromEntries(fields.map((field) => [field.key, field.value])),
+          knowers: selected.people?.some((member) => member.id === person?.id)
+            ? [person!.id]
+            : (selected.people?.slice(0, 1).map((member) => member.id) ?? []),
+          action,
+        }),
+        ...change,
+      },
+    }));
     abandonReview();
     epoch.current++;
     setFailure(undefined);
+    setNotice("");
+  };
+  const setField = (field: RepairField, value: RepairValue) => {
+    if (!selected || !draft) return;
+    if (field.key === "timeZone" && value === "") value = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const prior = draft.values[field.key] ?? field.value;
+    if (prior === value) return;
+    const values = { ...draft.values, [field.key]: value };
+    const agendaZone = selected.agendaDay && field.key.startsWith("venue:") ? "zone:" + field.key.slice(6) : undefined;
+    const linked = fields.filter((child) => child.dependsOn === field.key || child.key === agendaZone);
+    if (!linked.length) {
+      update({ values });
+      return;
+    }
+    const linkedChoices = new Map(draft.linkedChoices);
+    for (const child of linked) {
+      linkedChoices.set(JSON.stringify([child.key, prior]), draft.values[child.key] ?? child.value);
+      values[child.key] =
+        linkedChoices.get(JSON.stringify([child.key, value])) ?? (value === field.value ? child.value : "");
+    }
+    update({ values, linkedChoices });
   };
   const prepare = () => {
     if (!selected || !draft || !canReview) return;
@@ -332,7 +487,7 @@ export function useRepairController(
         values:
           selected.topic === "memories" && ["forget", "remember"].includes(draft.action)
             ? Object.fromEntries(selected.fields.map((field) => [field.key, field.value]))
-            : draft.values,
+            : { ...Object.fromEntries(fields.map((field) => [field.key, field.value])), ...changedValues },
         expectedRecord: draft.agendaToken ?? selected.token ?? "",
         ...(person ? { personId: person.id } : {}),
       };
@@ -367,10 +522,48 @@ export function useRepairController(
           });
         }
         pending.current = null;
-        await readIndex();
-        const kept = await onApplied(review.kind);
-        if (kept) setPreservedDraft(kept);
-        if (current(ticket)) setView("done");
+        if (review.kind !== "restore") {
+          setReview(null);
+          setSelected(null);
+          setAgendaPick(undefined);
+          setView("loading");
+        }
+        const refresh = async (refreshTicket: number) => {
+          try {
+            await readIndex();
+            if (!current(refreshTicket)) return;
+            const kept = await onApplied(review.kind);
+            if (!current(refreshTicket)) return;
+            if (kept) setPreservedDraft(kept);
+            if (review.kind === "restore") setView("restored");
+            else {
+              const page = await fetchRecords(topic, offset, collectionQuery, person, section, refreshTicket);
+              if (!current(refreshTicket)) return;
+              const contains = (rows: RepairBrowseItem[]): boolean =>
+                rows.some((row) => row.id === selected?.id || contains(row.children ?? []));
+              if (
+                selected &&
+                !selected.creating &&
+                !selected.agendaDay &&
+                (page?.records.some((row) => row.id === selected.id) || contains(page?.directory ?? []))
+              )
+                await fetchRecord(selected.id, refreshTicket, undefined, true);
+              else if (person && section === "home")
+                await showRecords(topic, offset, collectionQuery, person, section, refreshTicket);
+              else setView(collection.current);
+              if (current(refreshTicket)) {
+                savedRefresh.current = null;
+                setNotice("Saved");
+              }
+            }
+          } catch (cause) {
+            if (review.kind !== "restore")
+              throw new Error("Changes saved. Could not refresh this page. Try again.", { cause });
+            throw cause;
+          }
+        };
+        if (review.kind !== "restore") savedRefresh.current = refresh;
+        await refresh(ticket);
       } finally {
         setSaving(false);
       }
@@ -423,6 +616,26 @@ export function useRepairController(
       await request("/repair/checkpoints", { method: "DELETE", body: JSON.stringify({ id, token }) });
       if (current(ticket)) await readIndex(index?.historyOffset ?? 0);
     });
+  const discard = () => {
+    if (!selected) return;
+    const key = draftKey(selected.id, agendaPick);
+    abandonReview();
+    epoch.current++;
+    setDrafts((prior) => ({
+      ...prior,
+      [key]: {
+        values: Object.fromEntries(editorFields(selected, agendaPick).map((field) => [field.key, field.value])),
+        knowers: selected.people?.some((entry) => entry.id === person?.id)
+          ? [person!.id]
+          : (selected.people?.slice(0, 1).map((entry) => entry.id) ?? []),
+        action: draft?.action ?? (agendaPick?.index === "new" ? "add-activity" : (selected.actions[0]?.id ?? "")),
+        ...(selected.agendaDay ? { agendaToken: selected.token } : {}),
+      },
+    }));
+    setFailure(undefined);
+    setNotice("");
+  };
+  const selectionEpoch = epoch.current;
   return {
     index,
     topic,
@@ -436,7 +649,7 @@ export function useRepairController(
     setPlacePath,
     creation,
     selected,
-    editorFields: fields,
+    editorFields: activeFields,
     draft,
     review,
     canReview,
@@ -452,16 +665,30 @@ export function useRepairController(
     setCheckpointTitle,
     restoreAcknowledged,
     preservedDraft,
+    notice,
+    retrySavedRefresh: savedRefresh.current
+      ? () => {
+          const retry = savedRefresh.current;
+          return retry ? act(retry) : Promise.resolve();
+        }
+      : undefined,
     setRestoreAcknowledged,
     load,
+    searchRecords,
     chooseTopic,
     choosePerson,
     chooseSection,
     showHub,
     showHistory,
     open,
+    refreshSelected: () =>
+      selected && current(selectionEpoch)
+        ? act((ticket) => fetchRecord(selected.id, ticket, agendaPick, true))
+        : Promise.resolve(),
     closeAgendaEditor,
+    setField,
     update,
+    discard,
     prepare,
     apply,
     undo,
@@ -481,8 +708,14 @@ export function useRepairController(
         setView(selected && !agendaPick ? "edit" : collection.current);
       }
     },
-    historyPage: (start: number) => act(() => readIndex(start, index?.checkpointOffset ?? 0)),
-    checkpointPage: (start: number) => act(() => readIndex(index?.historyOffset ?? 0, start)),
+    historyPage: (start: number) => {
+      epoch.current++;
+      return act(() => readIndex(start, index?.checkpointOffset ?? 0));
+    },
+    checkpointPage: (start: number) => {
+      epoch.current++;
+      return act(() => readIndex(index?.historyOffset ?? 0, start));
+    },
   };
 }
 export type RepairController = ReturnType<typeof useRepairController>;

@@ -142,7 +142,7 @@ await withBrowser(browser, async () => {
       await page.screenshot({ path: ".build-tmp/location-directory/" + name + "-all.png", fullPage: true });
       await categories.getByRole("button", { name: /^Venues/ }).click();
       await expect(directory.locator("[data-exploration-row]")).toHaveCount(2);
-      await directory.getByRole("button", { name: "Greenhouse Row · Venue", exact: true }).click();
+      await directory.getByRole("button", { name: "Greenhouse Row, Venue", exact: true }).click();
       await expect.poll(() => page.evaluate(() => window.opened)).toBe("venue:1");
       await page.getByRole("button", { name: "Back to Locations", exact: true }).click();
       await expect(categories.getByRole("button", { name: /^Venues/ })).toHaveAttribute("aria-pressed", "true");

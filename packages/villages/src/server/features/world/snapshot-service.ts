@@ -1,5 +1,6 @@
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
 import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
+import { administrativeProjectCurrent } from "../../domain/rules/project-lifecycle-rules.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { hasUnreadMail } from "../../domain/rules/mailbox-view.js";
 import { createHash } from "node:crypto";
@@ -284,11 +285,13 @@ export function createVillageSnapshot({
               candidates: project.lifecycle.candidates
                 .filter((row) => projectAgreementCurrent(village, row))
                 .map(({ residentId }) => ({ residentId })),
-              builderId: project.lifecycle.candidates.some(
-                (row) => row.residentId === project.lifecycle!.builderId && projectAgreementCurrent(village, row),
-              )
-                ? project.lifecycle.builderId
-                : "",
+              builderId:
+                administrativeProjectCurrent(village, project) ||
+                project.lifecycle.candidates.some(
+                  (row) => row.residentId === project.lifecycle!.builderId && projectAgreementCurrent(village, row),
+                )
+                  ? project.lifecycle.builderId
+                  : "",
               workOrder: project.lifecycle.workOrder
                 ? {
                     startsAt: project.lifecycle.workOrder.startsAt,

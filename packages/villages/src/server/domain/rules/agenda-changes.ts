@@ -8,6 +8,7 @@ type AgendaSource = Pick<
   VillageAgenda,
   | "calendarVersion"
   | "week"
+  | "repairedWeek"
   | "day"
   | "activeDay"
   | "plannedDays"
@@ -24,6 +25,7 @@ const source = (agenda: AgendaSource): AgendaSource => ({
   generatedAt: agenda.generatedAt,
   day: agenda.day,
   week: agenda.week,
+  repairedWeek: agenda.repairedWeek,
   activeDay: agenda.activeDay,
   plannedDays: agenda.plannedDays,
   repairedDays: agenda.repairedDays,

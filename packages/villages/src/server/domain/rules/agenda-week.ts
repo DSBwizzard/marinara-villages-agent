@@ -178,7 +178,7 @@ export function activeAgendaSleep(agenda: VillageAgenda | null, now: Date) {
   const blocks = withRecurringRest(
     agenda,
     day.dateKey,
-    agenda.week?.[day.weekday] ?? [],
+    agenda.repairedWeek?.[day.weekday] ?? agenda.week?.[day.weekday] ?? [],
     day.blocks,
     current && scheduledAgendaActivity(current) ? current.endMinute : minute,
   );
@@ -202,10 +202,12 @@ export function ordinaryAgendaBlocksFor(
   const key = agendaDateKey(at);
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
   const dated = agenda.activeDay?.dateKey === key ? agenda.activeDay.blocks : agenda.plannedDays?.[key];
+  const repeating = agenda.repairedWeek?.[weekday];
   const pending = agendaPersonalPlansPending(agenda, key);
   const preserved = agenda.repairedDays?.includes(key) || (agenda.activeDay && key < agenda.activeDay.dateKey);
   // Old saves may already have written copies of the starter week into dated rows.
   if (!captured && agendaTracksDatedPlans(agenda) && (!dated || (pending && !preserved))) {
+    if (repeating) return repeating;
     const sleep = (agenda.week?.[weekday] ?? []).filter(
       (row) => row.restKind === "sleep" || (row.activity === "Sleeping" && !flexibleAgendaBlock(row)),
     );
@@ -214,6 +216,7 @@ export function ordinaryAgendaBlocksFor(
   const influence = !agenda.calendarVersion ? agenda.scheduleInfluenceSnapshot : undefined;
   const blocks =
     dated ??
+    repeating ??
     (agenda.calendarVersion && agenda.routineProfile?.baseWeek ? agenda.week?.[weekday] : undefined) ??
     (agenda.routineProfile
       ? routineDay(agenda.routineProfile, agenda.generatedAt || agenda.routineSummary, at, influence, {
@@ -235,7 +238,7 @@ export function ordinaryAgendaBlocksFor(
       zoneId: entry.zoneId,
     }));
   return agenda.calendarVersion === 1 && (agenda.activeDay ? key > agenda.activeDay.dateKey : activating)
-    ? withRecurringRest(agenda, key, agenda.week?.[weekday] ?? [], blocks, 0)
+    ? withRecurringRest(agenda, key, repeating ?? agenda.week?.[weekday] ?? [], blocks, 0)
     : blocks;
 }
 

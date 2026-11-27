@@ -12,10 +12,15 @@ import {
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
+  cancelAgendaAppointment,
   confirmAgendaAppointment,
   sceneAgendaContext,
   agendaWeek,
+  repairSceneAppointment,
+  applySceneAppointment,
 } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
+import { arrangementRepairRecords } from "../packages/villages/src/server/domain/rules/repair-arrangements.js";
+import { agendaRepairRecords, applyAgendaRepair } from "../packages/villages/src/server/domain/rules/repair-agenda.js";
 import {
   activityMoments,
   keepsakeAvailable,
@@ -105,10 +110,11 @@ function fixture({ oldCompactCapture = false } = {}) {
     authority = world,
     source = scene,
     instant = at,
+    captured = authority,
   ) {
-    const context = narrationContinuityContext(authority, source, venue, operation, input, instant);
+    const context = narrationContinuityContext(captured, source, venue, operation, input, instant);
     const readset = fittedNarrationReadset(
-      authority,
+      captured,
       context,
       context.parts.flatMap(({ block }) => (block.evidenceId ? [block.evidenceId] : [])),
     );
@@ -190,13 +196,47 @@ await runCase("weekly-agenda/pending-dates", () => {
 
   planRoutineDays(world, agendaCalendar(world, when));
   assert.equal(resident.agenda.plannedDays?.[tomorrow], undefined, "remove a dated copy of a starter activity");
+  applyAgendaRepair(
+    world,
+    resident.characterId,
+    "2026-11-04",
+    {
+      "activity:new": "Repair the mill gate",
+      "start:new": "09:30",
+      "end:new": "10:30",
+      "purpose:new": "repair",
+      "repeat:new": "weekly",
+    },
+    "2026-11-04T08:00:00.000Z",
+    true,
+  );
+  const awaitingNewPlans = agendaWeek(world, resident.characterId, when, true).days[1]!;
+  assert(awaitingNewPlans.personalPlansPending);
+  assert(awaitingNewPlans.blocks.some(({ activity }) => activity === "Repair the mill gate"));
+  const repairDay = () => agendaRepairRecords(world, resident, at)[1]!.agenda!;
+  assert.equal(repairDay().personalPlansPending, true);
   const slot = { date: tomorrow, part: 1, startMinute: 510, endMinute: 570 };
   const now = agendaCalendar(world, when);
-  assert.equal(applyWeeklyAgenda(world, resident, now, [slot], [{ activity: "Bind a notebook", venueId: "" }]), 1);
+  assert.equal(
+    applyWeeklyAgenda(
+      world,
+      resident,
+      now,
+      [slot, { ...slot, startMinute: 570, endMinute: 630 }],
+      [
+        { activity: "Bind a notebook", venueId: "" },
+        { activity: "Paint the sign", venueId: "" },
+      ],
+    ),
+    1,
+  );
   resident.agenda.weeklyFrom = resident.agenda.weeklyThrough = tomorrow;
   const ready = agendaWeek(world, resident.characterId, when, true).days[1]!;
   assert.equal(ready.personalPlansPending, undefined);
+  assert.equal(repairDay().personalPlansPending, undefined);
   assert.ok(ready.blocks.some(({ activity }) => activity === "Bind a notebook"));
+  assert.ok(ready.blocks.some(({ activity }) => activity === "Repair the mill gate"));
+  assert.ok(!ready.blocks.some(({ activity }) => activity === "Paint the sign"));
   assert.ok(ready.blocks.every(({ activity }) => activity !== copied.activity));
 });
 
@@ -528,6 +568,76 @@ await runCase("weekly-agenda/agreement", () => {
   booking.activity = activity;
   booking.cancelled = true;
   assert(!recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
+  delete booking.cancelled;
+
+  const originalEpisodes = structuredClone(state.episodes);
+  const oldCancellation = agendaWeek(state, "mara", when, false).confirmed![0]!.token;
+  const beforeRepair = structuredClone(state);
+  repairSceneAppointment(
+    state,
+    booking.id,
+    { time: { ...booking.time, startMinute: 780, endMinute: 840 }, activity: "Read maps together" },
+    new Date(Date.parse(at) + 500).toISOString(),
+    "repair-booking",
+  );
+  let repaired = coerceVillageState(JSON.parse(JSON.stringify(state)));
+  const correctedAgenda = agendaWeek(repaired, "mara", when, false);
+  assert(
+    correctedAgenda.days[1].blocks.some(
+      (block) => block.startMinute === 780 && block.activity === "Read maps together" && block.source === "agreed",
+    ),
+  );
+  assert.equal(correctedAgenda.confirmed![0]!.activity, "Read maps together");
+  assert.throws(() => cancelAgendaAppointment(repaired, "mara", oldCancellation, when), /changed/);
+  assert.throws(() => confirmAgendaAppointment(repaired, "mara", pending[0]!.token, when), /changed/);
+  assert(!recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
+  assert.deepEqual(repaired.episodes, originalEpisodes);
+
+  const withdrawal = {
+    segments: [{ id: "withdrawal", kind: "dialogue", speakerId: "mara", text: "I need to cancel our appointment." }],
+    keep: [
+      {
+        id: "close-agreement",
+        replace: booking.id,
+        for: ["mara", "player"],
+        closeOffer: { by: "mara", reason: "withdrawn" },
+        source: [{ segment: "withdrawal", act: "withdraw" }],
+      },
+    ],
+  };
+  const sceneCancellation = structuredClone(repaired);
+  const stale = publish(
+    withdrawal,
+    "stale-withdrawal",
+    "Can we still meet?",
+    sceneCancellation,
+    scene,
+    at,
+    beforeRepair,
+  );
+  assert(
+    stale.rejected.some((row) => row.reason.includes("appointment changed")),
+    JSON.stringify(stale.rejected),
+  );
+  assert.equal(agendaWeek(sceneCancellation, "mara", when, false).confirmed![0]!.activity, "Read maps together");
+  const fresh = publish(withdrawal, "fresh-withdrawal", "Can we still meet?", sceneCancellation, scene, later);
+  assert.equal(fresh.held, false, JSON.stringify(fresh.rejected));
+  assert.equal(agendaWeek(sceneCancellation, "mara", when, false).confirmed, undefined);
+
+  const nativeCancellation = coerceVillageState(JSON.parse(JSON.stringify(repaired)));
+  cancelAgendaAppointment(nativeCancellation, "mara", correctedAgenda.confirmed![0]!.token, when);
+  assert.equal(agendaWeek(nativeCancellation, "mara", when, false).pending, undefined);
+  assert.equal(agendaWeek(nativeCancellation, "mara", when, false).confirmed, undefined);
+  assert(!arrangementRepairRecords(nativeCancellation).some(({ id }) => JSON.parse(id)[2] === booking.id));
+  repairSceneAppointment(repaired, booking.id, null, at, "cancel-booking");
+  repaired = coerceVillageState(JSON.parse(JSON.stringify(repaired)));
+  assert(!agendaWeek(repaired, "mara", when, false).days[1].blocks.some((block) => block.source === "agreed"));
+  assert.throws(() => confirmAgendaAppointment(repaired, "mara", pending[0]!.token, when), /changed/);
+  assert.equal(
+    applySceneAppointment(repaired, repaired.continuity, { target: { id: booking.id } } as any, "old-delayed-work", at),
+    false,
+  );
+  assert.equal(repaired.residentPlans.appointments?.length, 0);
 });
 
 await runCase("weekly-agenda/compact-context", () => {

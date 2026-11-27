@@ -126,9 +126,11 @@ await withBrowser(browser, async () => {
     const repair = page.locator(".villages-repair");
     await expect(repair).toBeVisible();
     await expect(chip).toHaveCount(0);
-    await repair.getByRole("button", { name: "Main menu", exact: true }).click();
+    await repair.getByRole("button", { name: /Return to village/i }).click();
     await expect(repair).toBeHidden();
     await expect(chip).toBeVisible({ timeout: 8000 });
+    if (!(await people.isVisible())) await page.getByRole("button", { name: "More", exact: true }).click();
+    await people.click();
     agenda.expired = true;
     const agendaWait = page.getByRole("dialog", { name: "Village catch-up" });
     await expect(agendaWait).toContainText("Preparing today’s Agendas", { timeout: 8000 });

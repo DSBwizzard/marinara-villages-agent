@@ -739,6 +739,45 @@ await runCase("resident-narration/agreements", () => {
   assert.equal(f.views("leo")[0].offer?.state, "accepted");
   assert.equal(f.views("leo")[0].version.text, terms);
   assert.equal(f.state.continuity.records.filter((record) => record.offer).length, 1);
+
+  const withdrawal = (id: string) => ({
+    encounter: {
+      opportunityId: id,
+      lines: [
+        { id: "withdrawal", speakerId: "mara", text: "I'm withdrawing my offer to visit the fair." },
+        { id: "acknowledgment", speakerId: "leo", text: "I understand." },
+      ],
+    },
+    keep: [
+      {
+        id: "withdraw-offer",
+        for: ["mara"],
+        replace: root,
+        closeOffer: { by: "mara", reason: "withdrawn" },
+        source: [{ segment: "withdrawal", act: "withdraw" }],
+      },
+    ],
+    requires: ["withdraw-offer"],
+  });
+  const staleCapture = f.capture("stale-withdrawal");
+  f.state.residentPlans.appointmentRepairs = {
+    [root]: { operationId: "repair-appointment", at: new Date(Date.parse(at) + 60000).toISOString() },
+  };
+  const staleReply = withdrawal("stale-withdrawal");
+  const stale = acceptResidentNarration(f.state, staleCapture, staleReply, memoryHash(staleReply), later);
+  assert(stale.held && stale.rejected.some((effect) => effect.reason.includes("appointment changed")));
+  assert.equal(f.views("mara")[0].offer?.state, "accepted");
+
+  const freshCapture = captureResidentNarration(f.state, {
+    ...f.opportunity,
+    id: "fresh-withdrawal",
+    startsAt: later,
+    endsAt: later,
+  });
+  const freshReply = withdrawal("fresh-withdrawal");
+  const fresh = acceptResidentNarration(f.state, freshCapture, freshReply, memoryHash(freshReply), later);
+  assert(!fresh.held, JSON.stringify(fresh.rejected));
+  assert.equal(f.views("mara")[0].offer?.state, "withdrawn");
 });
 
 await runCase("resident-narration/due-identities", () => {

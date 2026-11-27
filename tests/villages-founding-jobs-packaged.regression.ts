@@ -8,7 +8,12 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
-import { agendaBlocksFor, ordinaryAgendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import {
+  agendaBlocksFor,
+  completeAgendaWeek,
+  ordinaryAgendaBlocksFor,
+  workingAgendaWeek,
+} from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { calendarAt } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
@@ -62,6 +67,14 @@ for (const resident of world.villagers) {
   resident.agenda = unwrittenVillageAgenda(new Date(now));
   world.startingHistory.reviewed[resident.characterId] = resident.incarnation;
 }
+const fixedRepair = { startMinute: 1080, endMinute: 1140, activity: "Repair the gate", purpose: "repair", venueId: "" };
+const morningSleep = { startMinute: 0, endMinute: 480, activity: "Sleeping", restKind: "sleep", essential: true };
+const nightSleep = { ...morningSleep, startMinute: 1380, endMinute: 1440 };
+const repairedThursday = completeAgendaWeek(
+  { Thursday: [morningSleep, fixedRepair, nightSleep] },
+  workingAgendaWeek(),
+).Thursday!;
+world.villagers[0]!.agenda!.repairedWeek = { Thursday: repairedThursday };
 world.residentPlans.appointments = [
   {
     id: "saved-opening-appointment",
@@ -252,6 +265,12 @@ try {
     ),
     "Afternoon plans are active today",
   );
+  assert.ok(
+    agendaBlocksFor(starterAgenda, new Date(now)).some(
+      (block) => block.activity === fixedRepair.activity && block.startMinute === fixedRepair.startMinute,
+    ),
+    "Applying today's starter plans preserves a fixed recurring repair",
+  );
   const afterStarter = calendarAt(new Date(), starterAgenda.starterWeekThrough, 720);
   afterStarter.setDate(afterStarter.getDate() + 1);
   const pending = ordinaryAgendaBlocksFor(starterAgenda, afterStarter);
@@ -338,6 +357,7 @@ try {
   );
   await app.inject({ method: "POST", url: "/api/villages/setup/preparation/retry", payload: target });
   assert.equal(calls, before + 1, "duplicate retry is free");
+  records.get("villages-village").data.villagers[1].agenda.repairedWeek = { Thursday: repairedThursday };
   const rebuild = () =>
     app.inject({
       method: "POST",
@@ -378,6 +398,12 @@ try {
       (block) =>
         block.commitmentId === "saved-opening-appointment" && block.startMinute === 1305 && block.endMinute === 1350,
     ),
+  );
+  assert.ok(
+    agendaBlocksFor(rebuiltWorld.villagers[1].agenda, new Date(now)).some(
+      (block) => block.activity === fixedRepair.activity && block.startMinute === fixedRepair.startMinute,
+    ),
+    "Rebuilding a booked date preserves its fixed recurring repair",
   );
   assert.equal(rebuiltWorld.villagers[0].identityDescription.text, manualText);
   assert.equal((await rebuild()).statusCode, 202);

@@ -21,7 +21,7 @@ import {
   projectAgreementCurrent,
 } from "./project-terms.js";
 import { cloneVillageContext } from "./world-context-copy.js";
-import { initializeRoomContinuity } from "./native-continuity.js";
+import { initializeRoomContinuity, removeNativeRoom } from "./native-continuity.js";
 import { captureZoneObservation } from "./zone-observation.js";
 import { stageProjectRoomEdits } from "./project-room-edits.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
@@ -76,13 +76,32 @@ export function missingProjectAgreements(state: VillageState, project: VillagePr
       ),
   );
 }
+export function administrativeProjectCurrent(
+  state: VillageState,
+  project: VillageProject,
+  lead = project.lifecycle?.builderId,
+): boolean {
+  const repair = project.lifecycle?.repair;
+  return (
+    !!repair &&
+    repair.builder.id === lead &&
+    state.villagers.some(
+      (person) => person.characterId === lead && person.incarnation === repair.builder.incarnation,
+    ) &&
+    matchesProjectDesign(repair.scope, project)
+  );
+}
 /** Refresh readiness from current authority without granting or manufacturing consent. */
 export function refreshProjectAgreements(state: VillageState): void {
   for (const project of state.projects) {
     const flow = project.lifecycle;
     if (!flow || !["planning", "working", "paused"].includes(project.status)) continue;
     flow.candidates = flow.candidates.filter((row) => projectAgreementCurrent(state, row));
-    if (!flow.candidates.some((row) => row.residentId === flow.builderId)) flow.builderId = "";
+    if (
+      !flow.candidates.some((row) => row.residentId === flow.builderId) &&
+      !administrativeProjectCurrent(state, project)
+    )
+      flow.builderId = "";
     const venue = findLocation(state, project.venueId);
     if (project.kind === "new-venue" || !venue || !flow.change) continue;
     missingProjectAgreements(state, project);
@@ -109,6 +128,21 @@ export function pauseProject(project: VillageProject, at: string, reason: string
   flow.blockedReason = reason;
   project.updatedAt = at;
 }
+export function cancelProjectWork(state: VillageState, project: VillageProject, at: string): void {
+  if (["complete", "cancelled"].includes(project.status)) throw conflict("This Project is already finished.");
+  trimProjectFocus(project, at);
+  project.status = project.lifecycle!.phase = "cancelled";
+  project.updatedAt = at;
+  project.lifecycle!.blockedReason = "";
+  if (project.kind === "new-venue") {
+    const site = state.venues.find((venue) => venue.buildProjectId === project.id);
+    if (site) {
+      for (const zone of site.zones ?? []) removeNativeRoom(state, site.id, zone.id, at);
+      state.venues = state.venues.filter((venue) => venue !== site);
+    }
+  }
+  projectAgendaReservations(state);
+}
 export function finishConstruction(
   state: VillageState,
   project: VillageProject & { lifecycle: VillageProjectLifecycle },
@@ -133,18 +167,19 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
       flow = project.lifecycle;
     if (
       !state.villagers.some((resident) => resident.characterId === flow.builderId) ||
-      !flow.candidates.some(
-        (candidate) =>
-          candidate.residentId === flow.builderId &&
-          projectAgreementCurrent(state, candidate) &&
-          matchesProjectDesign(candidate.scope, project),
-      )
+      (!administrativeProjectCurrent(state, project) &&
+        !flow.candidates.some(
+          (candidate) =>
+            candidate.residentId === flow.builderId &&
+            projectAgreementCurrent(state, candidate) &&
+            matchesProjectDesign(candidate.scope, project),
+        ))
     ) {
       pauseProject(project, at, "Choose a willing resident lead, then Resume.");
       continue;
     }
     try {
-      if (missingProjectAgreements(state, project).length) {
+      if (missingProjectAgreements(state, project).length && !administrativeProjectCurrent(state, project)) {
         pauseProject(project, at, "Renew the necessary agreements, then Resume.");
         continue;
       }
@@ -171,6 +206,7 @@ export function beginProject(
   row: Record<string, unknown>,
   resume: boolean,
   now: Date,
+  options: { administrativeFinish?: boolean; remainingMs?: number } = {},
 ) {
   const flow = project.lifecycle;
   const at = now.toISOString();
@@ -179,12 +215,13 @@ export function beginProject(
   const lead = asTrimmedString(row.residentId) || flow.builderId;
   if (
     !state.villagers.some((resident) => resident.characterId === lead) ||
-    !flow.candidates.some(
-      (candidate) =>
-        candidate.residentId === lead &&
-        projectAgreementCurrent(state, candidate) &&
-        matchesProjectDesign(candidate.scope, project),
-    )
+    (!administrativeProjectCurrent(state, project, lead) &&
+      !flow.candidates.some(
+        (candidate) =>
+          candidate.residentId === lead &&
+          projectAgreementCurrent(state, candidate) &&
+          matchesProjectDesign(candidate.scope, project),
+      ))
   )
     throw conflict("Choose a willing resident lead for this design.");
   const others = state.projects.filter(
@@ -195,7 +232,8 @@ export function beginProject(
     throw conflict("This resident already leads an active Project.");
   if (others.some((other) => other.venueId && other.venueId === project.venueId))
     throw conflict("This Venue already has an active Project.");
-  if (missingProjectAgreements(state, project).length) throw conflict("Obtain the necessary agreements first.");
+  if (missingProjectAgreements(state, project).length && !administrativeProjectCurrent(state, project, lead))
+    throw conflict("Obtain the necessary agreements first.");
   if (project.kind !== "new-venue") {
     const venue = findLocation(state, project.venueId)!;
     if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
@@ -242,7 +280,15 @@ export function beginProject(
       for (const candidate of agreed) candidate.scope = projectDesignKey(project);
     }
   }
-  const remaining = resume ? flow.workOrder!.remainingMs : PROJECT_DURATION_MS;
+  if (
+    options.remainingMs !== undefined &&
+    (!administrativeProjectCurrent(state, project, lead) ||
+      !Number.isFinite(options.remainingMs) ||
+      options.remainingMs < 0 ||
+      options.remainingMs > 720 * 3600000)
+  )
+    throw conflict("Review a valid Project duration.");
+  const remaining = options.remainingMs ?? (resume ? flow.workOrder!.remainingMs : PROJECT_DURATION_MS);
   const previousFocus = flow.workOrder?.focus;
   flow.builderId = lead;
   flow.workOrder = {
@@ -256,6 +302,10 @@ export function beginProject(
   flow.blockedReason = "";
   project.updatedAt = at;
   project.participantIds = [lead];
-  flow.workOrder.focus = allocateProjectFocus(state, project, now);
+  if (options.administrativeFinish && !administrativeProjectCurrent(state, project, lead))
+    throw conflict("Review the administrative Project correction first.");
+  flow.workOrder.focus = options.administrativeFinish
+    ? { remainingMs: 0, periods: [] }
+    : allocateProjectFocus(state, project, now);
   projectAgendaReservations(state);
 }
