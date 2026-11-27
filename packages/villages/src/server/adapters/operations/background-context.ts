@@ -13,6 +13,10 @@ export function configureBackgroundContext(service: BackgroundContext): () => vo
 export function backgroundProviderDispatch(): (() => void) | undefined {
   return binding.maybe()?.backgroundCalls.getStore()?.beforeProviderDispatch;
 }
+/** Replay one completed step of the already admitted job. */
+export function readSavedBackgroundCheckpoint(key: string) {
+  return binding.maybe()?.backgroundCalls.getStore()?.readSavedCheckpoint?.(key);
+}
 export const backgroundCalls = {
   getStore(): BackgroundCompletion | undefined {
     return backgroundContext().backgroundCalls.getStore();

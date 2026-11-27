@@ -46,6 +46,7 @@ import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { SceneActionIcon } from "./SceneActionIcon.js";
 import { LoreActivitySlot } from "../../shared/LoreActivity.js";
 import { SceneMoveDialog, type SceneMoveZone } from "./SceneMoveDialog.js";
+import { useAgendaWaiting } from "../../shared/agenda-access.js";
 import type { ZoneLayout } from "../../../shared/helpers/zone-layout.js";
 
 const emptyLore: NonNullable<SceneView["lore"]> = [];
@@ -615,8 +616,9 @@ export function RoomPanel({
   }, [worldScope, room.id, room.zoneId]);
   const canDraft = !ended && room.status === "active" && !room.visitorIntroduction;
   const canCompose = canDraft && !historyOpen && (!canReadNext || busy || !!error || !!turnRecovery);
+  const agendaWaiting = useAgendaWaiting();
   const canRetryReply = canCompose && !canReadNext && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
-  const canSend = canCompose && !historyOpen && !busy && !contactRecovery;
+  const canSend = canCompose && !historyOpen && !busy && !contactRecovery && !agendaWaiting;
   const canRemind = canSend && !!draft.trim();
   const retryingReminder =
     room.operation?.input?.rememberFor &&

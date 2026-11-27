@@ -980,7 +980,7 @@ await withBrowser(browser, async () => {
       await tuesday.click();
       await expect(maps).toHaveCount(0);
       await expect(overview.getByRole("status")).toHaveCount(0);
-      await expect(planner.getByRole("button", { name: "12:00 PM · Seen here · The Mill · Observed" })).toBeVisible();
+      await expect(planner.getByRole("button", { name: "12:00 PM, Seen here, The Mill, Observed" })).toBeVisible();
       await clickCharacterTool(page, "Inspect");
       await expect(tuesday).toHaveAttribute("aria-pressed", "true");
       await monday.click();

@@ -226,6 +226,7 @@ function PreparationProgress({ controller }: { controller: PreparationScreenCont
               .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
           }
           onChange={async () => controller.setSnapshot(await request("/setup/preparation"))}
+          retryMissing={preparation.status === "ready" ? () => retryPreparation() : undefined}
         />
       ) : null}
       {!failed && preparation?.status !== "ready" ? (

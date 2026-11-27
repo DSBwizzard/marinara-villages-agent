@@ -1,6 +1,7 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { agendaWeek } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
 import { applyWorldRepair, worldRepairRecords } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
 import { sameSceneRoutine } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
@@ -113,6 +114,30 @@ const raw = {
 };
 const records = new Map<string, any>();
 
+{
+  const activity = "Right now you are patrolling the Hiking Trail, memorizing escape routes.";
+  const world = coerceVillageState(raw);
+  const agenda = parseCompactFounding(
+    { ...payload, palette: [{ ...palette[0], activity }, ...palette.slice(1)] },
+    context,
+  ).agenda;
+  agenda.routineProfile!.activities[0]!.activity = activity;
+  agenda.activeDay = { dateKey, weekday, blocks: [{ ...block, activity }], scheduleInformed: true };
+  world.villagers[0]!.agenda = agenda;
+  assert.equal(
+    agendaWeek(world, "a", today, true).days[0]!.blocks[0]!.activity,
+    "Patrolling the Hiking Trail, memorizing escape routes.",
+  );
+  assert.equal(agenda.activeDay.blocks[0]!.activity, activity, "Inspection leaves the saved Agenda intact.");
+  assert.equal(agendaWeek(world, "a", today, true).days[0]!.blocks[0]!.label, "Patrolling the Hiking Trail");
+  agenda.repairedDays = [dateKey];
+  assert.equal(
+    agendaWeek(world, "a", today, true).days[0]!.blocks[0]!.activity,
+    activity,
+    "A dated Repair keeps the author's words.",
+  );
+}
+
 let calls = 0,
   fail = false,
   lastOptions: any;
@@ -166,11 +191,25 @@ const release = configureVillagesRuntime({
         fitContext(messages: any, options: any) {
           return { messages, ...options };
         },
-        async chatComplete(_messages: any, options: any) {
+        async chatComplete(messages: any, options: any) {
           calls++;
           lastOptions = options;
+          const { residents } = JSON.parse(String(messages.at(-1).content)) as {
+            residents: { name: string; characterCard: string; recent?: string[]; days: [string, string, number][] }[];
+          };
+          assert.equal(residents.length, 1, "Regeneration supplies only the selected villager.");
+          for (const detail of [/An autonomous gardener/, /Patient/, /Grows herbs/])
+            assert.match(residents[0]!.characterCard, detail);
+          assert.equal(residents[0]!.recent, undefined, "Saved plans stay out of the regeneration request.");
+          const plans = Object.fromEntries(
+            residents[0]!.days.map(([id, date, count]) => {
+              const prefix = fail ? "Another" : "A dated";
+              const activities = Array.from({ length: count }, (_, index) => `${prefix} pursuit ${date} ${index}`);
+              return [id, fail ? activities.fill(activities[0]!) : activities];
+            }),
+          );
           return {
-            content: fail ? "{invalid" : JSON.stringify(payload),
+            content: JSON.stringify({ plans }),
             usage: { promptTokens: 200, completionTokens: 100, totalTokens: 300 },
             finishReason: "stop",
           };
@@ -184,6 +223,7 @@ async function main() {
   const repairedWorld = coerceVillageState(raw);
   repairedWorld.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const repairAgenda = unwrittenVillageAgenda(today);
+  repairAgenda.personalizationPending = false;
   const nextDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12);
   const followingDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2, 12);
   const chosenDate = agendaDateKey(nextDay);
@@ -518,24 +558,37 @@ async function main() {
       persisted.villagers[0]!.agenda!.plannedDays,
     );
     const before = persisted.villagers[0]!.agenda!.activeDay;
-    await clearVillagerAgenda("a", "one-action");
+    await Promise.all([clearVillagerAgenda("a", "one-action"), clearVillagerAgenda("a", "one-action")]);
     await settleBackgroundWork();
     assert.equal(
       calls,
       1,
       "one generation request, no translation afterwards: " + JSON.stringify(await backgroundWorkSummaries()),
     );
+    const agendaJobs = (await backgroundWorkSummaries()).filter((job) => job.kind === "agenda");
     assert.ok(
-      (await backgroundWorkSummaries()).some((job) => job.kind === "agenda" && job.status === "completed"),
-      "the valid response actually completes Routine generation",
+      agendaJobs.some((job) => job.status === "completed"),
+      "the valid response completes weekly Agenda generation: " +
+        JSON.stringify(agendaJobs.map(({ status, error }) => ({ status, error }))),
     );
     assert.ok(lastOptions.maxTokens <= 4000);
-    assert.equal(lastOptions.reasoningEffort, "none");
+    assert.deepEqual(lastOptions.responseFormat, { type: "json_object" });
     assert.deepEqual(
       (await readVillageState({ memories: true })).villagers[0]!.agenda!.activeDay,
       before,
       "regeneration preserves today",
     );
+    const regenerated = (await readVillageState()).villagers[0]!.agenda!;
+    const days = Array.from(
+      { length: 7 },
+      (_, index) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + index + 1, 12),
+    );
+    for (const day of days) {
+      const blocks = agendaBlocksFor(regenerated, day);
+      assert.ok(blocks.length >= 3);
+      assert.ok(blocks.every(({ activity }) => activity.includes(`A dated pursuit ${agendaDateKey(day)}`)));
+      assert.equal(new Set(blocks.map(({ activity }) => activity)).size, blocks.length);
+    }
     await clearVillagerAgenda("a", "one-action");
     await settleBackgroundWork();
     assert.equal(calls, 1);
@@ -638,13 +691,13 @@ async function main() {
     fail = true;
     await clearVillagerAgenda("a", "bad-output");
     await settleBackgroundWork();
-    assert.equal(calls, 3, "malformed output receives one eligible replacement request");
+    assert.equal(calls, 2, "Repeated same-day activities spend one request and wait for an explicit retry.");
     const failed = (await backgroundWorkSummaries()).find((job) => job.kind === "agenda" && job.status === "failed");
-    assert.equal(failed?.attempt, 3, "successful generation, explicit regeneration, then one automatic retry");
-    assert.equal(failed?.requests, 2);
+    assert.equal(failed?.attempt, 2);
+    assert.equal(failed?.requests, 1);
     await buildVillageAgendas();
     await settleBackgroundWork();
-    assert.equal(calls, 3, "local reads cannot purchase another retry after the allowance is spent");
+    assert.equal(calls, 2, "Local reads cannot purchase another retry.");
     assert.ok((await backgroundWorkSummaries()).some((job) => job.kind === "agenda" && job.status === "failed"));
     assert.ok(agendaBlocksFor((await readVillageState({ memories: true })).villagers[0]!.agenda!, next).length);
     await mutateVillageState((value) => {
@@ -654,7 +707,7 @@ async function main() {
     });
     await reconcileVillage({ now: today });
     await settleBackgroundWork();
-    assert.equal(calls, 3, "Missing agendas cannot admit a paid request");
+    assert.equal(calls, 2, "Missing agendas cannot admit a paid request");
     assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda, null);
   } finally {
     stop();

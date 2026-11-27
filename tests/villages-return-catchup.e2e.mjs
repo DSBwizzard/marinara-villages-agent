@@ -10,6 +10,7 @@ await withBrowser(browser, async () => {
     await mockEngineLookups(page);
     let reads = 0;
     let continued = 0;
+    let agenda = null;
     let batch = {
       id: "batch",
       status: "failed",
@@ -37,8 +38,22 @@ await withBrowser(browser, async () => {
           await fulfill(route, { status: 500, json: { error: "Catch-up status is unavailable." } });
           return;
         }
-        value = { batch };
+        value = { batch, agenda };
       } else if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
+      else if (path.endsWith("/repair"))
+        value = {
+          seed: fixture.worldScope,
+          identity: fixture.worldScope,
+          records: [],
+          history: [],
+          historyOffset: 0,
+          historyTotal: 0,
+          checkpoints: [],
+          checkpointOffset: 0,
+          checkpointTotal: 0,
+          people: [],
+          sceneOpen: false,
+        };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
       await fulfill(route, { status: 200, json: value });
@@ -59,6 +74,72 @@ await withBrowser(browser, async () => {
     await dialog.getByRole("button", { name: "Continue to Village" }).click();
     await expect(dialog).toBeHidden();
     assert.equal(continued, 1);
+    agenda = { expired: false, completed: 1, total: 2 };
+    const chip = page.getByRole("button", { name: "Preparing Agendas", exact: true });
+    await expect(chip).toBeVisible({ timeout: 8000 });
+    const mapChip = await chip.boundingBox();
+    await page.locator('[data-pin-id="market"]').click();
+    await expect(page.getByRole("heading", { name: "The Market", exact: true })).toBeVisible();
+    const venueChip = await chip.boundingBox();
+    assert.ok(venueChip.x < 20 && venueChip.y < 20, "the venue chip sits in the top-left corner");
+    await chip.click();
+    await expect(page.getByText("1 of 2 ready", { exact: true })).toBeVisible();
+    await page.screenshot({ path: resolve(`.build-tmp/agenda-chip-venue-${width}.png`) });
+    await page.getByRole("button", { name: "Back to map", exact: true }).click();
+    const people = page.getByRole("button", { name: "People", exact: true });
+    if (!(await people.isVisible())) await page.getByRole("button", { name: "More", exact: true }).click();
+    await people.click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    const returnButton = page.getByRole("button", { name: /Return to village|← Village/, exact: true });
+    await expect(returnButton).toBeVisible();
+    const menuChip = await chip.boundingBox();
+    assert.ok(mapChip.x < 20, "the chip stays on the left on the Map");
+    assert.ok(menuChip.x < 20 && menuChip.y < 20, "the menu chip sits in the top-left corner");
+    await chip.click();
+    await expect(page.getByText("1 of 2 ready", { exact: true })).toBeVisible();
+    await returnButton.click({ trial: true });
+    await page.screenshot({ path: resolve(`.build-tmp/agenda-chip-menu-${width}.png`) });
+    const menuNavigation = page.getByRole("navigation", { name: "Village navigation", exact: true });
+    await menuNavigation.getByRole("button", { name: "Projects", exact: true }).click({ trial: true });
+    await page.keyboard.press("Escape");
+    await expect(chip).toHaveAttribute("aria-expanded", "false");
+    await expect(chip).toBeFocused();
+    agenda = {
+      ...agenda,
+      failure: {
+        name: "Mara",
+        message: "The model reply was cut short. Retry to finish preparing Mara’s Agenda.",
+        id: "failed-agenda",
+        expectedAttempt: 1,
+        expectedInstanceId: "attempt-one",
+      },
+    };
+    await page.getByRole("button", { name: "Agenda preparation needs attention" }).click({ timeout: 8000 });
+    await expect(page.getByRole("button", { name: "Retry Mara" })).toBeVisible();
+    await returnButton.click({ trial: true });
+    await menuNavigation.getByRole("button", { name: "Projects", exact: true }).click({ trial: true });
+    await menuNavigation.getByRole("button", { name: "Settings", exact: true }).click();
+    delete agenda.failure;
+    const sections = page.getByRole("combobox", { name: "Section", exact: true });
+    if (width <= 700) await sections.selectOption("repair");
+    else await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+    const repair = page.locator(".villages-repair");
+    await expect(repair).toBeVisible();
+    await expect(chip).toHaveCount(0);
+    await repair.getByRole("button", { name: "Main menu", exact: true }).click();
+    await expect(repair).toBeHidden();
+    await expect(chip).toBeVisible({ timeout: 8000 });
+    agenda.expired = true;
+    const agendaWait = page.getByRole("dialog", { name: "Village catch-up" });
+    await expect(agendaWait).toContainText("Preparing today’s Agendas", { timeout: 8000 });
+    assert.ok(await page.locator('[inert] [aria-label="Village navigation"]').count());
+    await page.keyboard.press("Escape");
+    await expect(agendaWait).toBeVisible();
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(agendaWait).toContainText("Preparing today’s Agendas", { timeout: 8000 });
+    agenda = null;
+    await expect(agendaWait).toBeHidden({ timeout: 8000 });
     await page.close();
   }
 });

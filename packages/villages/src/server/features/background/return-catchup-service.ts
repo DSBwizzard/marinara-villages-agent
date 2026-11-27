@@ -10,6 +10,7 @@ import { conflict } from "../../domain/rules/errors.js";
 import { backgroundSlotId } from "../../domain/rules/background-revision.js";
 import { activityDate } from "../../domain/rules/event-attempts.js";
 import { departureContinuityAvailable } from "../../domain/rules/return-catchup-capture.js";
+import { weeklyAgendaResidents } from "../../domain/rules/weekly-agenda.js";
 
 type Ports = {
   readAuthority?: () => Promise<VillageState>;
@@ -43,7 +44,8 @@ export function createReturnCatchup(ports: Ports) {
   async function prepare(now: Date, id: string): Promise<void> {
     const wallTime = Date.now();
     await mutate((state) => {
-      discoverReturnBatch(state, now, id);
+      // Dated worlds leave optional generation on its live schedule instead of holding play to add old events.
+      if (!weeklyAgendaResidents(state).length) discoverReturnBatch(state, now, id);
       expirePlayerVisitsOnReturn(state, wallTime);
     });
   }

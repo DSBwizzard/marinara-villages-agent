@@ -408,12 +408,36 @@ function coerceAgenda(value: unknown, preserveCapturedAgenda: boolean): VillageA
   const fallback = workingAgendaWeek();
   if (raw.calendarVersion === 1) agenda.calendarVersion = 1;
   agenda.week = completeAgendaWeek(raw.week, fallback);
+  const datedFallback = agenda.calendarVersion && !preserveCapturedAgenda ? fallback : agenda.week;
   agenda.plannedDays = Object.fromEntries(
     Object.entries(asRecord(raw.plannedDays))
       .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key))
       .slice(-96)
-      .map(([key, blocks]) => [key, completeAgendaWeek({ Monday: blocks }, agenda.week!).Monday!]),
+      .map(([key, blocks]) => [key, completeAgendaWeek({ Monday: blocks }, datedFallback).Monday!]),
   );
+  const manualWeek = asRecord(raw.manualWeek);
+  if (typeof raw.starterWeekFrom === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.starterWeekFrom))
+    agenda.starterWeekFrom = raw.starterWeekFrom;
+  if (typeof raw.starterWeekThrough === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.starterWeekThrough))
+    agenda.starterWeekThrough = raw.starterWeekThrough;
+  if (typeof raw.weeklyThrough === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.weeklyThrough))
+    agenda.weeklyThrough = raw.weeklyThrough;
+  if (typeof raw.weeklyFrom === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.weeklyFrom))
+    agenda.weeklyFrom = raw.weeklyFrom;
+  if (
+    typeof manualWeek.actionId === "string" &&
+    /^[a-zA-Z0-9-]{1,100}$/.test(manualWeek.actionId) &&
+    typeof manualWeek.through === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(manualWeek.through)
+  ) {
+    agenda.manualWeek = {
+      actionId: manualWeek.actionId,
+      through: manualWeek.through,
+      ...(typeof manualWeek.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(manualWeek.from)
+        ? { from: manualWeek.from }
+        : {}),
+    };
+  }
   if (Array.isArray(raw.repairedDays)) {
     const dates = [
       ...new Set(
@@ -430,7 +454,7 @@ function coerceAgenda(value: unknown, preserveCapturedAgenda: boolean): VillageA
     /^\d{4}-\d{2}-\d{2}$/.test(active.dateKey) &&
     typeof active.weekday === "string"
   ) {
-    const rows = completeAgendaWeek({ [active.weekday]: active.blocks }, agenda.week)[active.weekday];
+    const rows = completeAgendaWeek({ [active.weekday]: active.blocks }, datedFallback)[active.weekday];
     if (rows)
       agenda.activeDay = {
         dateKey: active.dateKey,

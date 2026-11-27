@@ -247,7 +247,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     siteProjectId,
     setSiteProjectId,
   } = useProjectsState();
-  const screen = sceneNavigationScreen(requestedScreen, !!room && room.status !== "closed", !!placingProjectId);
+  const foundingBlocked = snapshot?.foundingPreparation?.canPlay === false;
+  const screen = foundingBlocked
+    ? "preparing"
+    : sceneNavigationScreen(requestedScreen, !!room && room.status !== "closed", !!placingProjectId);
   useLayoutEffect(() => {
     // Ordinary exploration requests must not wait behind the Scene; Project placement is an editor.
     if (requestedScreen !== screen) setScreen(screen);
@@ -597,14 +600,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   useResidentAgendaPolling({ visible, agendas, loadAgendas, personProfile, profileInspection, screen });
 
-  /**
-   * Ask the village to work one villager out again.
-   *
-   * The press only clears what is stored; the writing happens on the next part of
-   * the day, along with everything else the village does. The server answers with
-   * the whole list and that answer is what gets drawn, so a row can never be left
-   * showing something the village has already forgotten.
-   */
   const retryWork = useResidentsRetryWork({ loadAgendas, setSnapshot });
 
   const backgroundPanel = <BackgroundWorkPanel jobs={snapshot?.backgroundWork ?? []} onRetry={retryWork} />;
@@ -612,6 +607,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const rewriteAgenda = useRewriteAgenda({
     currentSnapshotRef,
     retryWork,
+    loadSnapshot,
     setAgendas,
     setBusy,
     setError,
@@ -630,7 +626,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // session; the client restores it instead of opening another conversation.
   const sceneRestoration = useActiveSceneRestoration({
     ...scenes,
-    isFounded: snapshot?.isFounded,
+    isFounded: snapshot?.isFounded && !foundingBlocked,
     room,
     setRoom,
     setScreen,

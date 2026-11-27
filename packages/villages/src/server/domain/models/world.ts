@@ -9,6 +9,11 @@ export type VillageAgenda = {
   calendarVersion?: 1;
   recentChanges?: import("../decoding/agenda-codec.js").AgendaChange[];
   plannedDays?: Record<string, VillageAgendaBlock[]>;
+  manualWeek?: { actionId: string; through: string; from?: string };
+  weeklyFrom?: string;
+  starterWeekFrom?: string;
+  starterWeekThrough?: string;
+  weeklyThrough?: string;
   /** Preserve dated corrections when the Agenda is regenerated. */
   repairedDays?: string[];
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
@@ -21,7 +26,7 @@ export type VillageAgenda = {
   day: VillageAgendaBlock[];
   /** Villages' own complete weekly plan, independent of Marinara schedules. */
   week?: Record<string, VillageAgendaBlock[]>;
-  /** The day already in progress never changes when a week is rewritten. */
+  /** Weekly refreshes preserve the active day. */
   activeDay?: { dateKey: string; weekday: string; blocks: VillageAgendaBlock[]; scheduleInformed: boolean };
   /** Failed generation keeps the owned routine; only deliberate retry can spend again. */
   personalizationPending?: boolean;
@@ -36,6 +41,7 @@ export type VillageAgenda = {
 export type AgendaPurpose = "ordinary" | "rest" | "work" | "repair" | "unplanned";
 
 export type VillageAgendaBlock = {
+  restKind?: "sleep" | "other" | "nap";
   purpose?: AgendaPurpose;
   essential?: boolean;
   commitmentId?: string;

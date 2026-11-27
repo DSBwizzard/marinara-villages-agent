@@ -12,7 +12,6 @@ import {
 import {
   foundingIdentity,
   foundingRequestMessages,
-  ROUTINE_INSTRUCTIONS,
   WISH_INSTRUCTIONS,
 } from "../packages/villages/src/server/domain/rules/founding-requests.js";
 import {
@@ -48,7 +47,6 @@ const context = {
   wishes: [],
   schedule: null,
 };
-assert(ROUTINE_INSTRUCTIONS.length <= 1600);
 assert(WISH_INSTRUCTIONS.length <= 1800);
 for (const task of ["routine", "wish"] as const) {
   const messages = foundingRequestMessages(context, task),
@@ -69,6 +67,19 @@ const scoped = {
     venueFixture({ id: "station", name: "Station", form: "Station building", description: "retired Room prose" }),
   ],
 };
+const starter = foundingRequestMessages({ ...scoped, starterWeekStart: "2026-11-11" }, "routine");
+assert.match(String(starter[0].content), /starterDays/);
+const starterData = JSON.parse(String(starter[1].content));
+assert.equal(starterData.starterWeekStart, "2026-11-11");
+assert.deepEqual(starterData.places, [{ number: 1, name: "Station" }]);
+assert(starter.reduce((n, row) => n + String(row.content).length, 0) <= 6000);
+const restIntent = foundingRequestMessages(
+  { ...scoped, starterWeekStart: "2026-11-11", starterRestFormat: 1 },
+  "routine",
+);
+assert.match(String(restIntent[0].content), /kind:"sleep"\|"nap"\|"other"/);
+assert.doesNotMatch(String(restIntent[0].content), /Sketching the mill gate|Resting at home|Sleeping|Napping/);
+assert.deepEqual(restIntent[1], starter[1]);
 for (const task of ["routine", "wish"] as const) {
   const content = String(foundingRequestMessages(scoped, task)[1].content),
     data = JSON.parse(content);

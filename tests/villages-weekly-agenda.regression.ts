@@ -1,4 +1,4 @@
-// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo, weekly-agenda/scene-scheduling, weekly-agenda/compact-context
+// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo, weekly-agenda/scene-scheduling, weekly-agenda/compact-context, weekly-agenda/coverage, weekly-agenda/pending-dates, weekly-agenda/return-refresh
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mock } from "node:test";
@@ -25,7 +25,7 @@ import {
   agendaChangeSources,
   recordAgendaChanges,
 } from "../packages/villages/src/server/domain/rules/agenda-changes.js";
-import { agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { activeAgendaSleep, agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -36,6 +36,13 @@ import { acceptNarration } from "../packages/villages/src/server/domain/rules/na
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
+import {
+  agendaCalendar,
+  agendaCoverage,
+  applyWeeklyAgenda,
+  assertTodayAgendas,
+} from "../packages/villages/src/server/domain/rules/weekly-agenda.js";
 
 const at = "2026-11-10T08:00:00.000Z";
 const later = "2026-11-10T08:01:00.000Z";
@@ -126,8 +133,236 @@ function fixture({ oldCompactCapture = false } = {}) {
   return { world, resident, publish, scene };
 }
 
+await runCase("weekly-agenda/coverage", () => {
+  const { world, resident } = fixture();
+  world.timeZone = "America/Los_Angeles";
+  resident.agenda.calendarVersion = 1;
+  resident.agenda.starterWeekThrough = "2026-11-10";
+  resident.agenda.manualWeek = { actionId: "tomorrow", from: "2026-11-12", through: "2026-11-18" };
+  const before = new Date("2026-11-11T07:59:59Z");
+  const after = new Date("2026-11-11T08:00:00Z");
+  assert.equal(agendaCoverage(world, before).ready.length, 1);
+  assert.doesNotThrow(() => assertTodayAgendas(world, before));
+  assert.throws(() => assertTodayAgendas(world, after), /today’s Agendas/);
+  resident.agenda.weeklyFrom = "2026-11-11";
+  resident.agenda.weeklyThrough = "2026-11-17";
+  const restored = coerceVillageState(world);
+  assert.doesNotThrow(() => assertTodayAgendas(restored, after));
+});
+
+await runCase("weekly-agenda/pending-dates", () => {
+  const { world, resident } = fixture();
+  const bedtime = { startMinute: 0, endMinute: 420, activity: "Sleeping", venueId: "", essential: true };
+  const copied = { startMinute: 420, endMinute: 1440, activity: "Sketch the mill", venueId: "", flexible: true };
+  resident.agenda = agendaFixture({
+    calendarVersion: 1,
+    starterWeekThrough: "2026-11-10",
+    day: [bedtime, copied],
+    plannedDays: { [tomorrow]: [bedtime, copied] },
+    reservations: [
+      {
+        ...time,
+        dateKey: tomorrow,
+        id: "appointment",
+        activity: "Meet the player",
+        source: "appointment",
+        replaces: "flexible",
+      },
+      {
+        ...time,
+        dateKey: tomorrow,
+        id: "shift",
+        startMinute: 800,
+        endMinute: 870,
+        activity: "Mill shift",
+        source: "work",
+        replaces: "routine",
+      },
+    ],
+  });
+  const pending = agendaWeek(world, resident.characterId, when, true).days[1]!;
+  assert.equal(pending.personalPlansPending, true);
+  assert.deepEqual(
+    pending.blocks.map(({ activity }) => activity),
+    ["Sleeping", "Meet the player", "Mill shift"],
+  );
+  assert.equal(agendaWeek(world, resident.characterId, when, false).days[1]!.personalPlansPending, undefined);
+
+  planRoutineDays(world, agendaCalendar(world, when));
+  assert.equal(resident.agenda.plannedDays?.[tomorrow], undefined, "remove a dated copy of a starter activity");
+  const slot = { date: tomorrow, part: 1, startMinute: 510, endMinute: 570 };
+  const now = agendaCalendar(world, when);
+  assert.equal(applyWeeklyAgenda(world, resident, now, [slot], [{ activity: "Bind a notebook", venueId: "" }]), 1);
+  resident.agenda.weeklyFrom = resident.agenda.weeklyThrough = tomorrow;
+  const ready = agendaWeek(world, resident.characterId, when, true).days[1]!;
+  assert.equal(ready.personalPlansPending, undefined);
+  assert.ok(ready.blocks.some(({ activity }) => activity === "Bind a notebook"));
+  assert.ok(ready.blocks.every(({ activity }) => activity !== copied.activity));
+});
+
+await runCase("weekly-agenda/return-refresh", async () => {
+  const previousTimeZone = process.env.TZ;
+  process.env.TZ = "UTC";
+  mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-10T15:01:00Z") });
+  try {
+    const host = await packagedSceneServer({
+      configure(world) {
+        const first = world.villagers[0]!;
+        first.agenda = agendaFixture({ calendarVersion: 1, starterWeekThrough: "2026-11-09" });
+        const second = structuredClone(first);
+        second.characterId = second.cardSnapshot.id = "fenn";
+        second.incarnation = "fenn:packaged";
+        second.cardSnapshot.name = "Fenn";
+        world.villagers.push(second);
+      },
+    });
+    const requests: string[] = [];
+    host.model.chatComplete = async (messages: { content: string }[]) => {
+      const { residents } = JSON.parse(messages.at(-1)!.content);
+      assert.equal(residents.length, 1);
+      const resident = residents[0];
+      assert.equal(JSON.parse(resident.characterCard).name, resident.name);
+      requests.push(resident.name);
+      if (resident.name === "Mara" && requests.filter((name) => name === "Mara").length === 1)
+        return { content: "", finishReason: "stop" };
+      return {
+        content: JSON.stringify({
+          plans: Object.fromEntries(
+            resident.days.map(([id, date, count]: [string, string, number]) => [
+              id,
+              Array.from({ length: count }, (_, slot) => `Prepare tray ${date} ${slot}`),
+            ]),
+          ),
+        }),
+        finishReason: "stop",
+      };
+    };
+    const status = async () =>
+      (await host.app.inject("/api/villages/background/catchup")).json<{
+        agenda: import("../packages/villages/src/shared/contracts/village.js").AgendaCatchupView | null;
+      }>().agenda;
+    const eventually = async (condition: () => Promise<boolean>) => {
+      for (let attempt = 0; attempt < 80; attempt++) {
+        if (await condition()) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.fail("Agenda preparation did not settle");
+    };
+    try {
+      assert.equal((await status())?.expired, true);
+      assert.deepEqual(requests, [], "Reading progress does not start generation");
+      const refused = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: {
+          sessionId: "browser",
+          submissionId: randomUUID(),
+          mode: "chat",
+          message: "Good morning.",
+          targetId: "",
+          expectedSceneRevision: host.scene().sceneRevision,
+        },
+      });
+      assert.equal(refused.statusCode, 409);
+      assert.match(refused.body, /today’s Agendas/);
+      const enter = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/background/presence",
+        payload: {
+          sessionId: "agenda-return",
+          visible: true,
+        },
+      });
+      assert.equal(enter.statusCode, 200, enter.body);
+      await eventually(async () => (await status())?.completed === 1);
+      const before = await status();
+      assert.equal(before?.failure?.name, "Mara");
+      assert.equal(before.failure.message, "The planner returned an empty reply.");
+      assert.deepEqual([...requests].sort(), ["Fenn", "Mara"]);
+      const retry = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/background/retry",
+        payload: {
+          ...before.failure,
+          actionId: "retry-mara",
+        },
+      });
+      assert.equal(retry.statusCode, 200, retry.body);
+      await eventually(async () => (await status()) === null);
+      assert.deepEqual([...requests].sort(), ["Fenn", "Mara", "Mara"]);
+      const state = fixtureVillageState(host.records.get("villages-village").data, host.records);
+      assert.equal(state.backgroundPace, "off");
+      for (const resident of state.villagers) {
+        assert.equal(resident.agenda?.weeklyFrom, "2026-11-10");
+        assert.equal(resident.agenda?.weeklyThrough, "2026-11-16");
+      }
+    } finally {
+      await host.stop();
+    }
+  } finally {
+    mock.timers.reset();
+    if (previousTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimeZone;
+  }
+});
+
 await runCase("weekly-agenda/visibility", () => {
   const { world, publish } = fixture();
+  const ordinary = agendaFixture({
+    calendarVersion: 1,
+    day: [
+      { startMinute: 0, endMinute: 360, venueId: "", activity: "Sleeping", essential: true },
+      { startMinute: 1290, endMinute: 1440, venueId: "", activity: "Sleeping", essential: true },
+    ],
+    activeDay: { dateKey: "2026-11-10", weekday: "Tuesday", blocks: [], scheduleInformed: false },
+    plannedDays: {
+      [tomorrow]: [{ startMinute: 0, endMinute: 1440, venueId: "", activity: "Sorting papers", flexible: true }],
+    },
+    reservations: [
+      {
+        source: "appointment",
+        id: "early-appointment",
+        dateKey: tomorrow,
+        startMinute: 300,
+        endMinute: 420,
+        venueId: "",
+        activity: "Early appointment",
+        replaces: "flexible",
+      },
+    ],
+  });
+  const next = new Date(tomorrow + "T12:00:00.000Z");
+  assert.deepEqual(
+    agendaBlocksFor(ordinary, next).map(({ activity, startMinute, endMinute }) => [activity, startMinute, endMinute]),
+    [
+      ["Sleeping", 0, 300],
+      ["Early appointment", 300, 420],
+      ["Sorting papers", 420, 1290],
+      ["Sleeping", 1290, 1440],
+    ],
+  );
+  assert.ok(
+    !agendaBlocksFor({ ...ordinary, repairedDays: [tomorrow] }, next).some(({ activity }) => activity === "Sleeping"),
+  );
+  ordinary.activeDay!.blocks = [
+    { startMinute: 0, endMinute: 600, venueId: "", activity: "Sorting papers", flexible: true },
+    { startMinute: 600, endMinute: 1440, venueId: "", activity: "Sketching", flexible: true },
+  ];
+  const restored = activeAgendaSleep(ordinary, when)!;
+  assert.deepEqual(
+    restored.map(({ activity, startMinute, endMinute }) => [activity, startMinute, endMinute]),
+    [
+      ["Sorting papers", 0, 600],
+      ["Sketching", 600, 1290],
+      ["Sleeping", 1290, 1440],
+    ],
+  );
+  ordinary.activeDay!.blocks = restored;
+  assert.equal(activeAgendaSleep(ordinary, when), undefined, "Reconciliation does not rewrite an already restored day");
+  ordinary.activeDay!.blocks = [
+    { startMinute: 0, endMinute: 1440, venueId: "", activity: "Taking care of their own affairs", flexible: true },
+  ];
+  assert.equal(activeAgendaSleep(ordinary, when)?.at(-1)?.activity, "Sleeping");
   const view = (inspect = false) => agendaWeek(world, "mara", when, inspect);
   assert.equal(view().days.length, 7);
   assert.deepEqual(

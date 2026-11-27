@@ -13,17 +13,8 @@ import { influenceSettings } from "./owned-routine.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { continuityContextRevision } from "./continuity-library.js";
 
-export function foundingReadyForPlay(
-  state: Pick<VillageState, "setupAt" | "venues" | "villagers" | "foundingPreparation">,
-): boolean {
-  if (!state.foundingPreparation || state.foundingPreparation.status === "ready") return true;
-  return (
-    !!state.setupAt &&
-    state.venues.some((venue) =>
-      venueZones(venue).some((zone) => zone.kind === "exterior" && !!zone.description.trim()),
-    ) &&
-    state.villagers.every((resident) => !!resident.agenda)
-  );
+export function foundingReadyForPlay(state: Pick<VillageState, "foundingPreparation">): boolean {
+  return !state.foundingPreparation || state.foundingPreparation.status === "ready";
 }
 
 export function foundingTaskRevision(state: VillageState, id: string, kind: FoundingTaskKind): string {
@@ -47,6 +38,9 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
 }
 export const foundingSlot = (kind: FoundingTaskKind, id: string) =>
   "villages-background-" + backgroundRevision([kind === "routine" ? "agenda" : "wish", id]);
+export const FOUNDING_AGENDA_SUBJECT = "founding";
+export const FOUNDING_AGENDA_SLOT =
+  "villages-background-" + backgroundRevision(["weekly-agenda", FOUNDING_AGENDA_SUBJECT]);
 export function ownsFoundingTask(state: VillageState, id: string, kind: FoundingTaskKind, revision: string): boolean {
   const marker = state.foundingPreparation,
     task = marker?.tasks?.[id]?.[kind];

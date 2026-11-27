@@ -16,6 +16,7 @@ for (const scenario of ["prepared", "unprepared", "returning-npc", "place-event"
     const releaseClock = configureVillageClock({ now: () => new Date(at), observe: async () => null });
     try {
       state.timeZone = "UTC";
+      for (const resident of state.villagers) resident.agenda!.personalizationPending = false;
       const event = scenario === "place-event" ? "place" : scenario === "local-event" ? "local" : "quiet";
       if (scenario.endsWith("-event") || scenario === "quiet-roll") state.spontaneousEvents = true;
       if (scenario !== "unprepared")

@@ -744,6 +744,7 @@ assert.equal(
 cafeZone.controllerIds = ["private-controller-sentinel"];
 planningWorld.villagers = ["visitor", "trina"].map((characterId) => {
   const agenda = unwrittenVillageAgenda(new Date(2026, 9, 5));
+  agenda.personalizationPending = false;
   agenda.activeDay!.blocks = [
     {
       startMinute: 0,
@@ -1138,6 +1139,7 @@ async function main() {
     await mutateVillageState((current) => {
       const jim = current.villagers.find((resident) => resident.characterId === "jim")!;
       jim.agenda = unwrittenVillageAgenda();
+      jim.agenda.personalizationPending = false;
       jim.agenda.activeDay!.blocks = [
         {
           startMinute: 0,

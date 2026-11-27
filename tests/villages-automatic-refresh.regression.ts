@@ -1,6 +1,6 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
-import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { agendaFixture, keyedStarterReply } from "./helpers/agenda.fixture.js";
 import {
   routineProfileFromWeek,
   influenceSettings,
@@ -146,6 +146,14 @@ async function main() {
   let agendaMode = false;
   let failWednesday = false;
   const agendaRequests: string[] = [];
+  let weeklyResponses = 0;
+  const requestsByResident = new Map<string, number>();
+  let weeklyOutputLimit = 12_288;
+  let minimumWeeklyReplyTokens = 0;
+  let incompleteWeek = false;
+  let repetitiveWeek = false;
+  let repeatSameDay = false;
+  let recentSuggestion = "";
   const warnings: string[] = [];
   const release = configureVillagesRuntime({
     logger: {
@@ -170,30 +178,69 @@ async function main() {
           connectionId: "fixture",
           model: "fixture-model",
           maxContext: 8192,
-          maxOutputTokens: 4096,
+          maxOutputTokens: weeklyOutputLimit,
           fitContext(messages: any[], options: any) {
             return { messages, maxTokens: options?.maxTokens };
           },
-          async chatComplete(_messages: any[]) {
+          async chatComplete(messages: any[], options: { maxTokens: number }) {
             modelCalls += 1;
             if (agendaMode) {
               agendaRequests.push("Write routine profile.");
               if (failWednesday) throw new Error("Profile unavailable");
+              const input = JSON.parse(String(messages.at(-1).content));
+              return { content: JSON.stringify(keyedStarterReply(input, "Astronomy activity")), finishReason: "stop" };
+            }
+            if (String(messages[0]?.content).includes("Plan the entire coming week")) {
+              weeklyResponses++;
+              assert.equal(options.maxTokens, Math.min(8_192, weeklyOutputLimit));
+              if (options.maxTokens < minimumWeeklyReplyTokens)
+                return { content: '{"plans":{', finishReason: "length" };
+              const request = String(messages.at(-1)?.content);
+              const input = JSON.parse(request) as {
+                residents: Array<{
+                  name: string;
+                  brief?: string;
+                  characterCard?: string;
+                  days: [string, string, number][];
+                  slots?: unknown[];
+                }>;
+              };
+              assert.doesNotMatch(request, /"recent"|"interests"|Reading| pursuit \d+\//);
+              assert.doesNotMatch(String(messages[0]?.content), /Tend seedlings|Buy twine/);
+              const plans: Record<
+                string,
+                Array<string | [string, number] | { kind: string; minutes: number; label?: string }>
+              > = {};
+              assert.equal(input.residents.length, 1, "Each request prepares one resident.");
+              for (const { name, brief, characterCard, days, slots } of input.residents) {
+                const attempt = (requestsByResident.get(name) ?? 0) + 1;
+                requestsByResident.set(name, attempt);
+                assert.match(characterCard ?? brief ?? "", new RegExp(`${name} values independence`));
+                assert.match(characterCard ?? brief ?? "", /Curious and inventive/);
+                assert.equal(slots, undefined, "The provider sees day counts without exact schedule slots.");
+                let index = 0;
+                for (const [id, , count] of days) {
+                  assert.ok(!Object.hasOwn(plans, id), "Each resident and date has its own ID.");
+                  plans[id] = Array.from({ length: count }, () => `${name} pursuit ${attempt}/${++index}`);
+                }
+              }
+              const [first, second, third] = input.residents[0]!.days.map(([id]) => id);
+              if (weeklyResponses === 1) {
+                plans[first!]![1] = { kind: "nap", minutes: 30, label: "Porch doze" };
+                plans[second!]![2] = { kind: "break", minutes: 45, label: "Quiet pause off-duty" };
+                plans[third!]![3] = { kind: "nap", minutes: 60, label: "Afternoon catnap" };
+              }
+              if (incompleteWeek) {
+                plans["unexpected-day"] = plans[third!]!;
+                delete plans[third!];
+              }
+              if (repetitiveWeek) for (const day of Object.values(plans)) day.fill(day[0]!);
+              if (repeatSameDay) {
+                plans[first!]![1] = plans[first!]![0]!;
+                plans[second!]!.unshift(plans[first!]![0]!, recentSuggestion, ["Try an unavailable venue", 999]);
+              }
               return {
-                content: JSON.stringify({
-                  routine: "Studying quietly.",
-                  palette: Array.from({ length: 6 }, (_, i) => ({
-                    activity: "Studying the stars " + i,
-                    venue: 0,
-                    status: "idle",
-                    flexible: true,
-                    essential: false,
-                    duration: 180,
-                    parts: [0, 1, 2, 3],
-                  })),
-                  days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
-                  rhythm: [],
-                }),
+                content: JSON.stringify({ plans: Object.fromEntries(Object.entries(plans).reverse()) }),
                 finishReason: "stop",
               };
             }
@@ -212,7 +259,7 @@ async function main() {
   } as any);
 
   const realNow = Date.now;
-  const wallOffset = 0;
+  let wallOffset = 0;
   Date.now = () => realNow() + wallOffset;
   const stopWork = startBackgroundWork();
   await villageBackgroundPresence("visible-story-fixture", true);
@@ -346,7 +393,10 @@ async function main() {
     assert.equal(activeSunday.scheduleInformed, false);
     assert.ok(activeSunday.blocks.length > 0, "Owned Sunday still covers the day after an influence toggle");
 
-    // One compact request, deliberate recovery, and deduplicated action IDs.
+    // A resident whose starter Agenda was never written still uses compact preparation.
+    await mutateVillageState((state) => {
+      state.villagers[0]!.agenda!.generatedAt = "";
+    });
     agendaMode = true;
     failWednesday = true;
     await Promise.all([
@@ -502,6 +552,329 @@ async function main() {
       "housing-resident",
       "normal reconciliation completes a villager-requested move after 24 hours",
     );
+    const { agendaBlocksFor, agendaDateKey } =
+      await import("../packages/villages/src/server/domain/rules/agenda-week.js");
+    const { ZonedDate } = await import("../packages/villages/src/shared/helpers/zoned-date.js");
+    const zone = "America/Los_Angeles";
+    const date = (day: number) => new ZonedDate(new Date(Date.UTC(2026, 10, day, 20)), zone);
+    const setToday = (day: number) => {
+      wallOffset = date(day).getTime() - realNow();
+    };
+    setToday(6);
+    await mutateVillageState(
+      (state) => {
+        const residents = ["Ari", "Mara"].map((name) => ({
+          ...state.villagers[0]!,
+          characterId: name,
+          incarnation: name + "-1",
+          agendaGeneration: undefined,
+          cardSnapshot: {
+            ...state.villagers[0]!.cardSnapshot,
+            id: name,
+            name,
+            summary: `${name} values independence.`,
+            personality: "Curious and inventive.",
+          },
+          agenda: agendaFixture({
+            calendarVersion: 1,
+            starterWeekFrom: agendaDateKey(date(1)),
+            starterWeekThrough: agendaDateKey(date(7)),
+            generatedAt: date(1).toISOString(),
+            day: [
+              {
+                startMinute: 0,
+                endMinute: 480,
+                venueId: "",
+                activity: "Sleeping",
+                essential: true,
+              },
+              { startMinute: 480, endMinute: 1320, venueId: "", activity: "Reading", flexible: true },
+              {
+                startMinute: 1320,
+                endMinute: 1440,
+                venueId: "",
+                activity: "Sleeping",
+                essential: true,
+              },
+            ],
+            plannedDays: {
+              [agendaDateKey(date(8))]: [
+                { startMinute: 0, endMinute: 1440, venueId: "", activity: "Sorting papers", flexible: true },
+              ],
+            },
+          }),
+        }));
+        Object.assign(state, defaultVillageState(), {
+          setupAt: date(1).toISOString(),
+          foundedAt: date(1).toISOString(),
+          simulatedThrough: date(6).toISOString(),
+          timeZone: zone,
+          seed: "weekly-refresh-fixture",
+          backgroundPace: "quiet",
+          villagers: residents,
+        });
+        delete state.returnCatchup;
+        delete state.clock;
+        delete state.narrative;
+      },
+      { memories: true },
+    );
+    await reconcileVillage({ now: date(6) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 0, "The starter week is kept.");
+
+    setToday(7);
+    await Promise.all([reconcileVillage({ now: date(7) }), reconcileVillage({ now: date(7) })]);
+    await settleBackgroundWork();
+    assert.equal(
+      weeklyResponses,
+      2,
+      "Reconciliation requests once for each resident. " + JSON.stringify(await backgroundWorkSummaries()),
+    );
+    const firstWeek = await readVillageState();
+    const restBlocks = [8, 9, 10, 11].map((day) =>
+      agendaBlocksFor(firstWeek.villagers[0]!.agenda!, date(day))
+        .filter(({ activity }) => ["Porch doze", "Quiet pause off-duty", "Afternoon catnap"].includes(activity))
+        .map(({ activity, startMinute, endMinute }) => [activity, endMinute - startMinute]),
+    );
+    assert.deepEqual(restBlocks, [
+      [["Porch doze", 30]],
+      [["Quiet pause off-duty", 45]],
+      [["Afternoon catnap", 60]],
+      [],
+    ]);
+    for (const resident of firstWeek.villagers) {
+      const agenda = resident.agenda!;
+      assert.equal(agenda.activeDay?.dateKey, agendaDateKey(date(7)));
+      assert.ok(!agenda.activeDay?.blocks.some(({ activity }) => activity.includes("pursuit")));
+      const timingLayouts = new Set<string>();
+      for (let day = 8; day <= 14; day++) {
+        const rows = agendaBlocksFor(agenda, date(day));
+        assert.deepEqual(
+          rows
+            .filter(({ activity }) => activity === "Sleeping")
+            .map(({ startMinute, endMinute }) => [startMinute, endMinute]),
+          [
+            [0, 480],
+            [1320, 1440],
+          ],
+        );
+        assert.ok(rows.filter(({ activity }) => activity.startsWith(`${resident.characterId} pursuit 1/`)).length >= 3);
+        timingLayouts.add(JSON.stringify(rows.map(({ startMinute, endMinute }) => [startMinute, endMinute])));
+      }
+      assert.equal(timingLayouts.size, 7, "The seven saved days have different timing while rest stays fixed.");
+    }
+
+    const { applyWeeklyAgenda, weeklyAgendaSlots } =
+      await import("../packages/villages/src/server/domain/rules/weekly-agenda.js");
+    const changed = structuredClone(firstWeek);
+    const resident = changed.villagers[0]!;
+    const offered = [date(9), date(10), date(11)].flatMap((day) =>
+      weeklyAgendaSlots(resident.agenda!, day, resident.characterId),
+    );
+    for (const { startMinute, endMinute } of offered) {
+      assert.ok(endMinute - startMinute >= 30 && endMinute - startMinute <= 240);
+    }
+    resident.agenda!.repairedDays = [agendaDateKey(date(10))];
+    resident.agenda!.reservations = (["work", "project", "social", "appointment"] as const).map((source, index) => ({
+      source,
+      id: source,
+      dateKey: agendaDateKey(date(9)),
+      startMinute: 540 + index * 120,
+      endMinute: 600 + index * 120,
+      venueId: "",
+      activity: source,
+      replaces: "flexible",
+    }));
+    applyWeeklyAgenda(
+      changed,
+      resident,
+      date(8),
+      offered,
+      offered.map(({ date: key }) => ({
+        activity: "Work on a woodcut",
+        venueId: key === agendaDateKey(date(11)) ? "removed-venue" : "",
+      })),
+    );
+    const live = agendaBlocksFor(resident.agenda!, date(9));
+    for (const reserved of resident.agenda!.reservations) {
+      assert.ok(
+        live.some(
+          (row) =>
+            row.activity === reserved.activity &&
+            row.startMinute === reserved.startMinute &&
+            row.endMinute === reserved.endMinute,
+        ),
+      );
+    }
+    assert.ok(live.some(({ activity }) => activity === "Work on a woodcut"));
+    for (const day of [date(10), date(11)]) {
+      assert.deepEqual(agendaBlocksFor(resident.agenda!, day), agendaBlocksFor(firstWeek.villagers[0]!.agenda!, day));
+    }
+    setToday(8);
+    await reconcileVillage({ now: date(8) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 2, "A normal day change activates planned activities locally.");
+    assert.ok(
+      (await readVillageState()).villagers[0]!.agenda?.activeDay?.blocks.some(({ activity }) =>
+        activity.includes("pursuit 1/"),
+      ),
+    );
+
+    setToday(14);
+    await reconcileVillage({ now: date(14) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 4, "The last covered day prepares the next seven days for each resident.");
+    const nextWeek = await readVillageState();
+    for (const resident of nextWeek.villagers) {
+      for (let day = 15; day <= 21; day++) {
+        const rows = agendaBlocksFor(resident.agenda!, date(day));
+        assert.ok(rows.filter(({ activity }) => activity.startsWith(`${resident.characterId} pursuit 2/`)).length >= 3);
+      }
+    }
+
+    incompleteWeek = true;
+    setToday(21);
+    await reconcileVillage({ now: date(21) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 6, "An incomplete reply spends only one automatic request per resident.");
+    const incomplete = (await backgroundWorkSummaries()).find((job) => job.kind === "weekly-agenda");
+    assert.match(incomplete?.error ?? "", /too few usable activities/i);
+    assert.ok(
+      !(await readVillageState()).villagers.some((resident) =>
+        agendaBlocksFor(resident.agenda!, date(22)).some(({ activity }) => activity.includes("pursuit 3/")),
+      ),
+    );
+    setToday(28);
+    incompleteWeek = false;
+    minimumWeeklyReplyTokens = 4_500;
+    await mutateVillageState((state) => {
+      const agenda = state.villagers.find(({ characterId }) => characterId === "Ari")!.agenda!;
+      agenda.plannedDays![agendaDateKey(date(29))] = [
+        { startMinute: 0, endMinute: 1440, venueId: "", activity: "Sorting papers", flexible: true },
+      ];
+    });
+    await clearVillagerAgenda("Ari", "personal-week");
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 7);
+    const personal = (await readVillageState()).villagers.find((row) => row.characterId === "Ari")?.agenda;
+    assert.deepEqual(personal?.manualWeek, {
+      actionId: "personal-week",
+      from: agendaDateKey(date(29)),
+      through: agendaDateKey(date(35)),
+    });
+    for (let day = 29; day <= 35; day++) {
+      assert.deepEqual(
+        agendaBlocksFor(personal!, date(day))
+          .filter(({ activity }) => activity === "Sleeping")
+          .map(({ startMinute, endMinute }) => [startMinute, endMinute]),
+        [
+          [0, 480],
+          [1320, 1440],
+        ],
+        "Manual regeneration preserves the restored overnight window on every date",
+      );
+    }
+
+    setToday(29);
+    await reconcileVillage({ now: date(29) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 8, "The next scheduled request prepares Mara's week.");
+    const refreshed = await readVillageState();
+    for (let day = 29; day <= 35; day++) {
+      assert.deepEqual(
+        agendaBlocksFor(refreshed.villagers[0]!.agenda!, date(day)),
+        agendaBlocksFor(personal!, date(day)),
+      );
+      assert.ok(
+        agendaBlocksFor(refreshed.villagers[1]!.agenda!, date(day)).some(({ activity }) =>
+          activity.startsWith("Mara pursuit 4/"),
+        ),
+      );
+    }
+
+    setToday(35);
+    await mutateVillageState((state) => {
+      state.villagers = state.villagers.filter(({ characterId }) => characterId === "Ari");
+    });
+    await villageBackgroundPresence("visible-story-fixture", false);
+    await reconcileVillage({ now: date(35), returning: true });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 8, "A queued automatic week waits for browser presence.");
+    await assert.rejects(
+      clearVillagerAgenda("Ari", "later-personal-week"),
+      /weekly Agenda preparation is already in progress/i,
+    );
+    await villageBackgroundPresence("visible-story-fixture", true);
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 9, "The pending automatic job resumes after the player returns.");
+
+    setToday(42);
+    recentSuggestion = agendaBlocksFor((await readVillageState()).villagers[0]!.agenda!, date(42)).find(
+      ({ activity }) => activity.startsWith("Ari pursuit 5/"),
+    )!.activity;
+    repeatSameDay = true;
+    await reconcileVillage({ now: date(42) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 10, "Same-day repetition uses only the scheduled request.");
+    const repeated = (await backgroundWorkSummaries()).find(
+      (job) => job.kind === "weekly-agenda" && job.subjectId === "Ari-1",
+    )!;
+    assert.equal(repeated.status, "completed");
+    assert.equal(repeated.requests, 1);
+    const recoveredWeek = (await readVillageState()).villagers[0]!.agenda!;
+    const firstDay = agendaBlocksFor(recoveredWeek, date(43));
+    assert.equal(firstDay.filter(({ activity }) => activity === "Ari pursuit 6/1").length, 1);
+    assert.ok(firstDay.some(({ activity }) => activity === "Ari pursuit 6/3"));
+    const secondDay = agendaBlocksFor(recoveredWeek, date(44));
+    assert.ok(secondDay.some(({ activity }) => activity.startsWith("Ari pursuit 6/")));
+    assert.ok(
+      secondDay.every(
+        ({ activity }) => !["Ari pursuit 6/1", recentSuggestion, "Try an unavailable venue"].includes(activity),
+      ),
+    );
+    assert.ok(agendaBlocksFor(recoveredWeek, date(49)).some(({ activity }) => activity.startsWith("Ari pursuit 6/")));
+
+    setToday(43);
+    repeatSameDay = false;
+    weeklyOutputLimit = 1_040;
+    await clearVillagerAgenda("Ari", "limited-week");
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 11, "A truncated manual week uses one request.");
+    const truncated = (await backgroundWorkSummaries()).find(
+      (job) => job.kind === "agenda" && job.subjectId === "Ari",
+    )!;
+    assert.equal(truncated.failure?.cause, "output_limit");
+    assert.equal(truncated.failure?.requestedOutputTokens, 1_040);
+    assert.ok(
+      agendaBlocksFor((await readVillageState()).villagers[0]!.agenda!, date(44)).some(({ activity }) =>
+        activity.startsWith("Ari pursuit 6/"),
+      ),
+    );
+
+    const saved = documentsByKey.get(`villages::${truncated.id}`);
+    delete saved.data.input.residents[0].brief;
+    weeklyOutputLimit = 12_288;
+    await Promise.all([
+      retryBackgroundJob(truncated.id, truncated.attempt, "retry-with-room", truncated.instanceId),
+      retryBackgroundJob(truncated.id, truncated.attempt, "retry-with-room", truncated.instanceId),
+    ]);
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 12, "One retry with sufficient room saves the entire week.");
+    const complete = (await readVillageState()).villagers[0]!.agenda!;
+    for (let day = 44; day <= 50; day++)
+      assert.ok(agendaBlocksFor(complete, date(day)).some(({ activity }) => activity.startsWith("Ari pursuit 7/")));
+
+    setToday(44);
+    repetitiveWeek = true;
+    await clearVillagerAgenda("Ari", "repetitive-week");
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 13, "A repetitive reply spends only one request.");
+    const repetitive = (await backgroundWorkSummaries()).find(
+      (job) => job.kind === "agenda" && job.subjectId === "Ari",
+    );
+    assert.match(repetitive?.error ?? "", /not enough variety/i);
+    assert.equal((await readVillageState()).villagers[0]!.agenda!.manualWeek?.actionId, "limited-week");
   } finally {
     Date.now = realNow;
     stopWork();

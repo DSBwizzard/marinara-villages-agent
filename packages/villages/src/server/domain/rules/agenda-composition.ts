@@ -1,16 +1,21 @@
 import type { AgendaReservation } from "../models/agenda-reservation.js";
 import type { VillageAgendaBlock } from "../models/world.js";
-import { flexibleAgendaBlock, restingAgendaBlock } from "./agenda-flexibility.js";
+import { fixedRestAgendaBlock, flexibleAgendaBlock, restingAgendaBlock } from "./agenda-flexibility.js";
+
+export type CapturedAgendaShape = "typed-fragments" | "untyped-joined";
 
 /** Reservations share one composition rule; their owners decide admission and cancellation. */
 export function composeAgenda(
   routine: readonly VillageAgendaBlock[],
   reservations: readonly AgendaReservation[],
+  capturedShape?: CapturedAgendaShape,
 ): VillageAgendaBlock[] {
   let blocks = routine.map((block) => ({ ...block }));
   for (const reservation of reservations) {
     const replaceable = (block: VillageAgendaBlock) =>
-      !restingAgendaBlock(block) &&
+      !(capturedShape === "typed-fragments"
+        ? restingAgendaBlock(block)
+        : capturedShape !== "untyped-joined" && fixedRestAgendaBlock(block)) &&
       (reservation.replaces === "flexible" ? flexibleAgendaBlock(block) : !block.essential && !block.commitmentId);
     const work = reservation.source === "work";
     let covered = reservation.startMinute;
@@ -21,25 +26,34 @@ export function composeAgenda(
       covered = Math.max(covered, block.endMinute);
     }
     if (!work && covered < reservation.endMinute) continue;
-    blocks = blocks.flatMap((block) => {
+    const composed: VillageAgendaBlock[] = [];
+    let assigned: VillageAgendaBlock | undefined;
+    for (const block of blocks) {
       const start = Math.max(block.startMinute, reservation.startMinute);
       const end = Math.min(block.endMinute, reservation.endMinute);
-      if (start >= end || (work && !replaceable(block))) return [block];
-      return [
-        ...(block.startMinute < start ? [{ ...block, endMinute: start }] : []),
-        {
+      if (start >= end || (work && (!replaceable(block) || fixedRestAgendaBlock(block)))) {
+        composed.push(block);
+        continue;
+      }
+      if (block.startMinute < start) composed.push({ ...block, endMinute: start });
+      if (capturedShape !== "typed-fragments" && assigned?.endMinute === start && composed.at(-1) === assigned) {
+        assigned.endMinute = end;
+      } else {
+        assigned = {
           startMinute: start,
           endMinute: end,
           venueId: reservation.venueId,
           zoneId: reservation.zoneId,
           activity: reservation.activity,
-          purpose: work ? "work" : "ordinary",
+          ...(capturedShape === "untyped-joined" ? {} : { purpose: work ? "work" : "ordinary" }),
           ...(work ? {} : { commitmentId: reservation.id }),
           flexible: false,
-        },
-        ...(block.endMinute > end ? [{ ...block, startMinute: end }] : []),
-      ];
-    });
+        };
+        composed.push(assigned);
+      }
+      if (block.endMinute > end) composed.push({ ...block, startMinute: end });
+    }
+    blocks = composed;
   }
   return blocks;
 }

@@ -480,6 +480,9 @@ await runCase("common-wishes/founding-coordinator", async () => {
       },
       preparePrivateSpaces: async () => {},
       reportFoundingProgress: async () => {},
+      queueFoundingAgendas: async () => {
+        throw Error("Completed Agenda must not be regenerated");
+      },
       queueVillagerAgenda: async () => {
         throw Error("Completed routine must not be regenerated");
       },
@@ -515,6 +518,19 @@ await runCase("common-wishes/routine-protection", async () => {
       );
       let routineCalls = 0;
       const agendas = createResidentAgendas({
+        weeklyAgenda: {
+          queueResidentWeek: async () => {
+            throw new Error("Unexpected weekly regeneration");
+          },
+          handler: { valid: () => false, generate: async () => undefined, apply: () => {} },
+          captureStartingWeek: () => undefined as any,
+          planner: {
+            generate: async () => {
+              throw new Error("Unexpected new Agenda planner call");
+            },
+            recoverSavedResult: () => undefined,
+          },
+        },
         readVillageState: (options) => f.repository.readAuthority(options),
         mutateVillageState: (mutate, options) => states.mutateVillageState(mutate, options),
         reportFoundingProgress: async () => {},
@@ -522,6 +538,7 @@ await runCase("common-wishes/routine-protection", async () => {
         readVillageLore: async () => [],
         queueBackgroundJob: f.service.queueBackgroundJob,
         backgroundWorkSummaries: f.service.backgroundWorkSummaries,
+        backgroundJobSnapshot: f.service.backgroundJobSnapshot,
         parseCompactFoundingCompletion: () => {
           throw Error("No saved response needed");
         },

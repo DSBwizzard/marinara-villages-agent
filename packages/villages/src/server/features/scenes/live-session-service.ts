@@ -25,6 +25,7 @@ import {
 import { captureSceneContinuity, sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { requireSceneZoneId, captureSceneLayout } from "../../domain/rules/scene-layout.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
+import { agendaCoverage } from "../../domain/rules/weekly-agenda.js";
 import { expirePlayerVisitsOnReturn, playerVisitAbsenceElapsed } from "../../domain/rules/return-catchup-state.js";
 import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
@@ -531,8 +532,10 @@ export function createLiveScenes({
       village = await readVillageState({ memories: true });
     }
     const now = villageNow();
-    village = (await settleVisitorAttendance?.(village, now)) ?? village;
     if (village.seed !== session.villageSeed) throw conflict("That Village changed. Its saved Scene is preserved.");
+    const coverage = agendaCoverage(village, now);
+    if (coverage.ready.length !== coverage.residents.length) return session;
+    village = (await settleVisitorAttendance?.(village, now)) ?? village;
     const venue = findLocation(village, session.placeId);
     if (!venue) return session;
     if (!venue.access) throw conflict("That Place has no native access record.");
