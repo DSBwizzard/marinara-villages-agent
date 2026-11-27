@@ -32,7 +32,7 @@ Create or check your model connections in Engine before founding. Choose them on
 | **GM**     | Writes new Scenes and proposes their gameplay updates.                    |
 | **Images** | Generates artwork when requested. Choose **Disabled** to supply your own. |
 
-Choose a specific language connection for **both System and GM** before continuing. You can use the same one for both. Founding shows **Images** alongside them. Use the **Model Connections** gear beside the progress stars or in a mobile form's header to change these choices during Founding. After founding, use **Settings → General Preferences → Model Connections**. Set up providers and keys in Engine's **Connections** panel.
+Choose a specific language connection for **both System and GM** before continuing. You can use the same one for both. Founding also shows **Images** and **Embedding**. Use the **Model Connections** gear beside the progress stars or in a mobile form's header to change these choices during Founding. After founding, use **Settings → General Preferences → Model Connections**. Set up providers and keys in Engine's **Connections** panel. Embedding is optional. Choose the built-in Engine local model, an Engine connection with an embedding model, or play without embeddings. The local model may download on first use. A configured connection may send Scene text and eligible memory excerpts to its provider and incur charges. Founding can continue while an embedding model prepares.
 
 An image connection is optional if you upload your map. Founding requires an uploaded or generated map; the initial grid is a placeholder. Sprite setup makes no model requests.
 
@@ -224,7 +224,7 @@ Open a letter to reveal any attached Keepsake. **Mailbox → Keepsakes** collect
 
 ### Memories
 
-Memories keep meaningful experiences, information, and open matters. Each belongs to the people who learned it. Mentioning a character does not give that character the information.
+Memories keep meaningful experiences, information, and open matters. Each belongs to the people who learned it. Mentioning a character does not give that character the information. Scenes look for relevant memories using witnessed exchanges, current context, and distinctive terms. An embedding model can improve these matches. If it is off or unavailable, Scenes keep using the other recall paths. Unclear references can prompt the GM to ask for clarification in the same reply.
 
 The People overview and Venues page show each person's currently assigned home and workplaces. These public assignments update when they change; Memory corrections and Forget do not change them. Private Zones, current presence and schedules remain separate.
 

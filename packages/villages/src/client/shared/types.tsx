@@ -42,6 +42,8 @@ export type VillageConnectionOption = {
   category: VillageConnectionCategory;
   detail: string;
   needsReview: boolean;
+  embeddingModel?: string;
+  embeddingConnectionId?: string;
 };
 
 /** One row of the Engine's own connection list, exactly as it arrives — untrusted. */
@@ -51,6 +53,8 @@ export type EngineConnectionRow = {
   model?: unknown;
   provider?: unknown;
   imageService?: unknown;
+  embeddingModel?: unknown;
+  embeddingConnectionId?: unknown;
   profileImportReviewRequired?: unknown;
 };
 

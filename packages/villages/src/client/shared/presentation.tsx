@@ -55,13 +55,19 @@ export function connectionOptionsFrom(rows: readonly EngineConnectionRow[]): Vil
     const provider = category === "image_generation" ? row.imageService : row.provider;
     const detail = [typeof provider === "string" ? provider.trim() : "", model]
       .filter((text) => text && text.toLowerCase() !== name.toLowerCase())
-      .join(" · ");
+      .join(", ");
     options.push({
       id,
       name,
       category,
       detail,
       needsReview: row.profileImportReviewRequired === true || row.profileImportReviewRequired === "true",
+      ...(typeof row.embeddingModel === "string" && row.embeddingModel.trim()
+        ? { embeddingModel: row.embeddingModel.trim() }
+        : {}),
+      ...(typeof row.embeddingConnectionId === "string" && row.embeddingConnectionId.trim()
+        ? { embeddingConnectionId: row.embeddingConnectionId.trim() }
+        : {}),
     });
   }
   return options;

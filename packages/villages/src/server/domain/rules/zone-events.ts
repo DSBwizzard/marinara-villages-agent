@@ -186,6 +186,7 @@ export function zoneEventScene(
       hearing: "direct",
       venue,
       instruction: "",
+      ...(intent.targetId && selected.includes(intent.targetId) ? { targetId: intent.targetId } : {}),
       localIds: scene.activeIds,
       remoteIds: offered.map((person) => person.characterId).filter((id) => selected.includes(id)),
       ...(doorwayVoice.length ? { doorwayVoiceIds: doorwayVoice.filter((id) => selected.includes(id)) } : {}),

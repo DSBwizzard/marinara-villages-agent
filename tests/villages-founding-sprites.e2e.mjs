@@ -89,6 +89,15 @@ await withBrowser(browser, async () => {
         const url = new URL(route.request().url()),
           path = url.pathname;
         const send = (value) => fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
+        if (path.endsWith("/connections") && route.request().method() === "PUT") {
+          assert.deepEqual(route.request().postDataJSON(), { embedding: "off" });
+          return send({
+            systemConnectionId: "talk",
+            narrationConnectionId: "talk",
+            imageConnectionId: "image",
+            embedding: "off",
+          });
+        }
         if (route.request().method() !== "GET") {
           writes.push(path);
           assert.fail("Unexpected mutation: " + path);
@@ -160,6 +169,10 @@ await withBrowser(browser, async () => {
         const recommendation = root.getByRole("dialog", { name: "Image connection", exact: true });
         if (await recommendation.isVisible())
           await recommendation.getByRole("button", { name: "Continue without images", exact: true }).click();
+        const embedding = root.getByRole("dialog", { name: "Embedding model", exact: true });
+        if (await embedding.isVisible()) {
+          await embedding.getByRole("button", { name: "Continue without embeddings", exact: true }).click();
+        }
       };
       for (const reply of ["START", "Next", "Next", "Next", "Next", "Next", "Next", "Next"])
         if (reply === "Next") await advance();

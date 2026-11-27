@@ -1,4 +1,4 @@
-// Test cases: episodes/natural-private-chronology, episodes/perception-arrivals, episodes/protection, episodes/identity, episodes/cold-pages-scale, episodes/shared-followup, episodes/ancestry, episodes/private-narration, episodes/self-native-retention, episodes/independent-spans, episodes/repeated-correction, episodes/shared-pair-budget, episodes/offstage-context
+// Test cases: episodes/natural-private-chronology, episodes/perception-arrivals, episodes/protection, episodes/identity, episodes/cold-pages-scale, episodes/shared-followup, episodes/ancestry, episodes/private-narration, episodes/self-native-retention, episodes/independent-spans, episodes/repeated-correction, episodes/shared-pair-budget, episodes/offstage-context, episodes/contextual-lexical-recall
 import { emptyMailbox } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -1071,3 +1071,37 @@ await runCase("episodes/repeated-correction", async () => {
 console.log(
   "Accepted episodes: private natural chronology, individual perception, protection, cold retention and bounded local context passed without providers.",
 );
+
+await runCase("episodes/contextual-lexical-recall", () => {
+  const old = episode("saved-promise", "unspoken nocturnecipher", "The brass astrolabe needs a replacement hinge.");
+  const hidden = episode("closed-door", "hiddenphrase", "Nautilus nautilus astrolabe.");
+  hidden.actors = [{ id: leo.id, incarnation: leo.incarnation, zoneId: "study" }];
+  hidden.segments[0] = { ...hidden.segments[0], speakerId: "leo", heardBy: ["leo"], zoneId: "study" };
+  const recent = episode("recent", "private nocturnecipher", "We still have that astrolabe to repair.");
+  old.sceneId = recent.sceneId = "ongoing";
+  const history = readEpisodes({ format: 1, revision: 3, records: [old, hidden, recent] }, "world");
+  const seen: string[] = [];
+  const retrieve = (query: string) =>
+    selectEpisodeHistory(history, emptyContinuity(), [mara, player], query, 12000, "ongoing", {
+      ranking: {
+        semantic: (texts) => {
+          seen.push(...texts);
+          return new Map();
+        },
+      },
+    });
+  const vague = retrieve("Can we still do that?");
+  assert(
+    vague.recallCandidates?.some(({ id }) => id === old.id),
+    "established discussion supplies the term for a paraphrase",
+  );
+  const distinctive = retrieve("replacement hinge");
+  assert(distinctive.sceneWindow.has(old.id));
+  assert.equal(
+    distinctive.recallCandidates?.[0].id,
+    old.id,
+    "older same-Scene evidence remains a candidate when final transcript fitting drops it",
+  );
+  assert(seen.every((text) => !/nocturnecipher|hiddenphrase|nautilus/iu.test(text)));
+  assert.equal(distinctive.recallCandidates?.[0].gmPrivateInput.withheld, true);
+});

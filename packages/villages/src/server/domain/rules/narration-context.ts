@@ -27,13 +27,12 @@ import { relationshipAttitudes, selectActorContinuity, selectRoomContinuity } fr
 import { appendHistoryWithin, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import {
-  asksForPastExchange,
   asksForRecallQuote,
   estimatedTextTokens,
   recallTerms,
-  requestsMemoryChange,
   sceneQuoteScore,
   sceneQuoteTerms,
+  type RecallRanking,
 } from "./text-recall.js";
 import { hasWritingEvidence, type VenueWritingBlock } from "./venue-writing.js";
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
@@ -202,6 +201,7 @@ export function narrationContinuityContext(
   at: string,
   separateRecallFromEvidence = false,
   distinguishNpcMeetings = false,
+  semantic?: RecallRanking["semantic"],
 ) {
   memoryRequire(state.seed === scene.villageSeed && scene.zoneId, "Scene continuity scope changed");
   const episodeId = sceneEpisodeId(state.seed, scene.id, operationId);
@@ -225,8 +225,36 @@ export function narrationContinuityContext(
   const captured = sceneContinuityView(state, scene);
   const loreAudience = ["player", ...writerIds];
   const actorIds = actors.map(({ id }) => id);
+  const sceneHolders = actors
+    .filter((holder) => holder.id === "player" || writerIds.includes(holder.id))
+    .sort((a, b) => a.id.localeCompare(b.id, "en"));
+  const history = selectEpisodeHistory(state.episodes, state.continuity, sceneHolders, input, 256_000, scene.id, {
+    placeId: scene.placeId,
+    ranking: { semantic },
+  });
+  const episodesById = new Map(state.episodes.records.map((episode) => [episode.id, episode]));
+  const recent = history.episodes.slice(-2).flatMap((view) => {
+    const words = sharedLoreWords(episodesById.get(view.id)!, view, loreAudience);
+    return words.length ? [{ id: view.id, words }] : [];
+  });
+  const recentWords = recent
+    .flatMap((row) => row.words)
+    .join("\n")
+    .slice(-2400);
+  const recentEpisodeIds = new Set(recent.map((row) => row.id));
+  const recentNpcIds = [
+    ...new Set(
+      history.episodes
+        .slice(-2)
+        .flatMap((episode) =>
+          episode.segments.flatMap((line) =>
+            line.perceivedBy.player === "words" && state.worldPlaces.npcs[line.speakerId] ? [line.speakerId] : [],
+          ),
+        ),
+    ),
+  ];
   const npcArrivals = (excluded: readonly string[] = []) =>
-    Object.values(capturePlaceContext(state, scene.placeId, actorIds, input, excluded).npcs).filter(
+    Object.values(capturePlaceContext(state, scene.placeId, actorIds, input, excluded, recentNpcIds).npcs).filter(
       ({ id }) => !actorIds.includes(id),
     );
   const arrivalLimit = 4;
@@ -241,10 +269,9 @@ export function narrationContinuityContext(
     holder: continuityActor(state, npc.id)!,
     met: metNpcs?.has(npc.id),
   }));
-  const holders = [
-    ...actors.filter((holder) => holder.id === "player" || writerIds.includes(holder.id)),
-    ...npcCandidates.map((row) => row.holder),
-  ].sort((a, b) => a.id.localeCompare(b.id, "en"));
+  const holders = [...sceneHolders, ...npcCandidates.map((row) => row.holder)].sort((a, b) =>
+    a.id.localeCompare(b.id, "en"),
+  );
   const room: Extract<ContinuityHolder, { kind: "room" }> = {
     kind: "room",
     placeId: scene.placeId,
@@ -295,38 +322,37 @@ export function narrationContinuityContext(
     });
   const circumstanceRoots = new Set(circumstances.flatMap(({ roots }) => roots));
   const requiredRoots = nativeCircumstanceRoots(state, at, views, { placeId: scene.placeId, zoneId: scene.zoneId });
-  const comma = input.indexOf(",");
-  const address =
-    comma > 0
-      ? input
-          .slice(0, comma)
-          .trim()
-          .replace(/^["“]\s*/u, "")
-          .toLocaleLowerCase("en-US")
-      : "";
-  const addressed = address
-    ? scene.participants.filter(({ name }) => {
-        const lower = name.toLocaleLowerCase("en-US");
-        return lower === address || lower.split(/\s+/u)[0] === address;
-      })
-    : [];
-  const recallQuery = addressed.length ? input.slice(comma + 1) : input;
-  const memoryChange = requestsMemoryChange(recallQuery);
+  const recallQuery = input;
   const speech = /^\s*(?:"([^"\r\n]*)"|“([^“”\r\n]*)”)\s*$/du.exec(input);
   const speechRange = speech?.indices?.[1] ?? speech?.indices?.[2];
-  const rememberStart = addressed.length ? comma + 1 : (speechRange?.[0] ?? 0);
+  const spoken = speech?.[1] ?? speech?.[2] ?? "";
+  const mentionEnd = spoken.indexOf(",");
+  const mention = mentionEnd > 0 ? spoken.slice(0, mentionEnd).trim().toLocaleLowerCase("en-US") : "";
+  const namedReminder = scene.participants.some(({ name }) => name.toLocaleLowerCase("en-US") === mention);
+  const rememberStart = (speechRange?.[0] ?? 0) + (namedReminder ? mentionEnd + 1 : 0);
   const remember =
-    memoryChange && separateRecallFromEvidence && addressed.length < 2 && speechRange
+    separateRecallFromEvidence && speechRange
       ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+(?<qualification>[^:\r\n]{1,60}))?\s*:\s*(?<fact>\S[^\r\n]*?)\s*$/diu.exec(
           input.slice(rememberStart, speechRange[1]),
         )
       : null;
   const fact = remember?.groups?.fact?.replace(/[.!]+$/u, "").trimEnd();
   const factRange = remember?.indices?.groups?.fact;
-  const local = actors.filter(({ id }) => id !== "player" && contactPosition(scene, id) === scene.zoneId);
+  const local = actors.filter(
+    ({ id }) => scene.activeIds.includes(id) && id !== "player" && contactPosition(scene, id) === scene.zoneId,
+  );
+  const targetId = scene.contactGeneration?.targetId;
+  const onlyListener = local.length === 1 ? local[0] : undefined;
+  const onlyListenerAddressed =
+    onlyListener &&
+    scene.participants.some(
+      ({ characterId, name }) => characterId === onlyListener.id && name.toLocaleLowerCase("en-US") === mention,
+    );
   const recipientId =
-    addressed[0]?.characterId ??
-    (remember && !remember.groups?.qualification && local.length === 1 ? local[0].id : undefined);
+    local.find(({ id }) => id === targetId)?.id ??
+    (remember && onlyListener && (onlyListenerAddressed || (!mention && !remember.groups?.qualification))
+      ? onlyListener.id
+      : undefined);
   const clarifyMemoryRecipient = !!fact && !recipientId && local.length > 1;
   // shortcut: gate only a single quoted “remember this:” fact until mixed-intent speech has a structured input.
   const requestedMemory =
@@ -342,7 +368,8 @@ export function narrationContinuityContext(
           ...(recipientId ? { recipientId } : {}),
         }
       : undefined;
-  const readOnlyRecall = separateRecallFromEvidence && !memoryChange;
+  const memoryChange = !!requestedMemory;
+  const readOnlyRecall = separateRecallFromEvidence;
   const opening = scene.status === "opening";
   const actorSelection = selectActorContinuity(state.continuity, state.episodes, holders, at, {
     query: recallQuery,
@@ -350,6 +377,9 @@ export function narrationContinuityContext(
     identity: (id) => continuityActor(state, id),
     requiredIds: [...requiredRoots].filter((id) => views.some((view) => view.id === id)),
     includeExtraInitiative: opening,
+    recentEpisodeIds,
+    ranking: { recent: recentWords, semantic },
+    semanticHolders: new Set(sceneHolders.map(continuityHolderKey)),
   });
   const repairs = sceneRepairOffers(state, scene, room, at);
   const roomSelection = selectRoomContinuity(state.continuity, state.episodes, room, at, {
@@ -357,9 +387,8 @@ export function narrationContinuityContext(
     bytes: capacity,
     requiredIds: [],
     preferredIds: repairs.flatMap((repair) => repair.entries),
-    wholeRoom:
-      /\b(all|every|entire|whole|everything)\b/iu.test(input) &&
-      /\b(room|furniture|decor|walls|inside|interior)\b/iu.test(input),
+    wholeRoom: false,
+    viewers: new Set(loreAudience),
   });
   const parts: Part[] = [];
   let alias = 0;
@@ -386,7 +415,6 @@ export function narrationContinuityContext(
   // transcript below, with a separate ceiling on raw projection work.
   const transcriptBudget = 6_144;
   const recallBudget = 750;
-  const history = selectEpisodeHistory(state.episodes, state.continuity, holders, recallQuery, 256_000, scene.id);
   const episodeOrder = new Map(state.episodes.records.map((row, index) => [row.id, index]));
   const contextScopes = new Map(
     [...actors, ...npcCandidates.map((row) => row.holder)].map((holder) => [holder.id, holder.incarnation]),
@@ -400,7 +428,7 @@ export function narrationContinuityContext(
         state,
         episode,
         offeredView,
-        holders,
+        sceneHolders,
         actors,
         transcript ? contextScopes : new Map(contextScopes),
         () => `h:${exchangeNumber}.${++localAlias}`,
@@ -432,7 +460,14 @@ export function narrationContinuityContext(
   );
   const transcriptIds = new Set(transcript.map((part) => part.episodeIds[0]));
   parts.push(...transcript);
-  const recallCandidates = scene.visitEvent && opening ? [] : (history.recallCandidates ?? []);
+  const returningIds = new Set(npcCandidates.map(({ npc }) => npc.id));
+  const lastNpcExchange = [...(history.linkedEpisodes?.values() ?? [])].findLast((episode) =>
+    episode.segments.some((line) => returningIds.has(line.speakerId) && line.perceivedBy.player === "words"),
+  );
+  const recallCandidates =
+    scene.visitEvent && opening
+      ? []
+      : [...(history.recallCandidates ?? []), ...(lastNpcExchange ? [lastNpcExchange] : [])];
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
   for (const { npc, met } of npcCandidates)
@@ -452,7 +487,6 @@ export function narrationContinuityContext(
       },
     });
   const emitted = new Set<string>();
-  const episodesById = new Map(state.episodes.records.map((episode) => [episode.id, episode]));
   for (const { situation, episode, receipt, roots: rootIds } of circumstances) {
     const roots = new Set(rootIds);
     const groups = new Map<
@@ -680,54 +714,68 @@ export function narrationContinuityContext(
           placeId: room.placeId,
           zoneId: room.zoneId,
           total: roomSelection.packet.total,
-          complete: roomSelection.required.length === roomSelection.packet.total,
+          complete: !roomSelection.packet.partial && roomSelection.required.length === roomSelection.packet.total,
           selection:
-            roomSelection.required.length === roomSelection.packet.total
+            !roomSelection.packet.partial && roomSelection.required.length === roomSelection.packet.total
               ? "complete"
               : "selective; omitted entries remain current",
         },
       }),
     },
   });
-  const projectWorld = sceneContinuityView(state, scene);
-  const projectDiscussion = history.episodes
-    .slice(-2)
-    .flatMap((episode) => [
-      ...episode.groundedInput.flatMap((row) => (row.channel === "words" ? [row.text] : [])),
-      ...episode.segments.flatMap((line) => ("text" in line && line.perceivedBy.player === "words" ? [line.text] : [])),
-    ])
-    .join("\n");
-  const projectQuery = [input, projectDiscussion].join("\n").toLocaleLowerCase("en-US");
-  const projects = projectSpeechContexts(projectWorld, writerIds, projectDiscussion, input, scene.placeId);
-  const localProjects = /\b(?:project|renovation)\b/iu.test(projectQuery)
-    ? projectSpeechContexts(projectWorld, writerIds, "", "", scene.placeId)
-    : [];
-  for (const project of projects) {
+  const projectWorld = captured;
+  const participants = new Set(["player", ...writerIds]);
+  const recentProjectIds = new Set(
+    recent.flatMap(({ id }) => {
+      const episode = episodesById.get(id)!;
+      const view = history.episodes.find((row) => row.id === id)!;
+      return episode.commandReceipts.flatMap((receipt) => {
+        if (receipt.kind !== "project" || !receipt.witnesses.includes("player")) return [];
+        const project = projectWorld.projects.find((row) => row.id === receipt.targetId);
+        const proof = project?.lifecycle?.spokenProofs.find(
+          (row) =>
+            row.sessionId === episode.sceneId &&
+            row.submissionId === episode.submissionId &&
+            participants.has(row.speakerId),
+        );
+        const sourceUnits = episode.dependencies["native:" + receipt.id] ?? [];
+        return proof &&
+          episode.grounding.some(
+            (source) =>
+              source.unitId === proof.lineId &&
+              sourceUnits.includes(continuitySourceUnit(source)) &&
+              source.perceptions.some((row) => row.actorId === "player" && row.channel === "words"),
+          ) &&
+          view.segments.some(
+            (line) =>
+              line.id === proof.lineId &&
+              line.perceivedBy.player === "words" &&
+              line.perceivedBy[proof.speakerId] === "words",
+          )
+          ? [receipt.targetId]
+          : [];
+      });
+    }),
+  );
+  const projects = projectSpeechContexts(projectWorld, writerIds, recentWords, input, scene.placeId, recentProjectIds);
+  const projectCandidates = projects.map((project) => {
     const record = projectWorld.projects.find((row) => row.id === project.projectId)!;
-    const targetId = record.lifecycle?.targetVenueId || record.venueId;
-    const names = [
-      record.title,
-      projectWorld.venues.find((row) => row.id === targetId)?.name,
-      projectWorld.worldPlaces.places[targetId]?.location.name,
-    ].flatMap((name) => (name && name.length > 3 ? [name.toLocaleLowerCase("en-US")] : []));
-    const named = (query: string) =>
-      query.includes(project.projectId.toLocaleLowerCase("en-US")) || names.some((name) => query.includes(name));
-    const localCue = (query: string) =>
-      localProjects.length === 1 &&
-      localProjects[0].projectId === project.projectId &&
-      /\b(?:project|renovation)\b/iu.test(query);
-    const request = input.toLocaleLowerCase("en-US");
-    const requested = named(request) || localCue(request);
-    if (!requested && !opening && !named(projectQuery) && !localCue(projectQuery)) continue;
+    return { id: project.projectId, title: record.title, phase: project.phase, venueId: record.venueId };
+  });
+  if (projectCandidates.length)
+    parts.push({
+      ...emptyPart(),
+      block: { text: JSON.stringify({ projectCandidates }), evidenceId: "project-candidates", optional: "memory" },
+    });
+  for (const project of projects)
     parts.push({
       ...emptyPart(),
       block: {
         text: projectSpeechPrompt(projectWorld, [project]),
         evidenceId: "project-context:" + project.projectId,
-        ...(!requested ? { optional: "memory" as const } : {}),
+        optional: "memory",
       },
     });
-  }
   const retained = new Set([...parts.filter((part) => !part.block.optional), ...transcript]);
   let recallTokens = 0;
   const takeRecall = (part: Part) => {
@@ -751,9 +799,7 @@ export function narrationContinuityContext(
     ),
   );
   const asksForQuote = asksForRecallQuote(recallQuery);
-  const editingMemory = separateRecallFromEvidence
-    ? memoryChange
-    : /\b(?:forget|correct|change|update|replace)\b/iu.test(input);
+  const editingMemory = memoryChange;
   const facts = optional.filter(
     (part) =>
       actorFact(part) &&
@@ -762,10 +808,42 @@ export function narrationContinuityContext(
         !part.plainRecall ||
         !Object.values(part.sources).every((source) => words.has(JSON.stringify([source.actorId, source.excerpt])))),
   );
-  const tryOlder = () => {
-    if (!recallCandidates.length || transcriptIds.has(recallCandidates[0].id)) return false;
-    for (const view of recallCandidates) {
+  const linkedRecall = () => {
+    const fittedTargets = [...retained].flatMap((part) => part.targets);
+    const linked = new Map<string, (typeof history.episodes)[number]>();
+    for (const { id, heads } of fittedTargets)
+      for (const view of views) {
+        if (view.id !== id || view.holder.kind !== "actor" || !Object.hasOwn(heads, continuityHolderKey(view.holder)))
+          continue;
+        const holderId = view.holder.id;
+        for (const source of view.version.sources) {
+          const episode = history.linkedEpisodes?.get(source.episodeId);
+          if (!episode || transcriptIds.has(episode.id) || linked.has(episode.id)) continue;
+          const hasUnit =
+            episode.groundedInput.some(
+              (row) => row.for === holderId && row.id === source.id && row.text === source.excerpt,
+            ) ||
+            episode.segments.some(
+              (line) =>
+                line.id === source.unitId &&
+                (line.perceivedBy[holderId] === "words" || line.perceivedBy[holderId] === "sight"),
+            ) ||
+            episode.letters?.some((row) => row.id === source.unitId && row.knownBy.includes(holderId));
+          if (hasUnit) linked.set(episode.id, episode);
+          if (linked.size >= 2) return [...linked.values()];
+        }
+      }
+    return [...linked.values()];
+  };
+  const tryOlder = (linksFirst = false) => {
+    const links = scene.visitEvent && opening ? [] : linkedRecall();
+    const direct = recallCandidates.filter(({ id }) => history.directRecallIds?.has(id));
+    let attempted = 0;
+    for (const view of new Set(
+      linksFirst ? [...direct, ...links, ...recallCandidates] : [...recallCandidates, ...links],
+    )) {
       if (transcriptIds.has(view.id)) continue;
+      if (attempted++ === 8) break;
       const part = historyPart(view, false);
       if (!takeRecall(part)) continue;
       parts.push(part);
@@ -774,12 +852,15 @@ export function narrationContinuityContext(
     return false;
   };
   const recalledQuote = (opening || asksForQuote) && tryOlder();
-  for (const part of optional.filter((part) => !actorFact(part))) takeRecall(part);
-  if (opening || !recalledQuote || editingMemory) {
-    let count = 0;
-    for (const part of facts) if (takeRecall(part) && ++count === (recalledQuote ? 1 : 2) && !opening) break;
-    if (!opening && !asksForQuote && (!count || asksForPastExchange(recallQuery))) tryOlder();
+  const projectShortlist = optional.find((part) => part.block.evidenceId === "project-candidates");
+  if (projectShortlist) takeRecall(projectShortlist);
+  let count = 0;
+  for (const part of facts) {
+    if (recalledQuote && readOnlyRecall && part.plainRecall) continue;
+    if (takeRecall(part) && ++count === (recalledQuote ? 1 : 2) && !opening) break;
   }
+  if (!opening && !recalledQuote) tryOlder(!asksForQuote);
+  for (const part of optional) if (part !== projectShortlist && !actorFact(part)) takeRecall(part);
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts
     .filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds))

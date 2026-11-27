@@ -108,8 +108,8 @@ await runCase("scene-prefix/current-native-context", async () => {
         assert(!stable.includes(summary), "live circumstances cannot invalidate authored identity caching");
         assert(changing.includes(summary));
         assert(!stable.includes("Relevant Projects:"));
-        assert.equal(changing.includes("Relevant Projects:"), change === "project");
-        assert.equal(changing.includes("Larger Common room"), change === "project");
+        assert.equal(changing.includes("Relevant Projects:"), change.startsWith("project"));
+        assert.equal(changing.includes("Larger Common room"), change.startsWith("project"));
         assert(!changing.includes("AUTHORED PRIVATE BACKSTORY"));
         const activeContinuity = messages
           .flatMap((row) => row.content.split("\n"))

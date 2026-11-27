@@ -496,7 +496,8 @@ async function main() {
     recalled.recentLore.map(({ text }) => text),
     [spoken, "The harbor is quiet."],
   );
-  assert(recalled.parts.some((part) => part.block.text.includes(original)));
+  assert(recalled.parts.some((part) => part.block.text.includes(spoken)));
+  assert(!recalled.parts.some((part) => /vaultcipher|narratorsigil/u.test(part.block.text)));
   const keyed = ["harbor", "vaultcipher", "secretguild", "narratorsigil"];
   assert.deepEqual(
     selectVillageLore(

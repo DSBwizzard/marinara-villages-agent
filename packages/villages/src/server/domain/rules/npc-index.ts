@@ -58,13 +58,20 @@ export function namedNpcIds(registry: PlaceRegistry, query: string, index = npcI
 
 export function selectNpcCandidates(
   registry: PlaceRegistry,
-  scope: { mapId?: string; placeId?: string; query?: string; authorityIds?: readonly string[] },
+  scope: {
+    mapId?: string;
+    placeId?: string;
+    query?: string;
+    authorityIds?: readonly string[];
+    recentlyWitnessedNpcIds?: readonly string[];
+  },
   excluded: readonly string[] = [],
   limit = 4,
 ): NpcIdentity[] {
   const index = npcIndex(registry),
     local = new Set(index.places.get(scope.placeId ?? "") ?? []),
     authority = new Set(scope.authorityIds ?? []),
+    recent = new Set(scope.recentlyWitnessedNpcIds ?? []),
     named = namedNpcIds(registry, scope.query ?? "", index),
     candidates = new Set([...local, ...authority, ...(index.maps.get(scope.mapId ?? "") ?? [])]);
   const scores = new Map<string, number>(),
@@ -78,8 +85,9 @@ export function selectNpcCandidates(
     })
     .sort(
       (a, b) =>
-        Number(named.has(b.id)) - Number(named.has(a.id)) ||
         Number(authority.has(b.id)) - Number(authority.has(a.id)) ||
+        Number(recent.has(b.id)) - Number(recent.has(a.id)) ||
+        Number(named.has(b.id)) - Number(named.has(a.id)) ||
         (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0) ||
         Number(local.has(b.id)) - Number(local.has(a.id)) ||
         b.updatedAt.localeCompare(a.updatedAt) ||

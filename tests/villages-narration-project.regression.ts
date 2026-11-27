@@ -255,19 +255,12 @@ await runCase("narration-project/fitted-terms", () => {
     "Let's review Covered entrance.",
     f.at,
   );
-  const projectBlock = requested.parts.find(
-    (part) => part.block.evidenceId === "project-context:" + f.project.id,
-  )!.block;
-  assert.equal(projectBlock.optional, undefined);
-  assert(
-    large.every((text) => projectBlock.text.includes(text)),
-    "the requested terms remain complete",
-  );
-  assert.equal(fittedNarrationReadset(f.state, requested, []).projects.length, 0);
-  assert.equal(
-    fittedNarrationReadset(f.state, requested, [projectBlock.evidenceId!]).projects[0].projectId,
-    f.project.id,
-  );
+  const shortlist = requested.parts.find((part) => part.block.evidenceId === "project-candidates")?.block;
+  assert.equal(shortlist?.optional, "memory");
+  assert.match(shortlist!.text, /Covered entrance/);
+  assert(large.every((text) => !shortlist!.text.includes(text)));
+  assert.equal(requested.projects.length, 0, "an oversized plan stays outside ordinary recall");
+  assert.equal(fittedNarrationReadset(f.state, requested, [shortlist!.evidenceId!]).projects.length, 0);
 });
 
 await runCase("narration-project/current-witness", () => {
@@ -452,11 +445,12 @@ await runCase("narration-project/explicit-start", () => {
     "committed replay does not purchase or restart native work after authority changes",
   );
   assert.equal(f.state.episodes.records.length, 1);
-  for (const kind of ["private", "npc", "not-ready", "stale"]) {
+  for (const kind of ["private", "npc", "not-ready", "stale", "fresh-scene"]) {
     const g = ready(kind !== "not-ready");
     if (kind === "private") g.raw.commands[0].source[0].ground = { kind: "private" };
     if (kind === "npc") g.raw.commands[0].source = [{ segment: "started", perceive: { kind: "seen", by: ["a"] } }];
     if (kind === "stale") g.state.projects[0].lifecycle!.approvals = [];
+    if (kind === "fresh-scene") g.readset.sceneProjectStart = false;
     const before = memoryHash(g.state);
     assert.equal(g.accept().held, true, kind);
     assert.equal(memoryHash(g.state), before);

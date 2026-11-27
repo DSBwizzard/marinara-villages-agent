@@ -130,6 +130,7 @@ export type VenueScene = {
     hearing?: "direct";
     venue?: import("./world.js").VillageVenue;
     instruction: string;
+    targetId?: string;
     localIds: string[];
     remoteIds: string[];
     doorwayVoiceIds?: string[];
