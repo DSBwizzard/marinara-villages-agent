@@ -1423,7 +1423,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (!recovered && (!savedPrior.hasResult || savedPrior.partialResult) && !savedPrior.replacement) {
         const seed = savedPrior.seed;
         refreshedInput = await handlers.get(savedPrior.kind)?.refreshRetryInput?.(savedPrior.input, async () => {
-          const state = await (ports.readVillageAuthority ?? readVillageState)();
+          const state = await (ports.readVillageAuthority ?? readVillageState)({
+            memories: savedPrior.kind === "weekly-agenda" && asRecord(savedPrior.input).coverage === true,
+          });
           if (state.seed !== seed) throw conflict("That job belongs to a different Village.");
           return state;
         });
