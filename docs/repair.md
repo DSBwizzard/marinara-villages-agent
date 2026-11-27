@@ -8,6 +8,8 @@ Locations and Venues use approved notebook layout A. Opening one selects Details
 
 The selected target stays visible while short, named steps expose its controls. Collection and text pagination keep desktop and phone pages within the viewport without page or panel scrolling. Reference fields offer saved, valid choices and dependent Zones. Authored prose stays text. Read-only source material, receipts, derived reservations and storage revisions are not editable truth.
 
+On phones, list titles sit above their metadata and Repair history stacks each entry. Find global Search REPAIR in the area selector. Forms, comparison pages and lists fit ordinary phone viewports. When enlarged text or a reduced viewport needs more room, only the content can scroll, keeping navigation and save controls available.
+
 Record switches keep the current form visible and disabled until its replacement is ready. Context changes and direct Home, Venue and Zone entry load the destination without briefly showing an intermediate record list. Late reads and artwork refreshes cannot reopen a target the player has left.
 
 Saving returns directly to the refreshed editor or its owning list with a small Saved status. It adds no Continue repairing screen. A failed refresh retries the page and native Village/Scene refresh without submitting the saved correction again. Whole-Village restoration keeps its separate result and any preserved Scene draft.

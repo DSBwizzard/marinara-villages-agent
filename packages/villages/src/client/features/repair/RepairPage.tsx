@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { BackgroundWork, VillageSnapshot } from "../../../shared/contracts/village.js";
 import type {
   RepairBrowseItem,
@@ -139,12 +139,12 @@ function AreaChoice({
         value={area}
         onChange={(event) => onChange(event.target.value)}
       >
-        {area === "all" ? <option value="all">Search results</option> : null}
         {areas.map(([id, title]) => (
           <option key={id} value={id}>
             {title}
           </option>
         ))}
+        <option value="all">Search REPAIR</option>
       </select>
     </label>
   );
@@ -196,31 +196,34 @@ export function RepairPage({
   const requestedStep = useRef<{ id: string; step: number | "last" } | undefined>(undefined);
   const [portraits, setPortraits] = useState<Awaited<ReturnType<typeof readPortraits>>>({});
   const space = useRepairSpace();
+  const content = useRef<HTMLDivElement>(null);
   const small = space.width < 700,
     compact = space.height / space.scale < 340;
   const proseRows = Math.max(
     1,
     Math.min(
       compact ? 3 : 5,
-      Math.floor((space.height / space.scale - (c.person && c.section === "memories" ? 195 : 140)) / 24),
+      Math.floor((space.height / space.scale - (small ? 155 : c.person && c.section === "memories" ? 195 : 140)) / 24),
     ),
   );
-  const listBudget =
-    c.view === "checkpoints" || c.topic === "restore"
-      ? 140
-      : c.topic === "places" && !c.placePath.length
-        ? 240
-        : c.person && c.section === "memories" && c.view === "list"
-          ? 260
-          : c.topic === "progress"
-            ? 150
-            : 130;
-  const rowSize = Math.max(1, Math.floor((space.height - listBudget) / (72 * space.scale)));
+  const isSnapshots = c.view === "checkpoints" || c.topic === "restore";
+  const listBudget = isSnapshots
+    ? small
+      ? 174 + (c.index?.sceneOpen ? 34 : 0) + (deleteSnapshot ? 44 : 0)
+      : 140
+    : c.topic === "places" && !c.placePath.length
+      ? 240
+      : c.person && c.section === "memories" && c.view === "list"
+        ? 205
+        : c.topic === "progress"
+          ? 150
+          : 130;
+  const rowHeight = small ? (isSnapshots || c.topic === "progress" ? 100 : 80) : 72;
+  const rowSize = Math.max(1, Math.floor((space.height / space.scale - listBudget) / rowHeight));
   const peopleSize = 4;
   const portraitSize = Math.max(40, Math.min(132, (space.height / space.scale - 300) / 2));
   const directory = c.view === "list" && c.collection === "list" && c.topic === "people" && !c.person;
   const isHistory = c.view === "history";
-  const isSnapshots = c.view === "checkpoints" || c.topic === "restore";
   const area = isHistory ? "history" : isSnapshots ? "world" : c.topic;
   const chooseArea = (next: string) => {
     setRecordQuery("");
@@ -229,7 +232,7 @@ export function RepairPage({
     setHistoryDetail(undefined);
     setProblem("");
     if (next === "history") void c.showHistory();
-    else void c.chooseTopic(next as "people" | "places" | "world" | "progress");
+    else void c.chooseTopic(next as "people" | "places" | "world" | "progress" | "all");
   };
   const people = (c.index?.people ?? []).filter(
     (person) =>
@@ -441,6 +444,21 @@ export function RepairPage({
     return groups;
   }, [fields, compact, isMemory, selected, space.height, space.scale, mainPlaceDetails, small]);
   const currentStep = Math.min(step, Math.max(0, fieldGroups.length - 1));
+  useLayoutEffect(() => {
+    if (content.current) content.current.scrollTop = 0;
+  }, [
+    c.view,
+    c.topic,
+    c.section,
+    c.person?.id,
+    c.placePath,
+    selected?.id,
+    currentStep,
+    step,
+    listPage,
+    c.offset,
+    historyDetail,
+  ]);
   const groupCount = fieldGroups.length;
   useEffect(() => {
     requestedStep.current = undefined;
@@ -569,7 +587,7 @@ export function RepairPage({
   ];
   const reviewStep = Math.min(step, Math.max(0, Math.ceil(reviewPages.length / reviewPageSize) - 1));
   const history = c.index?.history ?? [];
-  const historySize = Math.max(1, Math.floor((space.height - 80) / (small ? 90 : 66)));
+  const historySize = Math.max(1, Math.floor((space.height / space.scale - (small ? 56 : 80)) / (small ? 96 : 66)));
   const historyRow = history.find((entry) => entry.id === historyDetail);
   const days = c.records.flatMap((record) => (record.agenda ? [{ record, ...record.agenda }] : []));
   const visibleJobs = jobs.filter(
@@ -593,19 +611,44 @@ export function RepairPage({
     }
   };
 
+  const searchForm = (className?: string) => (
+    <form
+      className={className}
+      autoComplete="off"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setListPage(0);
+        void c.chooseTopic("all", c.query);
+      }}
+    >
+      <input
+        autoComplete="off"
+        type="search"
+        placeholder="Search REPAIR"
+        aria-label="Search REPAIR"
+        value={c.query}
+        onChange={(event) => c.setQuery(event.target.value)}
+      />
+    </form>
+  );
+
   return (
     <div className="villages-repair" aria-label="REPAIR">
       <style>{REPAIR_STYLES + RELATIONSHIP_METER_STYLES}</style>
       <header className="repair-chrome">
         <button
           type="button"
+          aria-label="← Return to village"
           disabled={c.saving}
           onClick={() => {
             c.leave();
             onBack();
           }}
         >
-          ← Return to village
+          <span className="repair-menu-full">← Return to village</span>
+          <span className="repair-menu-short" aria-hidden="true">
+            ← Village
+          </span>
         </button>
         <strong>
           <img
@@ -619,23 +662,7 @@ export function RepairPage({
         </strong>
         <span>{c.index?.villageName}</span>
         <AreaChoice area={area} disabled={c.saving} onChange={chooseArea} compact />
-        <form
-          autoComplete="off"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setListPage(0);
-            void c.chooseTopic("all", c.query);
-          }}
-        >
-          <input
-            autoComplete="off"
-            type="search"
-            placeholder="Search REPAIR"
-            aria-label="Search REPAIR"
-            value={c.query}
-            onChange={(event) => c.setQuery(event.target.value)}
-          />
-        </form>
+        {searchForm()}
       </header>
       <nav className="repair-area-tabs" aria-label="REPAIR areas">
         {areas.map(([id, title, icon]) => (
@@ -675,7 +702,7 @@ export function RepairPage({
                 <VillageIcon name="places" />
               </span>
             )}
-            <div>
+            <div title={c.person?.name ?? targetPlace?.title}>
               <h1>{c.person?.name ?? targetPlace?.title}</h1>
               <small>
                 {c.person
@@ -705,6 +732,7 @@ export function RepairPage({
                   : (areas.find(([id]) => id === area)?.[1] ?? "Search results")}
           </h1>
         )}
+        {area === "all" && !editing && c.view !== "review" ? searchForm("repair-mobile-search") : null}
         {c.person && c.view !== "review" ? (
           <Sections
             name="Person repairs"
@@ -757,7 +785,7 @@ export function RepairPage({
               ))}
             </nav>
           ) : null}
-          <div className="repair-notebook-body">
+          <div className="repair-notebook-body" ref={content}>
             {c.view === "review" && c.review ? (
               <section className="repair-review">
                 <h2>Review changes</h2>
@@ -1002,18 +1030,18 @@ export function RepairPage({
                 </section>
               ) : (
                 <section className="repair-directory">
-                  <table className="repair-history">
-                    <thead>
-                      <tr>
-                        <th>When</th>
-                        <th>Action</th>
-                        <th>Target</th>
-                        <th>Change</th>
+                  <table className="repair-history" role="table" aria-label="Repairs">
+                    <thead role="rowgroup">
+                      <tr role="row">
+                        <th scope="col">When</th>
+                        <th scope="col">Action</th>
+                        <th scope="col">Target</th>
+                        <th scope="col">Change</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody role="rowgroup">
                       {history.slice(0, historySize).map((entry) => (
-                        <tr key={entry.id}>
+                        <tr role="row" key={entry.id}>
                           <td>
                             {new Date(entry.at).toLocaleString(undefined, {
                               month: "short",
@@ -1024,7 +1052,7 @@ export function RepairPage({
                           </td>
                           <td>{entry.action ?? "Updated"}</td>
                           <td>
-                            <button type="button" onClick={() => setHistoryDetail(entry.id)}>
+                            <button type="button" aria-label={entry.title} onClick={() => setHistoryDetail(entry.id)}>
                               {short(entry.title)}
                             </button>
                           </td>
@@ -1107,7 +1135,11 @@ export function RepairPage({
                           >
                             Delete snapshot
                           </button>
-                          <button type="button" onClick={() => setDeleteSnapshot(undefined)}>
+                          <button
+                            type="button"
+                            className="repair-snapshot-confirm"
+                            onClick={() => setDeleteSnapshot(undefined)}
+                          >
                             Keep snapshot
                           </button>
                         </>
@@ -1511,7 +1543,7 @@ export function RepairPage({
                   days={days}
                   date={agendaDate}
                   disabled={c.busy}
-                  pageSize={Math.max(1, Math.floor((space.height - 200) / 55))}
+                  pageSize={Math.max(1, Math.floor((space.height / space.scale - (small ? 200 : 175)) / 55))}
                   onDate={(date) => setAgendaDate(date)}
                   onActivity={(day, block) => {
                     const record = days.find((entry) => entry.date === day.date)?.record;
@@ -1578,7 +1610,7 @@ export function RepairPage({
                         <div key={job.id} className="repair-recovery-row">
                           <strong>{job.kind === "resident-planning" ? "Resident activity" : job.label}</strong>
                           <span>{job.status}</span>
-                          {job.error ? <span>{short(job.error)}</span> : null}
+                          {job.error ? <span className="repair-recovery-problem">{short(job.error)}</span> : null}
                           {["failed", "interrupted", "paused"].includes(job.status) && onRetryWork ? (
                             <button type="button" disabled={!!retrying} onClick={() => void retry(job)}>
                               {retrying === job.id
