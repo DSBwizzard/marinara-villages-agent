@@ -219,6 +219,17 @@ export function readSceneNarrationReply(
   continuity: ContinuityCollection,
 ) {
   const visit = raw.visit;
+  if (Array.isArray(raw.segments) && raw.segments.some((value) => asRecord(value).offerAppointment === true)) {
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value) => {
+        const beat = asRecord(value);
+        return beat.kind === "dialogue" && beat.offerAppointment === true
+          ? { ...beat, text: "I can make the time shown in my Agenda. Confirm it there if it works for you." }
+          : value;
+      }),
+    };
+  }
   const recipient = readset.source.rememberFor;
   if (recipient) {
     memoryRequire(
@@ -230,7 +241,7 @@ export function readSceneNarrationReply(
         raw.segments.length > 0 &&
         raw.segments.every((value) => {
           const row = asRecord(value);
-          return row.kind === "dialogue" && row.speakerId === recipient && !row.introduceName;
+          return row.kind === "dialogue" && row.speakerId === recipient && !row.introduceName && !row.offerAppointment;
         }),
       "only the reminder recipient can reply",
     );

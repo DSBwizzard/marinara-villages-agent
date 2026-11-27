@@ -712,9 +712,11 @@ export function narrationContinuityContext(
   };
   const recalledQuote = (opening || asksForQuote) && tryOlder();
   for (const part of optional.filter((part) => !actorFact(part))) takeRecall(part);
-  let factsAdded = 0;
-  for (const part of facts) if (takeRecall(part) && ++factsAdded === (recalledQuote ? 1 : 2) && !opening) break;
-  if (!opening && !asksForQuote) tryOlder();
+  if (opening || !recalledQuote) {
+    let factsAdded = 0;
+    for (const part of facts) if (takeRecall(part) && ++factsAdded === 2 && !opening) break;
+    if (!opening && !factsAdded) tryOlder();
+  }
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts
     .filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds))

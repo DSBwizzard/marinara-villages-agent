@@ -1674,12 +1674,12 @@ await runCase("narration-writing/long-followup", async () => {
     (source) => source.kind === "knowledge" && source.actorId === f.id && source.excerpt === shared.text,
   );
   assert(reference && speakerReference);
-  const alias = "h:1515.2";
+  const alias = "h:1515";
   const compatReadset = {
     ...memoryEdit.readset,
     source: {
       ...memoryEdit.readset.source,
-      historical: { ...memoryEdit.readset.source.historical, [alias]: reference, "h:1515.3": speakerReference },
+      historical: { ...memoryEdit.readset.source.historical, [alias]: reference, "h:1516": speakerReference },
     },
   };
   const citedRoot = f.state.continuity.versions.find((version) => version.id === reference.unitId)!.rootId;

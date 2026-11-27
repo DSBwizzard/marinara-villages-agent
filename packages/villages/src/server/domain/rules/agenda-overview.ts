@@ -289,6 +289,7 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
           }
         : { ...control, activity: "Booked appointment" };
     });
+  const privateAppointments = new Set(confirmed.filter((entry) => !("time" in entry)).map((entry) => entry.id));
   return {
     ...(confirmed.length ? { confirmed } : {}),
     visibility: inspect ? "inspect" : shared ? "shared" : "known",
@@ -313,6 +314,9 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
         inspect || shared
           ? effective.map((block) => ({
               ...block,
+              ...(!inspect && block.commitmentId && privateAppointments.has(block.commitmentId)
+                ? { activity: "Booked appointment", venueId: "", zoneId: undefined }
+                : {}),
               source: visible.find(
                 (row) =>
                   row.source === "agreed" &&
@@ -511,8 +515,7 @@ function currentAppointments(world: VillageState, now: ZonedDate) {
   return (world.residentPlans.appointments ?? []).filter((row) => {
     const venue = findLocation(world, row.time.venueId);
     return (
-      !!venue &&
-      !!resolveVenueZone(venue, row.time.zoneId ?? "exterior") &&
+      (row.cancelled || (!!venue && !!resolveVenueZone(venue, row.time.zoneId ?? "exterior"))) &&
       calendarAt(now, row.time.date, row.time.endMinute).getTime() > now.getTime() &&
       world.villagers.some(
         (resident) => resident.characterId === row.resident.id && resident.incarnation === row.resident.incarnation,

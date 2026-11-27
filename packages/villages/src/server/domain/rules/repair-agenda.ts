@@ -226,14 +226,16 @@ export function applyAgendaRepair(
     const venueId = String(values[`venue:${index}`] ?? block?.venueId ?? "");
     const zoneId = String(values[`zone:${index}`] ?? block?.zoneId ?? "") || undefined;
     const requestedPurpose = values[`purpose:${index}`];
-    const purpose =
+    const selectedPurpose =
       requestedPurpose === undefined || requestedPurpose === ""
         ? block
           ? block.purpose
           : "ordinary"
         : readAgendaPurpose(requestedPurpose);
-    if (requestedPurpose && (!purpose || (purpose === "unplanned" && block?.purpose !== "unplanned")))
+    if (requestedPurpose && (!selectedPurpose || (selectedPurpose === "unplanned" && block?.purpose !== "unplanned")))
       throw repairFieldError(`purpose:${index}`, "Choose an activity type.");
+    const purpose =
+      selectedPurpose === "unplanned" && block && activity !== block.activity ? "ordinary" : selectedPurpose;
     const requestedFlexibility = values[`flexible:${index}`] ?? block?.flexible === true;
     if (typeof requestedFlexibility !== "boolean")
       throw repairFieldError(`flexible:${index}`, "Choose whether to allow rescheduling.");

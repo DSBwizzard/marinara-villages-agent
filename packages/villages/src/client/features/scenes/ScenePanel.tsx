@@ -614,7 +614,9 @@ export function RoomPanel({
   const canRetryReply = canCompose && !canReadNext && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
   const canSend = canCompose && !historyOpen && !busy && !contactRecovery;
   const retryingReminder =
-    room.operation?.input?.rememberFor && (room.operation.status !== "complete" || room.operation.error);
+    room.operation?.input?.rememberFor &&
+    room.operation.input.message === draft &&
+    (room.operation.status !== "complete" || room.operation.error);
   const sendLabel = busy ? "Sending" : retryingReminder ? "Send reminder" : "Send";
   const travel = room.travel;
   const resizeComposer = useCallback(() => {

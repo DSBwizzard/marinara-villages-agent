@@ -38,9 +38,7 @@ export function narrationLines(
       : {
           kind: row.delivery === "whisper" ? "whisper" : row.presentation === "aside" ? "side" : "dialogue",
           speakerId: row.speakerId,
-          content: row.offerAppointment
-            ? "I can make the time shown in my Agenda. Confirm it there if it works for you."
-            : row.text,
+          content: row.text,
           heardBy: [],
           staging: row.staging,
           ...(row.delivery ? { delivery: row.delivery } : {}),
