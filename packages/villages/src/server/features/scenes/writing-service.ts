@@ -332,10 +332,11 @@ export function createSceneWriting({
               : zone.name);
           const decision = destination
             ? (agrees ? (trespass ? "agree to sneak across to " : "agree to cross to ") : "decline crossing to ") +
-              destination
+              destination +
+              " with the player when the player moves"
             : agrees
-              ? "start following"
-              : "stop following";
+              ? "start following the player when they move"
+              : "stop following the player";
           return [number, decision];
         }),
       ]),
@@ -716,7 +717,7 @@ export function createSceneWriting({
                 JSON.stringify(followingMenu)
               : "") +
             (sceneSpeechActions.length
-              ? "\nFor a definite answer about accompanying the player or letting them enter, choose the matching number above and write [action N]: with no text after the colon. A yes or no in ordinary dialogue leaves the choice unsettled. If none fits, leave the plan open. Use the dedicated command for an actual crossing or outing-wide sneaking agreement."
+              ? "\nRead the player’s latest action before choosing. Choose a following number only for travelling together after the player uses Move. When a resident goes on their own while the player stays, use their movement command and let the game show the crossing. Keep movement out of spoken text. For a definite invitation or following decision, write [action N]: with the matching number and no other text. If none fits, leave the plan open. Use the dedicated command for outing-wide sneaking consent."
               : "")
           : 'Return "segments" and any "keep" or "commands" in one JSON object.'),
     );

@@ -964,7 +964,9 @@ await runCase("scene-travel/mixed-speech-actions", async () => {
         [number, string][]
       >;
       const invited = invites.find(({ actorId, zoneId }) => actorId === "mara" && zoneId === "workshop");
-      const agreed = following.mara.find(([, decision]) => decision === "start following")?.[0];
+      const agreed = following.mara.find(
+        ([, decision]) => decision === "start following the player when they move",
+      )?.[0];
       assert(invited && agreed && invited.option !== agreed);
       return {
         content: [
