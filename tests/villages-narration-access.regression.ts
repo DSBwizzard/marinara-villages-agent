@@ -23,6 +23,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/narration-sources.js";
 import { applyAccessCommand, evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { decodeTaggedSceneReply } from "../packages/villages/src/server/domain/rules/tagged-scene-reply.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
@@ -53,8 +54,12 @@ await runCase("narration-access/doorway-after-hours", () => {
   scene.participants = [];
   scene.sceneAttendance!.layout = captureSceneLayout(venue);
   const input = "I knock and wait at the entrance.";
-  assert.deepEqual(zoneEventScene(scene, venue, { message: "I quietly wait." }).contactGeneration?.actorIds, []);
-  const admitted = zoneEventScene(scene, venue, { message: input });
+  assert.deepEqual(zoneEventScene(scene, venue).contactGeneration?.actorIds, []);
+  assert.equal(zoneEventScene(scene, venue).contactGeneration?.doorwayVoiceIds, undefined);
+  const admitted = zoneEventScene(scene, venue, {
+    contactKind: "knock",
+    zoneId: zone.id,
+  });
   assert.deepEqual(admitted.contactGeneration?.doorwayVoiceIds, [f.actorId]);
   const prep = narrationContinuityContext(f.state, admitted, venue, "doorway", input, at, true);
   const readset = {
@@ -99,9 +104,7 @@ await runCase("narration-access/doorway-after-hours", () => {
   applyAcceptedSceneDelta(scene, accepted.episode!);
   assert.equal(scene.zoneId, "exterior", "an invitation is not movement");
   assert.equal(scene.doorwayContacts?.[0].characterId, f.actorId);
-  assert.deepEqual(zoneEventScene(scene, venue, { message: '"Thank you."' }).contactGeneration?.doorwayVoiceIds, [
-    f.actorId,
-  ]);
+  assert.deepEqual(zoneEventScene(scene, venue).contactGeneration?.doorwayVoiceIds, [f.actorId]);
   const current = f.state.worldPlaces.places.cafe.location;
   assert.equal(current.access!.permissions[0].outsideHours, true);
   assert.equal(
@@ -685,7 +688,6 @@ await runCase("narration-access/overnight-agreement", () => {
       },
     }),
     cafe.location,
-    { message: input },
   );
   const prepared = narrationContinuityContext(state, scene, cafe.location, "overnight", input, at);
   const readset = fittedNarrationReadset(
@@ -733,6 +735,56 @@ await runCase("narration-access/overnight-agreement", () => {
 });
 
 await runCase("narration-access/work-consent", () => {
+  for (const playerWork of [false, true]) {
+    const compact = fixture(true);
+    const { state, cafe, actorId } = compact;
+    state.venues.push(cafe.location);
+    delete state.worldPlaces.places[cafe.id];
+    const workerId = "another-resident";
+    state.villagers.push({
+      ...state.villagers[0],
+      characterId: workerId,
+      incarnation: "worker-incarnation",
+    });
+    const captured = {
+      ...compact.readset,
+      access: narrationAccessScopes(state, ["player", actorId]),
+      taggedSceneReply: true as const,
+      explicitSceneEvidence: true as const,
+    };
+    const worker = playerWork ? "player" : workerId;
+    const reply =
+      `[${actorId}] [work]: ` +
+      JSON.stringify({
+        characterId: worker,
+        activity: "Keep the library",
+        zoneId: "parlor",
+        accessZoneIds: ["parlor"],
+        days: ["Monday"],
+        startMinute: 540,
+        endMinute: 1020,
+      });
+    const raw = decodeTaggedSceneReply(reply, captured).value!;
+    const result = acceptNarration(
+      state,
+      { raw, readset: captured, responseDigest: memoryHash(reply) },
+      "compact-work",
+      at,
+    );
+    assert(!result.held, JSON.stringify(result.rejected));
+    const offers = state.venues.find((venue) => venue.id === cafe.id)!.access!.workOffers ?? [];
+    assert.deepEqual(
+      offers.map((offer) => offer.characterId),
+      playerWork ? [] : [workerId],
+      JSON.stringify(result.rejected),
+    );
+    assert.equal(
+      result.episode!.segments[0].content,
+      playerWork
+        ? "The work offer is still unsettled."
+        : "The proposed shift is Keep the library, Monday, 09:00 to 17:00.",
+    );
+  }
   const unadmitted = fixture(true);
   const negative = unadmitted.publication(
     [

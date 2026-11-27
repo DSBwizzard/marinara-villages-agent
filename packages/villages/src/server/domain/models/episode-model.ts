@@ -8,6 +8,7 @@ export type AcceptedEpisode = {
   sceneId?: string;
   /** Historical public Place label captured with this Scene exchange. */
   placeName?: string;
+  explicitNpcIntroduction?: true;
   opportunity?: { id: string; kind: "encounter" | "routine" | "relationship"; venueId: string; zoneId: string };
   submissionId: string;
   operationId: string;

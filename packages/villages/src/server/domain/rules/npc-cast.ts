@@ -6,15 +6,18 @@ import { namedNpcIds, npcIndex, npcNameKeys, npcNameKey, selectNpcCandidates } f
 import { readPlayerIdentity } from "./village-projections.js";
 
 export function assertDistinctNpcName(state: VillageState, name: string, exceptId?: string) {
-  const keys = new Set(npcNameKeys(name));
+  const key = npcNameKey(name);
   const others = [
     ...cardCharacters(state).map((person) => ({ id: person.characterId, name: person.cardSnapshot.name })),
     { id: "player", name: readPlayerIdentity(state).name },
   ];
   const index = npcIndex(state.worldPlaces);
   if (
-    others.some((person) => person.id !== exceptId && npcNameKeys(person.name).some((key) => keys.has(key))) ||
-    [...keys].some((key) => [...(index.names.get(key) ?? [])].some((id) => id !== exceptId))
+    !key ||
+    others.some((person) => person.id !== exceptId && npcNameKey(person.name) === key) ||
+    [...(index.names.get(key) ?? [])].some(
+      (id) => id !== exceptId && npcNameKey(state.worldPlaces.npcs[id].name) === key,
+    )
   )
     throw badRequest("That name already identifies someone in this Village. Use the established person.");
 }

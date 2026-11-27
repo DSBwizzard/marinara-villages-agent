@@ -42,6 +42,7 @@ export type VenueSubmission = {
   message: string;
   mode: "chat" | "contact" | "leave";
   targetId: string;
+  rememberFor?: string;
   at: string;
   requestFingerprint: string;
   /** The existing Scene outbox owns the purchased fit until its episode is published. */
@@ -130,11 +131,13 @@ export type VenueScene = {
     hearing?: "direct";
     venue?: import("./world.js").VillageVenue;
     instruction: string;
+    contactKind?: "call" | "knock";
     localIds: string[];
     remoteIds: string[];
     doorwayVoiceIds?: string[];
     /** Selected writers only; physical attendance and witnesses remain independent. */
     actorIds?: string[];
+    leadSpeakerId?: string;
   };
   departedIds?: string[];
   /** Server-only destinations for validated forced departures, never another Scene's cast. */
