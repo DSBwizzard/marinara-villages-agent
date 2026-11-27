@@ -35,6 +35,7 @@ const deskAssets = {
   "mari-founding-happy-side.webp": "image/webp",
   "mari-founding-proud.webp": "image/webp",
   "villages-icon.png": "image/png",
+  "repair-icon.png": "image/png",
   "letter-fonts/assistant.json": "application/json",
   "letter-fonts/lora.json": "application/json",
 };

@@ -19,14 +19,15 @@ export const REPAIR_STYLES = `
 .villages-repair small{font-size:13px;color:var(--repair-muted)}
 .villages-repair .repair-chrome{flex:none;min-height:64px;display:flex;align-items:center;gap:24px;padding:8px 30px;background:var(--repair-paper);border-bottom:1px solid var(--repair-line)}
 .villages-repair .repair-chrome>span{font-size:14px;color:var(--repair-muted)}
-.villages-repair .repair-chrome>strong{font-size:19px;letter-spacing:.04em;border-left:1px solid var(--repair-line);padding-left:22px}
+.villages-repair .repair-chrome>strong{display:flex;align-items:center;gap:10px;flex:none;font-size:19px;letter-spacing:.04em;border-left:1px solid var(--repair-line);padding-left:22px}
+.villages-repair .repair-chrome>strong>img{display:block;width:36px;height:36px;object-fit:contain;image-rendering:pixelated;flex:none}
 .villages-repair .repair-chrome form{margin-left:auto;width:295px}
 .villages-repair .repair-chrome input{font-size:14px;min-height:40px}
 .villages-repair .repair-chrome>button{font-size:13px;border:0;white-space:nowrap}
 .villages-repair .repair-area-tabs{display:flex;gap:6px;padding:8px 28px;border-bottom:1px solid var(--repair-line);flex:none;background:#1f2326}
 .villages-repair .repair-area-tabs button{display:flex;align-items:center;gap:11px;border:0;font-size:14px;color:var(--repair-muted);padding:9px 18px}
 .villages-repair :is(.repair-area-tabs,.repair-actions) button:is([aria-current=page],[aria-pressed=true]),.villages-repair .repair-steps button[aria-current=step]{background:#39342f;color:var(--repair-primary)}
-.villages-repair .repair-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;padding:20px 36px 18px;max-width:1490px;width:100%;align-self:center}
+.villages-repair .repair-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;padding:20px 30px 18px;max-width:1490px;width:100%;align-self:flex-start}
 .villages-repair .repair-workspace{flex:1;min-height:0;min-width:0;position:relative;display:flex;flex-direction:column;container:village-desk/inline-size}
 .villages-repair .repair-notebook-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
 .villages-repair .repair-workspace[data-notebook=true]{flex-direction:row;gap:32px}
@@ -164,7 +165,8 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-workspace[data-notebook=true] .repair-card{padding:0}
 .villages-repair .repair-chrome{min-height:54px;padding:5px 14px;gap:12px}
 .villages-repair .repair-chrome>span,.villages-repair .repair-chrome form{display:none}
-.villages-repair .repair-chrome>strong{border:0;padding:0;font-size:17px}
+.villages-repair .repair-chrome>strong{border:0;padding:0;font-size:17px;gap:7px}
+.villages-repair .repair-chrome>strong>img{width:30px;height:30px}
 .villages-repair .repair-chrome>button{padding:5px 0;font-size:12px}
 .villages-repair .repair-area-tabs{display:none}
 .villages-repair .repair-mobile-area{display:block;padding:8px 14px;background:#1f2326;border-bottom:1px solid var(--repair-line)}
@@ -234,6 +236,8 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-menu-full{display:none}
 .villages-repair .repair-menu-short{display:inline}
 .villages-repair .repair-chrome{gap:8px;padding-inline:10px}
+.villages-repair .repair-chrome>strong{font-size:16px;gap:5px}
+.villages-repair .repair-chrome>strong>img{width:24px;height:24px}
 .villages-repair .repair-chrome>button{padding-inline:5px}
 .villages-repair .repair-card{padding:8px;gap:8px}
 .villages-repair .repair-editor{gap:8px}

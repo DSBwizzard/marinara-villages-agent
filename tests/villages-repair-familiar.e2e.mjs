@@ -1,4 +1,4 @@
-// Test cases: repair-familiar/desktop, repair-familiar/laptop, repair-familiar/phone, repair-familiar/compact
+// Test cases: repair-familiar/wide, repair-familiar/desktop, repair-familiar/laptop, repair-familiar/phone, repair-familiar/compact
 import { runCase } from "../scripts/test-cases.mjs";
 import { mkdir } from "node:fs/promises";
 import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
@@ -7,6 +7,7 @@ const browser = await chromium.launch({ headless: true });
 await mkdir(".build-tmp/repair-captures", { recursive: true });
 await withBrowser(browser, async () => {
   for (const [name, width, height] of [
+    ["wide", 2560, 1440],
     ["desktop", 1440, 900],
     ["laptop", 1366, 768],
     ["phone", 390, 844],
@@ -20,8 +21,15 @@ await withBrowser(browser, async () => {
           () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
         );
         await noRepairScroll(page);
+        if (width > 700) expect((await page.locator(".repair-content").boundingBox()).x).toBeLessThanOrEqual(40);
         await page.screenshot({ path: `.build-tmp/repair-captures/${width}-${state}.png` });
       };
+      await expect(page.locator(".repair-chrome>strong>img")).toBeVisible();
+      await expect
+        .poll(() =>
+          page.locator(".repair-chrome>strong>img").evaluate((image) => image.complete && image.naturalWidth > 0),
+        )
+        .toBe(true);
       await capture("people");
       const cards = page.locator('.repair-people-directory [class$="-directory-card"]');
       await expect(cards).toHaveCount(4);
