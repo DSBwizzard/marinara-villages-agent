@@ -1131,8 +1131,8 @@ export async function verifyFoundingLayout(group) {
           assert.ok(treeBox.width >= Math.min(frame.width * 0.4, 176), "The mobile chart keeps its labels readable");
           assert.ok(treeBox.x + treeBox.width < stageBounds.x + stageBounds.width / 2, "The chart clears Mari’s face");
           assert.ok(
-            treeBox.y + treeBox.height <= portraitBox.y + portraitBox.height * 0.43,
-            "The chart sits by Mari’s presenting hand",
+            treeBox.y + treeBox.height <= portraitBox.y + portraitBox.height * 0.25,
+            "The chart leaves room for Mari’s presenting hand",
           );
         } else {
           assert.ok(
@@ -1521,7 +1521,7 @@ export async function verifyFoundingLayout(group) {
         const mapPortrait = await mapPose.boundingBox();
         assert.ok(
           phone
-            ? treeBox.y + treeBox.height <= mapPortrait.y + mapPortrait.height * 0.43
+            ? treeBox.y + treeBox.height <= mapPortrait.y + mapPortrait.height * 0.25
             : treeBox.x + treeBox.width <= mapPortrait.x + 0.5,
           "Mari clears the chart when introducing the first Map",
         );

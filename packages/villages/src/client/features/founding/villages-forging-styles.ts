@@ -931,8 +931,11 @@ export const VILLAGES_FORGING_STYLES = `
     height:100%; padding:0 .65rem .65rem;
   }
   .villages-founding-hierarchy {
-    --chart-width:clamp(10rem,45cqw,11.5rem);
-    top:max(4rem,calc(100cqh - var(--mari-floor) - var(--mari-height) - 1rem));
+    --mari-hand-y:calc(100cqh - var(--mari-floor) - var(--mari-height) * .8);
+    --chart-top:3.65rem;
+    --chart-min-width:clamp(8rem,40cqw,11rem);
+    --chart-width:clamp(var(--chart-min-width),min(45cqw,calc((var(--mari-hand-y) - var(--chart-top) - .75rem) / .88)),11.5rem);
+    top:max(var(--chart-top),calc(var(--mari-hand-y) - var(--chart-width) * .88 - .75rem));
     left:.7rem; right:auto; bottom:auto;
   }
   .villages-founding-title {
