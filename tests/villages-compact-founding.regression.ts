@@ -193,7 +193,7 @@ async function main() {
       { ...earlySleep, label: "At home" },
       { kind: "nap", startMinute: 800, endMinute: 830 },
     ]),
-    ["Sleeping", "Napping"],
+    ["Sleeping", "Sleeping (nap)"],
   );
   assert.deepEqual(
     fixedActivities([earlySleep, { kind: "other", startMinute: 800, endMinute: 830, label: "Recharging in sunlight" }]),

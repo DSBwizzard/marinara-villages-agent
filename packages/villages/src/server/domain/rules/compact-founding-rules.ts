@@ -264,7 +264,7 @@ function parseStarterWeek(
       const { kind, label, startMinute, endMinute } = asRecord(rest);
       if (kind !== "sleep" && kind !== "nap" && kind !== "other")
         return invalid("A starter Agenda rest window needs a valid kind.");
-      activity = kind === "sleep" ? "Sleeping" : kind === "nap" ? "Napping" : label;
+      activity = kind === "sleep" ? "Sleeping" : kind === "nap" ? "Sleeping (nap)" : label;
       from = startMinute;
       to = endMinute;
     } else {
