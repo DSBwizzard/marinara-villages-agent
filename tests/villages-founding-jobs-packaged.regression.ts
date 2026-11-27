@@ -352,7 +352,10 @@ try {
     }
   }
   const rebuiltWorld = records.get("villages-village").data;
-  assert.deepEqual(rebuiltWorld.foundingPreparation, completedMarker, "Rebuilding Agendas does not rerun Founding");
+  assert.equal(rebuiltWorld.foundingPreparation.status, "ready");
+  assert.deepEqual(rebuiltWorld.foundingPreparation.tasks, completedMarker.tasks, "Founding receipts are preserved");
+  assert.deepEqual(rebuiltWorld.foundingPreparation.completedIds, completedMarker.completedIds);
+  assert.deepEqual(rebuiltWorld.foundingPreparation.retryActions, completedMarker.retryActions);
   for (const resident of rebuiltWorld.villagers) {
     assert.equal(resident.agenda.manualWeek.actionId, "fresh-sleep");
     const active = resident.agenda.activeDay;

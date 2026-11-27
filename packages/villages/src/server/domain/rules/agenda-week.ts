@@ -51,7 +51,7 @@ export function completeAgendaWeek(
     VILLAGE_WEEKDAYS.map((weekday) => {
       const raw = Array.isArray(source[weekday]) ? (source[weekday] as unknown[]) : [];
       const candidates = raw
-        .flatMap((entry) => {
+        .flatMap((entry): VillageAgendaBlock[] => {
           if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
           const row = entry as Record<string, unknown>;
           const start = row.startMinute;
