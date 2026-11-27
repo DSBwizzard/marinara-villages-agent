@@ -603,7 +603,7 @@ async function main() {
       const current = await readVillageState({ memories: true });
       assert.equal(checkpoint.data.input.members[0].revision, foundingTaskRevision(current, "aqua", "routine"));
       const saved = validateBackgroundResponse(rows.get(checkpoint.data.steps[0].responseRef.id)).response;
-      assert.equal(checkpoint.data.steps[0].key, "weekly-agenda-v6");
+      assert.equal(checkpoint.data.steps[0].key, "weekly-agenda-v7");
       if (valid) {
         assert.equal(holdRoutinePublication, false);
         assert.equal(checkpoint.data.hasResult, true);

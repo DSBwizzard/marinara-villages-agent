@@ -259,11 +259,13 @@ export function starterAgendaBase(payload: Record<string, unknown>, start: strin
   const restBlocks: VillageAgendaBlock[] = [];
   for (const rest of payload.rest) {
     let activity: unknown, from: unknown, to: unknown;
+    let restKind: VillageAgendaBlock["restKind"];
     if (restFormat === 1) {
       const { kind, label, startMinute, endMinute } = asRecord(rest);
       if (kind !== "sleep" && kind !== "nap" && kind !== "other")
         return invalid("A starter Agenda rest window needs a valid kind.");
       activity = kind === "sleep" ? "Sleeping" : kind === "nap" ? AGENDA_NAP_ACTIVITY : label;
+      if (kind !== "nap") restKind = kind;
       from = startMinute;
       to = endMinute;
     } else {
@@ -291,7 +293,15 @@ export function starterAgendaBase(payload: Record<string, unknown>, start: strin
           [from, 1440],
         ]) {
       if (startMinute < endMinute)
-        restBlocks.push({ startMinute, endMinute, activity: label, venueId: "", essential: true, flexible: false });
+        restBlocks.push({
+          startMinute,
+          endMinute,
+          activity: label,
+          venueId: "",
+          essential: true,
+          flexible: false,
+          ...(restKind ? { restKind } : {}),
+        });
     }
   }
   restBlocks.sort((a, b) => a.startMinute - b.startMinute);
@@ -303,7 +313,6 @@ export function starterAgendaBase(payload: Record<string, unknown>, start: strin
   );
   const agenda: VillageAgenda = {
     calendarVersion: 1,
-    restLabelFormat: restFormat,
     routineProfile: routineProfileFromWeek(week),
     routineSummary: boundText(payload.routine, MAX_ROUTINE_SUMMARY_LENGTH),
     day: week[VILLAGE_WEEKDAYS[(first.getDay() + 6) % 7]!]!,

@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { buildVillageAgendas, clearVillagerAgenda } from "../residents/resident-agendas.js";
+import { buildVillageAgendas, clearVillagerAgenda, rebuildResidentAgendas } from "../residents/resident-agendas.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { mutateVillageState, readVillageState } from "../world/village-store.js";
 import { offerVisitorLodging } from "../../domain/rules/visitors.js";
@@ -286,6 +286,25 @@ export function registerResidentRoutes(engine: FastifyInstance) {
 }
 export function registerAgendaRoutes(engine: FastifyInstance) {
   const app = engine;
+
+  app.post<{ Body: { actionId?: unknown; characterIds?: unknown } }>("/agendas/rebuild", async (request, reply) => {
+    try {
+      const { actionId, characterIds } = request.body ?? {};
+      if (typeof actionId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(actionId))
+        throw badRequest("Choose an Agenda request identity.");
+      if (
+        !Array.isArray(characterIds) ||
+        !characterIds.length ||
+        characterIds.length > 12 ||
+        new Set(characterIds).size !== characterIds.length
+      )
+        throw badRequest("Choose distinct residents whose Agendas should be rebuilt.");
+      await rebuildResidentAgendas(characterIds.map(readCharacterId), actionId);
+      return reply.code(202).send({ actionId });
+    } catch (error) {
+      return fail(reply, error, "rebuilding Agendas");
+    }
+  });
 
   app.get<{ Querystring: { characterId?: string; inspect?: string } }>("/agendas", async (request, reply) => {
     try {

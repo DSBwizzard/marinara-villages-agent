@@ -7,8 +7,6 @@ import type { HomeBuildingKind } from "../rules/prompt-preset.js";
 export type VillageAgenda = {
   /** Dated schedules derive solely from this Agenda in the current contract. */
   calendarVersion?: 1;
-  /** Founding distinguished sleep from other fixed rest explicitly. */
-  restLabelFormat?: 1;
   recentChanges?: import("../decoding/agenda-codec.js").AgendaChange[];
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   manualWeek?: { actionId: string; through: string };
@@ -38,6 +36,7 @@ export type VillageAgenda = {
 };
 
 export type VillageAgendaBlock = {
+  restKind?: "sleep" | "other";
   essential?: boolean;
   commitmentId?: string;
   flexible?: boolean;

@@ -333,6 +333,41 @@ try {
   );
   await app.inject({ method: "POST", url: "/api/villages/setup/preparation/retry", payload: target });
   assert.equal(calls, before + 1, "duplicate retry is free");
+  const rebuild = () =>
+    app.inject({
+      method: "POST",
+      url: "/api/villages/agendas/rebuild",
+      payload: { actionId: "fresh-sleep", characterIds: ["a", "b"] },
+    });
+  const completedMarker = structuredClone(records.get("villages-village").data.foundingPreparation);
+  const rebuilt = await rebuild();
+  assert.equal(rebuilt.statusCode, 202, rebuilt.body);
+  assert.equal((await rebuild()).statusCode, 202, "An identical admission reuses the pending request");
+  for (let attempt = 0; attempt < 200; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const job = [...records.values()].find((row) => row.kind === "background-work" && row.data.subjectId === "rebuild");
+    if (job && !["queued", "running"].includes(job.data.status)) {
+      assert.equal(job.data.status, "completed", job.data.error);
+      break;
+    }
+  }
+  const rebuiltWorld = records.get("villages-village").data;
+  assert.deepEqual(rebuiltWorld.foundingPreparation, completedMarker, "Rebuilding Agendas does not rerun Founding");
+  for (const resident of rebuiltWorld.villagers) {
+    assert.equal(resident.agenda.manualWeek.actionId, "fresh-sleep");
+    const active = resident.agenda.activeDay;
+    assert.equal(active.dateKey, "2026-11-26");
+    assert.equal(active.blocks[0].activity, "Sleeping", "Rebuilding begins at midnight on the current day");
+  }
+  assert.ok(
+    agendaBlocksFor(rebuiltWorld.villagers[1].agenda, new Date(now)).some(
+      (block) =>
+        block.commitmentId === "saved-opening-appointment" && block.startMinute === 1305 && block.endMinute === 1350,
+    ),
+  );
+  assert.equal(rebuiltWorld.villagers[0].identityDescription.text, manualText);
+  assert.equal((await rebuild()).statusCode, 202);
+  assert.equal(calls, before + 2, "The explicit rebuild uses one request for both residents");
   console.log(
     "Packaged HTTP founding jobs: independent results, restart, target fences, quiet Wish, readiness and private inputs passed.",
   );

@@ -127,11 +127,11 @@ function fixture() {
 
 await runCase("weekly-agenda/visibility", () => {
   const { world, publish } = fixture();
-  const legacy = agendaFixture({
+  const ordinary = agendaFixture({
     calendarVersion: 1,
     day: [
-      { startMinute: 0, endMinute: 360, venueId: "", activity: "Resting at home", essential: true },
-      { startMinute: 1290, endMinute: 1440, venueId: "", activity: "Resting at home", essential: true },
+      { startMinute: 0, endMinute: 360, venueId: "", activity: "Sleeping", essential: true },
+      { startMinute: 1290, endMinute: 1440, venueId: "", activity: "Sleeping", essential: true },
     ],
     activeDay: { dateKey: "2026-11-10", weekday: "Tuesday", blocks: [], scheduleInformed: false },
     plannedDays: {
@@ -152,7 +152,7 @@ await runCase("weekly-agenda/visibility", () => {
   });
   const next = new Date(tomorrow + "T12:00:00.000Z");
   assert.deepEqual(
-    agendaBlocksFor(legacy, next).map(({ activity, startMinute, endMinute }) => [activity, startMinute, endMinute]),
+    agendaBlocksFor(ordinary, next).map(({ activity, startMinute, endMinute }) => [activity, startMinute, endMinute]),
     [
       ["Sleeping", 0, 300],
       ["Early appointment", 300, 420],
@@ -161,14 +161,13 @@ await runCase("weekly-agenda/visibility", () => {
     ],
   );
   assert.ok(
-    !agendaBlocksFor({ ...legacy, repairedDays: [tomorrow] }, next).some(({ activity }) => activity === "Sleeping"),
+    !agendaBlocksFor({ ...ordinary, repairedDays: [tomorrow] }, next).some(({ activity }) => activity === "Sleeping"),
   );
-  assert.ok(!agendaBlocksFor({ ...legacy, restLabelFormat: 1 }, next).some(({ activity }) => activity === "Sleeping"));
-  legacy.activeDay!.blocks = [
+  ordinary.activeDay!.blocks = [
     { startMinute: 0, endMinute: 600, venueId: "", activity: "Sorting papers", flexible: true },
     { startMinute: 600, endMinute: 1440, venueId: "", activity: "Sketching", flexible: true },
   ];
-  const restored = activeAgendaSleep(legacy, when)!;
+  const restored = activeAgendaSleep(ordinary, when)!;
   assert.deepEqual(
     restored.map(({ activity, startMinute, endMinute }) => [activity, startMinute, endMinute]),
     [
@@ -177,12 +176,12 @@ await runCase("weekly-agenda/visibility", () => {
       ["Sleeping", 1290, 1440],
     ],
   );
-  legacy.activeDay!.blocks = restored;
-  assert.equal(activeAgendaSleep(legacy, when), undefined, "Reconciliation does not rewrite an already restored day");
-  legacy.activeDay!.blocks = [
+  ordinary.activeDay!.blocks = restored;
+  assert.equal(activeAgendaSleep(ordinary, when), undefined, "Reconciliation does not rewrite an already restored day");
+  ordinary.activeDay!.blocks = [
     { startMinute: 0, endMinute: 1440, venueId: "", activity: "Taking care of their own affairs", flexible: true },
   ];
-  assert.equal(activeAgendaSleep(legacy, when)?.at(-1)?.activity, "Sleeping");
+  assert.equal(activeAgendaSleep(ordinary, when)?.at(-1)?.activity, "Sleeping");
   const view = (inspect = false) => agendaWeek(world, "mara", when, inspect);
   assert.equal(view().days.length, 7);
   assert.deepEqual(

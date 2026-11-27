@@ -671,6 +671,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     readEffectiveVillagerCard,
     readVillageLore,
     queueBackgroundJob,
+    backgroundJobSnapshot,
     backgroundWorkSummaries,
     parseCompactFoundingCompletion,
     proposeCompactFounding,

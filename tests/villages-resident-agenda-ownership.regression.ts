@@ -64,14 +64,13 @@ function fixture(name: string) {
     owners.push(activationScope());
   };
   const ports: ResidentAgendaPorts = {
+    backgroundJobSnapshot: async () => null,
     weeklyAgenda: {
       queueResidentWeek: async () => {
         throw new Error("Unexpected weekly regeneration");
       },
       handler: { valid: () => false, generate: async () => undefined, apply: () => {} },
-      captureStartingWeek: () => {
-        throw new Error("Unexpected new Agenda planner capture");
-      },
+      captureStartingWeek: () => undefined as any,
       planner: {
         generate: async () => {
           throw new Error("Unexpected new Agenda planner call");

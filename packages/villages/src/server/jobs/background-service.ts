@@ -697,7 +697,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         return;
       }
       const residentWeek = work.kind === "agenda" && typeof asRecord(work.input).weekActionId === "string";
-      if (residentWeek) {
+      const rebuild = work.kind === "weekly-agenda" && typeof asRecord(work.input).rebuildActionId === "string";
+      if (residentWeek || rebuild) {
         const prefix = "villages-background-history-" + jobId(work) + "-";
         for (const row of await documents.list(VILLAGES_PACKAGE_ID, "background-history")) {
           if (!row.id.startsWith(prefix)) continue;
@@ -1490,7 +1491,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         !["completed", "obsolete"].includes(job.status);
       const interruptedPreparation =
         job.owner !== recoveryOwner &&
-        (job.kind === "wish" || asRecord(job.input).foundingContract === 1) &&
+        (job.kind === "wish" ||
+          asRecord(job.input).foundingContract === 1 ||
+          typeof asRecord(job.input).rebuildActionId === "string") &&
         !job.hasResult &&
         ["queued", "paused", "running"].includes(job.status);
       if (unknownRequest || interruptedPreparation) {

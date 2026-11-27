@@ -405,7 +405,6 @@ function coerceAgenda(value: unknown, preserveCapturedAgenda: boolean): VillageA
   };
   const fallback = workingAgendaWeek();
   if (raw.calendarVersion === 1) agenda.calendarVersion = 1;
-  if (raw.restLabelFormat === 1) agenda.restLabelFormat = 1;
   agenda.week = completeAgendaWeek(raw.week, fallback);
   agenda.plannedDays = Object.fromEntries(
     Object.entries(asRecord(raw.plannedDays))

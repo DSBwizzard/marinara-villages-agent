@@ -1,7 +1,7 @@
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { continuityPreparationContext, continuityContextRevision } from "../../domain/rules/continuity-library.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
-import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
@@ -11,13 +11,21 @@ import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domain/models/world.js";
 import { scheduledAgendaActivity, unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
+import { flexibleAgendaBlock } from "../../domain/rules/agenda-flexibility.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
-import { activeAgendaSleep, agendaDateKey, bookedAgendaDays } from "../../domain/rules/agenda-week.js";
+import {
+  activeAgendaSleep,
+  agendaDateKey,
+  bookedAgendaDays,
+  completeAgendaWeek,
+  workingAgendaWeek,
+} from "../../domain/rules/agenda-week.js";
+import { calendarReplay } from "../../domain/rules/clock-state.js";
 import type {
   CompactFoundingResult,
   parseCompactFoundingCompletion,
 } from "../../domain/rules/compact-founding-rules.js";
-import { notFound } from "../../domain/rules/errors.js";
+import { conflict, notFound } from "../../domain/rules/errors.js";
 import {
   completeFoundingTask,
   FOUNDING_AGENDA_SLOT,
@@ -31,8 +39,8 @@ import { routineVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
-import { randomVillageSeed } from "../../domain/rules/village-clock.js";
-import type { backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/background-work.js";
+import { randomVillageSeed, VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
+import type { backgroundJobSnapshot, backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/background-work.js";
 import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
@@ -47,6 +55,7 @@ export interface ResidentAgendaPorts {
   readEffectiveVillagerCard: typeof readEffectiveVillagerCard;
   readVillageLore: typeof readVillageLore;
   queueBackgroundJob: typeof queueBackgroundJob;
+  backgroundJobSnapshot: typeof backgroundJobSnapshot;
   backgroundWorkSummaries: typeof backgroundWorkSummaries;
   parseCompactFoundingCompletion: typeof parseCompactFoundingCompletion;
   proposeCompactFounding: typeof proposeCompactFounding;
@@ -64,6 +73,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     readEffectiveVillagerCard,
     readVillageLore,
     queueBackgroundJob,
+    backgroundJobSnapshot,
     backgroundWorkSummaries,
     parseCompactFoundingCompletion,
     proposeCompactFounding,
@@ -206,18 +216,14 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         },
         { memories: true },
       );
-    const start = founding
-      ? agendaCalendar(village, village.setupAt ? new Date(village.setupAt) : villageNow())
-      : undefined;
-    const weekPlan = start
-      ? weeklyAgenda.captureStartingWeek(
-          village,
-          start,
-          characterId,
-          !!context.identityDescriptionRevision,
-          context.lore,
-        )
-      : undefined;
+    const start = agendaCalendar(village, founding && village.setupAt ? new Date(village.setupAt) : villageNow());
+    const weekPlan = weeklyAgenda.captureStartingWeek(
+      village,
+      start,
+      characterId,
+      !!context.identityDescriptionRevision,
+      context.lore,
+    );
     await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
     await queueBackgroundJob({
       kind: "agenda",
@@ -293,8 +299,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     },
   };
 
-  type FoundingBatch = {
-    foundingContract: 1;
+  const REBUILD_SUBJECT = "rebuild";
+  type StartingBatch = ({ foundingContract: 1 } | { rebuildActionId: string }) & {
     seed: string;
     weekPlan: ReturnType<typeof weeklyAgenda.captureFoundingBatch>;
     members: Array<{
@@ -302,16 +308,20 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       revision: string;
       descriptionRevision?: string;
       lore: ReturnType<typeof inspectedLoreUse>;
+      repairs?: [string, string][];
     }>;
   };
-  async function queueFoundingAgendas(ids: readonly string[], seed: string) {
+  async function startingContexts(ids: readonly string[]) {
     const contexts = await Promise.all(ids.map((id) => readFoundingResidentContext(id, ids.length)));
-    const admitted = contexts.map((context) => {
+    return contexts.map((context) => {
       if (!context) throw new Error("Character identity is unavailable.");
       return context;
     });
+  }
+  async function queueFoundingAgendas(ids: readonly string[], seed: string) {
+    const admitted = await startingContexts(ids);
     const state = await readVillageState({ memories: true });
-    const members: FoundingBatch["members"] = admitted.map((context) => ({
+    const members: StartingBatch["members"] = admitted.map((context) => ({
       id: context.characterId,
       revision: context.sourceRevision,
       descriptionRevision: context.identityDescriptionRevision,
@@ -351,14 +361,96 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       finite: true,
       label: "Founding Agendas",
       retryActionId: state.foundingPreparation?.retryActions?.at(-1),
-      input: { foundingContract: 1, seed, weekPlan, members } satisfies FoundingBatch,
+      input: { foundingContract: 1, seed, weekPlan, members } satisfies StartingBatch,
     });
   }
+  function rebuildRevision(state: VillageState, id: string) {
+    const resident = state.villagers.find(({ characterId }) => characterId === id);
+    return (
+      resident &&
+      backgroundRevision([
+        foundingTaskRevision(state, id, "routine"),
+        resident.agenda?.generatedAt,
+        resident.agenda?.manualWeek,
+      ])
+    );
+  }
+  function rebuildRepairs(state: VillageState, id: string, from: string): [string, string][] {
+    const agenda = state.villagers.find(({ characterId }) => characterId === id)?.agenda;
+    return (agenda?.repairedDays ?? [])
+      .filter((date) => date >= from)
+      .sort()
+      .map((date) => [date, backgroundRevision(agenda?.plannedDays?.[date])]);
+  }
+  async function rebuildResidentAgendas(ids: readonly string[], actionId: string) {
+    const initial = await readVillageState({ memories: true });
+    const revision = backgroundRevision([REBUILD_SUBJECT, actionId]);
+    const prior = await backgroundJobSnapshot("weekly-agenda", REBUILD_SUBJECT);
+    if (prior?.seed === initial.seed && prior.revision === revision) return;
+    if (initial.foundingPreparation && initial.foundingPreparation.status !== "ready")
+      throw conflict("Complete Founding before rebuilding Agendas.");
+    const start = agendaCalendar(initial, villageNow());
+    const first = agendaDateKey(start);
+    if (calendarReplay(initial, start)) throw conflict("Wait for Village time to catch up before rebuilding Agendas.");
+    const revisions = ids.map((id) => rebuildRevision(initial, id));
+    const repairs = ids.map((id) => rebuildRepairs(initial, id, first));
+    if (revisions.some((revision) => !revision)) throw notFound("A selected villager no longer lives here.");
+    if (
+      (await backgroundWorkSummaries()).some(
+        (job) =>
+          ["queued", "running", "paused", "interrupted"].includes(job.status) &&
+          ((job.kind === "agenda" && ids.includes(job.subjectId)) || job.kind === "weekly-agenda"),
+      )
+    )
+      throw conflict("Wait for the current Agenda request to finish.");
+    const contexts = await startingContexts(ids);
+    const state = await readVillageState({ memories: true });
+    if (
+      state.seed !== initial.seed ||
+      contexts.some(
+        ({ characterId, sourceRevision }, index) =>
+          sourceRevision !== foundingTaskRevision(state, characterId, "routine") ||
+          revisions[index] !== rebuildRevision(state, characterId) ||
+          JSON.stringify(repairs[index]) !== JSON.stringify(rebuildRepairs(state, characterId, first)),
+      )
+    )
+      throw conflict("Resident context changed. Rebuild the Agendas again.");
+    const weekPlan = weeklyAgenda.captureFoundingBatch(
+      state,
+      start,
+      contexts.map(({ characterId, lore }) => ({ id: characterId, describe: false, lore })),
+    );
+    await queueBackgroundJob({
+      kind: "weekly-agenda",
+      subjectId: REBUILD_SUBJECT,
+      seed: state.seed,
+      revision,
+      expectedAttempt: prior?.attempt ?? 0,
+      expectedInstanceId: prior?.instanceId ?? null,
+      finite: true,
+      label: "Rebuild Agendas",
+      input: {
+        rebuildActionId: actionId,
+        seed: state.seed,
+        weekPlan,
+        members: contexts.map(({ characterId, loreUse }, index) => ({
+          id: characterId,
+          lore: loreUse,
+          revision: revisions[index]!,
+          repairs: repairs[index],
+        })),
+      } satisfies StartingBatch,
+    });
+  }
+  const startingBatch = (input: Record<string, unknown>) =>
+    input.foundingContract === 1 || typeof input.rebuildActionId === "string";
   const weeklyAgendaBackgroundHandler: Handler = {
     ...weeklyAgenda.handler,
     async generate(input) {
-      if (input.foundingContract !== 1) return weeklyAgenda.handler.generate(input);
-      const { seed, weekPlan } = input as FoundingBatch;
+      if (!startingBatch(input)) return weeklyAgenda.handler.generate(input);
+      const { seed, weekPlan } = input as StartingBatch;
+      if (input.rebuildActionId)
+        return (await weeklyAgenda.planner.generate(weekPlan, undefined, REBUILD_SUBJECT)).starters;
       await reportFoundingProgress(seed, { stage: "resolving" });
       const result = await weeklyAgenda.planner.generate(
         weekPlan,
@@ -371,26 +463,47 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       return result.starters;
     },
     recoverSavedResult(input, steps) {
-      return input.foundingContract === 1
+      return startingBatch(input)
         ? weeklyAgenda.planner.recoverSavedResult(input.weekPlan, steps)?.starters
         : weeklyAgenda.handler.recoverSavedResult!(input, steps);
     },
     refreshRetryInput(input, readState) {
-      if (input.foundingContract === 1) return Promise.resolve(undefined);
+      if (startingBatch(input)) return Promise.resolve(undefined);
       return weeklyAgenda.handler.refreshRetryInput!(input, readState);
     },
     valid(state, input, admission) {
-      if (input.foundingContract !== 1) return weeklyAgenda.handler.valid(state, input, admission);
-      return (input as FoundingBatch).members.every(
+      if (!startingBatch(input)) return weeklyAgenda.handler.valid(state, input, admission);
+      const { members, weekPlan } = input as StartingBatch;
+      if (input.rebuildActionId) {
+        const now = agendaCalendar(state, villageNow());
+        const today = agendaDateKey(now);
+        return (
+          !(state.foundingPreparation && state.foundingPreparation.status !== "ready") &&
+          !calendarReplay(state, now) &&
+          today >= weekPlan.start &&
+          today <= weekPlan.end &&
+          members.every(
+            ({ id, revision, repairs }) =>
+              rebuildRevision(state, id) === revision &&
+              JSON.stringify((repairs ?? []).filter(([date]) => date >= today)) ===
+                JSON.stringify(rebuildRepairs(state, id, today)),
+          )
+        );
+      }
+      return members.every(
         ({ id, revision }) =>
           state.foundingPreparation?.tasks?.[id]?.routine?.jobId === FOUNDING_AGENDA_SLOT &&
           ownsFoundingTask(state, id, "routine", revision),
       );
     },
     apply(state, input, result, context) {
-      if (input.foundingContract !== 1) return weeklyAgenda.handler.apply(state, input, result, context);
-      for (const [index, { id, revision, descriptionRevision, lore }] of (input as FoundingBatch).members.entries()) {
+      if (!startingBatch(input)) return weeklyAgenda.handler.apply(state, input, result, context);
+      for (const [index, { id, revision, descriptionRevision, lore }] of (input as StartingBatch).members.entries()) {
         const starter = (result as CompactFoundingResult[])[index]!;
+        if (input.rebuildActionId) {
+          applyAgenda(state, id, starter.agenda, starter.starterWeek, input.rebuildActionId);
+          continue;
+        }
         const task = state.foundingPreparation!.tasks![id]!.routine!;
         task.lore = lore;
         const resident = state.villagers.find((row) => row.characterId === id)!;
@@ -415,6 +528,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     characterId: string,
     agenda: VillageAgenda,
     starter?: CompactFoundingResult["starterWeek"],
+    rebuildActionId?: string,
   ): void {
     const villager = state.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
@@ -425,21 +539,40 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const previous = villager.agenda;
     const now = agendaCalendar(state, villageNow());
     const today = agendaDateKey(now);
-    const dayHasRolled = previous?.activeDay?.dateKey !== today;
+    const rebuildToday = !!rebuildActionId && starter?.slots[0]?.date === today;
+    const dayHasRolled = rebuildToday || previous?.activeDay?.dateKey !== today;
+    const booked = previous ? bookedAgendaDays(previous, now) : {};
+    const rebuildBookings = () => {
+      const fallback = workingAgendaWeek();
+      return Object.fromEntries(
+        Object.keys(booked).map((date) => {
+          const weekday = VILLAGE_WEEKDAYS[(calendarAt(now, date, 720).getDay() + 6) % 7]!;
+          const activities =
+            date > (starter?.through ?? "") ? (starter?.fallbackWeek[weekday]?.filter(flexibleAgendaBlock) ?? []) : [];
+          return [
+            date,
+            activities.length ? completeAgendaWeek({ [weekday]: activities }, fallback)[weekday]! : fallback[weekday]!,
+          ];
+        }),
+      );
+    };
     villager.agenda = {
       ...agenda,
       calendarVersion: 1,
       recentChanges: previous?.recentChanges,
-      plannedDays: {
-        ...(previous ? bookedAgendaDays(previous, now) : {}),
-        ...Object.fromEntries(
-          Object.entries(previous?.plannedDays ?? {}).filter(
-            ([key]) =>
-              previous?.repairedDays?.includes(key) || previous?.reservations?.some((entry) => entry.dateKey === key),
-          ),
-        ),
-      },
-      repairedDays: previous?.repairedDays,
+      plannedDays: rebuildActionId
+        ? rebuildBookings()
+        : {
+            ...booked,
+            ...Object.fromEntries(
+              Object.entries(previous?.plannedDays ?? {}).filter(
+                ([key]) =>
+                  previous?.repairedDays?.includes(key) ||
+                  previous?.reservations?.some((entry) => entry.dateKey === key),
+              ),
+            ),
+          },
+      repairedDays: rebuildActionId ? undefined : previous?.repairedDays,
       reservations: previous?.reservations ?? [],
       activeDay: dayHasRolled ? undefined : previous?.activeDay,
       personalizationAttemptDate: today,
@@ -447,8 +580,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     if (starter) {
       if (dayHasRolled) activateVillagerDay(villager, now, state);
       const active = villager.agenda.activeDay!;
-      let todayAfter: number | undefined;
-      if (starter.slots.some(({ date }) => date === today) && !villager.agenda.repairedDays?.includes(today)) {
+      let todayAfter = rebuildToday ? 0 : undefined;
+      if (
+        !rebuildToday &&
+        starter.slots.some(({ date }) => date === today) &&
+        !villager.agenda.repairedDays?.includes(today)
+      ) {
         const minute = now.getHours() * 60 + now.getMinutes();
         const current = active.blocks.find((block) => block.startMinute <= minute && minute < block.endMinute);
         todayAfter = current && scheduledAgendaActivity(current) ? current.endMinute : minute;
@@ -470,6 +607,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       refreshWorkReservations(state, now);
       if (applyWeeklyAgenda(state, villager, now, starter.slots, starter.choices, { todayAfter }))
         villager.agenda.starterWeekThrough = starter.through;
+      if (rebuildActionId) villager.agenda.manualWeek = { actionId: rebuildActionId, through: starter.through };
       villager.agenda.week = starter.fallbackWeek;
       villager.agenda.routineProfile = routineProfileFromWeek(starter.fallbackWeek);
     }
@@ -532,6 +670,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     agendaBackgroundHandler,
     weeklyAgendaBackgroundHandler,
     queueFoundingAgendas,
+    rebuildResidentAgendas,
   };
 }
 export type ResidentAgendas = ReturnType<typeof createResidentAgendas>;

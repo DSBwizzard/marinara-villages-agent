@@ -19,6 +19,9 @@ export async function buildVillageAgendas(...args: Parameters<ResidentAgendas["b
 export async function clearVillagerAgenda(...args: Parameters<ResidentAgendas["clearVillagerAgenda"]>) {
   return binding.get().clearVillagerAgenda(...args);
 }
+export async function rebuildResidentAgendas(...args: Parameters<ResidentAgendas["rebuildResidentAgendas"]>) {
+  return binding.get().rebuildResidentAgendas(...args);
+}
 export function readFoundingResidentContext(...args: Parameters<ResidentAgendas["readFoundingResidentContext"]>) {
   return binding.get().readFoundingResidentContext(...args);
 }

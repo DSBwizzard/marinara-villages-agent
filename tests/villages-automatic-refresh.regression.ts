@@ -1,6 +1,6 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
-import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { agendaFixture, keyedStarterReply } from "./helpers/agenda.fixture.js";
 import {
   routineProfileFromWeek,
   influenceSettings,
@@ -183,6 +183,12 @@ async function main() {
           },
           async chatComplete(messages: any[], options: { maxTokens: number }) {
             modelCalls += 1;
+            if (agendaMode) {
+              agendaRequests.push("Write routine profile.");
+              if (failWednesday) throw new Error("Profile unavailable");
+              const input = JSON.parse(String(messages.at(-1).content));
+              return { content: JSON.stringify(keyedStarterReply(input, "Astronomy activity")), finishReason: "stop" };
+            }
             if (String(messages[0]?.content).includes("Plan the entire coming week")) {
               weeklyResponses++;
               assert.equal(options.maxTokens, Math.min(8_192, weeklyOutputLimit));
@@ -224,27 +230,6 @@ async function main() {
               }
               return {
                 content: JSON.stringify({ plans: Object.fromEntries(Object.entries(plans).reverse()) }),
-                finishReason: "stop",
-              };
-            }
-            if (agendaMode) {
-              agendaRequests.push("Write routine profile.");
-              if (failWednesday) throw new Error("Profile unavailable");
-              return {
-                content: JSON.stringify({
-                  routine: "Studying quietly.",
-                  palette: Array.from({ length: 6 }, (_, i) => ({
-                    activity: "Studying the stars " + i,
-                    venue: 0,
-                    status: "idle",
-                    flexible: true,
-                    essential: false,
-                    duration: 180,
-                    parts: [0, 1, 2, 3],
-                  })),
-                  days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
-                  rhythm: [],
-                }),
                 finishReason: "stop",
               };
             }
@@ -587,7 +572,7 @@ async function main() {
                 startMinute: 0,
                 endMinute: 480,
                 venueId: "",
-                activity: name === "Ari" ? "Resting at home" : "Sleeping",
+                activity: "Sleeping",
                 essential: true,
               },
               { startMinute: 480, endMinute: 1320, venueId: "", activity: "Reading", flexible: true },
@@ -595,7 +580,7 @@ async function main() {
                 startMinute: 1320,
                 endMinute: 1440,
                 venueId: "",
-                activity: name === "Ari" ? "Resting at home" : "Sleeping",
+                activity: "Sleeping",
                 essential: true,
               },
             ],

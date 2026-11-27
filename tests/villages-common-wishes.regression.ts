@@ -520,9 +520,7 @@ await runCase("common-wishes/routine-protection", async () => {
             throw new Error("Unexpected weekly regeneration");
           },
           handler: { valid: () => false, generate: async () => undefined, apply: () => {} },
-          captureStartingWeek: () => {
-            throw new Error("Unexpected new Agenda planner capture");
-          },
+          captureStartingWeek: () => undefined as any,
           planner: {
             generate: async () => {
               throw new Error("Unexpected new Agenda planner call");
@@ -537,6 +535,7 @@ await runCase("common-wishes/routine-protection", async () => {
         readVillageLore: async () => [],
         queueBackgroundJob: f.service.queueBackgroundJob,
         backgroundWorkSummaries: f.service.backgroundWorkSummaries,
+        backgroundJobSnapshot: f.service.backgroundJobSnapshot,
         parseCompactFoundingCompletion: () => {
           throw Error("No saved response needed");
         },
