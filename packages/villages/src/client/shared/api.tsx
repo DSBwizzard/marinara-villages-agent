@@ -1,5 +1,6 @@
 import { API_PATH } from "./constants.js";
 import { normalizeVillageSnapshot } from "./villages-snapshot-normalization";
+import type { SceneFailureMetadata } from "../../shared/contracts/scene-failure-diagnostic.js";
 
 /**
  * Where the Engine keeps the admin secret this browser was given.
@@ -79,6 +80,7 @@ export class VillageApiError extends Error {
     message: string,
     readonly status: number,
     readonly code?: string,
+    readonly sceneFailure?: SceneFailureMetadata,
   ) {
     super(message);
     this.name = "VillageApiError";
@@ -119,7 +121,8 @@ function requestRefusal(payload: unknown, status: number, fallback: string): Err
       (payload as { code?: string } | null)?.code,
     );
   }
-  return new VillageApiError(message, status, (payload as { code?: string } | null)?.code);
+  const details = payload as { code?: string; sceneFailure?: SceneFailureMetadata } | null;
+  return new VillageApiError(message, status, details?.code, details?.sceneFailure);
 }
 
 function requestContext(path: string, init?: RequestInit): string {

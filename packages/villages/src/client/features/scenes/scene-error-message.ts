@@ -129,7 +129,7 @@ export function sceneErrorCategory(message: string): string | undefined {
     [/model request failed|provider/iu, "The AI service couldn’t complete the request."],
     [/model returned no answer|empty (?:answer|output)/iu, "The AI returned an empty reply."],
     [
-      /not (?:(?:valid|complete) )?JSON|invalid-json|invalid or empty JSON/iu,
+      /not (?:(?:valid|complete) )?JSON|invalid-json|invalid or empty JSON|no usable narration or dialogue|no lines the player could see or hear/iu,
       "The AI returned a reply the game couldn’t read.",
     ],
     [/proposal.*(?:unsupported|unresolved)/iu, "The game couldn’t confirm the AI’s proposed update."],

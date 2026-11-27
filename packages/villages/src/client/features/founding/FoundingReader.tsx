@@ -8,14 +8,16 @@ export function FoundingReader({
   lineRef,
   children,
   hidden,
+  paginate,
 }: {
   text: string;
   lineRef?: Ref<HTMLParagraphElement>;
   children?: ReactNode;
   hidden?: boolean;
+  paginate?: boolean;
 }) {
   const readingRef = useRef<HTMLDivElement>(null);
-  const pages = useReadingPages(text, text, readingRef);
+  const pages = useReadingPages(text, text, readingRef, undefined, { paginate });
   return (
     <DialogueReader
       className="villages-setting-dialogue"

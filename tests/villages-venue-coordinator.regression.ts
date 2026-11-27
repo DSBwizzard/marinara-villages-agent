@@ -1471,6 +1471,61 @@ async function main() {
         releasePictures();
       }
     }
+    seed("fresh-reply");
+    const receiptIds = () => [...records.keys()].filter((id) => id.startsWith("villages-generation-response-"));
+    const receipts = receiptIds();
+    const paidBefore = calls;
+    const input = { message: "Hello.", mode: "chat", targetId: "" };
+    const fresh = () =>
+      coordinatedCompletion(
+        "fresh",
+        async () => {
+          calls++;
+          return "A fresh response.";
+        },
+        undefined,
+        true,
+      );
+    await assert.rejects(
+      coordinateVenue(
+        "fresh-reply",
+        "failed",
+        "turn",
+        input,
+        0,
+        undefined,
+        async () => {
+          await fresh();
+          throw Error("Invalid response");
+        },
+        { freshReply: true },
+      ),
+      /Invalid response/,
+    );
+    const failure = row("fresh-reply").data.operation;
+    assert.equal(failure.status, "complete");
+    assert.equal(failure.snapshot, null);
+    assert.deepEqual(failure.checkpoints, {});
+    assert.deepEqual(failure.attempts, {});
+    await assert.rejects(
+      coordinateVenue("fresh-reply", "failed", "turn", input, 0, undefined, fresh, { freshReply: true }),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    assert.equal(calls, paidBefore + 1, "duplicate failed request does not purchase a response");
+    assert.equal(
+      await coordinateVenue("fresh-reply", "retry", "turn", input, 0, failure.attemptId, fresh, {
+        freshReply: true,
+        replaceOfOperationId: "failed",
+      }),
+      "A fresh response.",
+    );
+    assert.equal(calls, paidBefore + 2);
+    await assert.rejects(
+      coordinateVenue("fresh-reply", "failed", "turn", input, 0, undefined, fresh, { freshReply: true }),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    assert.equal(calls, paidBefore + 2, "a late duplicate cannot buy another response after Retry");
+    assert.deepEqual(receiptIds(), receipts, "ordinary replies do not write provider receipts");
     console.log("villages-venue-coordinator: ok");
   } finally {
     await stopVenueCoordinator();

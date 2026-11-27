@@ -29,7 +29,6 @@ export const APPEARANCE_STYLES = String.raw`
 .villages-appearance .appearance-link { border:0; padding-inline:.35rem; text-decoration:underline; text-underline-offset:.2em; }
 .appearance-layout { display:grid; grid-template-columns:minmax(10rem,1fr) minmax(0,3fr); gap:.75rem; }
 .appearance-sprite-body { min-height:0; overflow:auto; }
-.appearance-sprite-body summary { cursor:pointer; padding:.45rem .2rem; }
 .appearance-mode { display:flex; max-width:33rem; margin-bottom:.7rem; }
 .villages-appearance .appearance-mode button { flex:1; }
 .villages-appearance .appearance-mode button[aria-pressed=true] { background:var(--menu-selected,#875363); }

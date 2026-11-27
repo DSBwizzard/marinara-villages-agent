@@ -1,30 +1,24 @@
 # Scene response recovery
 
-Scene turns request JSON-object responses. The current Engine interface forwards the requested format without advertising strict-schema enforcement for an arbitrary selected endpoint. Villages does not change connection settings or purchase fallback requests.
+New ordinary Scene replies use tagged prose and separate records for optional effects. Plain narration can stand on its own. When a proposed effect fails, the server can keep independent playable prose and withhold any lines that depend on the effect.
 
-The extractor requires one complete current object and a normal finish, optionally enclosed in a Markdown fence. Bounded value-preserving punctuation recovery runs before schema, source, witness and effect validation. Duplicate keys, ambiguous quotation boundaries, missing required fields and truncation are rejected. Complete narration cannot be salvaged from an incomplete response. See [model JSON recovery](model-json-recovery.md).
+Scene operations with a JSON contract still need one complete object and a normal finish. Bounded punctuation recovery runs before schema, source, witness, and effect validation. See [model JSON recovery](model-json-recovery.md).
 
-## Saved responses and diagnostics
+## Failed replies and Retry
 
-Villages saves the fitted request and its exact evidence before dispatch, then checkpoints the response before validation. Parser rejection preserves the original input and reply for recovery. A late callback retains evidence under its original request identity.
+New player chat and contact turns save the submitted request identity and draft. The fitted prompt and provider completion stay in memory. A failed reply leaves no model prose or inferred effects in the story. After a failed chat reply, the composer restores unsaved input if the player has made no newer edits. Send checks whether the prior attempt committed and requests a fresh reply when it did not. Each dispatch uses the selected connection once.
 
-Ordinary diagnostics share one server-only log of 100 recent entries, each capped at 24,000 characters of redacted response text. Prompts and connection configuration are excluded. The opaque diagnostic envelope owns no Gallery media and has no recovery authority. Eviction cannot release unfinished work, purchased responses or unknown accounting. Publication is best effort and cannot change the original failure. Redaction does not guarantee that story text contains no private information.
+An accepted Episode and its effects commit together in the Village. A compact Scene record binds that commit to the admitted world, turn and input. If the server stops before it commits, the player can retry. If it stops after the commit, Villages publishes the saved Episode without buying another reply or applying effects twice.
 
-Villages validates the GM's segments, common continuity and native commands against detached state. Invalid required effects or a valid halt hold the turn. A simple unnamed actor experience or information note is optional unless another required effect or the narration depends on it. Other effects can explicitly declare independence. An ordinary reply can drop a standalone relationship score change when its witness check fails and the rest of the reply stands on its own. Failed optional effects remain in the diagnostics alongside accepted prose. One Village compare-and-swap publishes the accepted Episode and its effects before Scene acknowledgement. Recovery attaches an already committed Episode before considering abandonment or replacement. Reads, reloads and copying diagnostics purchase no inference.
+A dropped browser connection can leave the server working. The client checks the exact request and saved reply with bounded reads. A duplicate request cannot buy or publish a second reply. Stop and Scene revision checks fence late results.
 
 ## Lost turn connections
 
-If the browser loses its connection, the server can still finish the turn. Villages keeps the submitted text and ID in the current tab. It checks that exact request on reconnect and refreshes the Scene when a reply becomes available. If Villages can’t confirm the reply, it restores the text without overwriting newer edits. Send checks the original ID before dispatch. If the server has no receipt, Send reuses that ID so a delayed original and the new submission can’t both publish.
+If the browser loses its connection, the server can still finish the turn. Villages checks the exact submitted text and ID, then refreshes the Scene when a committed reply becomes available. If Villages cannot confirm the reply, it restores the text without overwriting newer edits. A later Send checks the original ID. When the server has no receipt, Send reuses that ID so the delayed original and the new submission cannot both publish.
 
-A visible playback page is not the submission ledger. The latest saved submission provides committed/publication proof even when its reply falls outside the current page or a later close replaced the operation. Unpublished consequential effects remain held. Clarifications must match both submitted text and submission identity; reconciliation never sends a duplicate turn.
+The latest saved submission can establish publication even after its reply leaves the visible playback page or a later action replaces the operation. The client reconciles against that record and keeps the reading position when it displays a late reply.
 
-Send clears the composer at dispatch. A confirmed failure restores the submitted text if the player has made no newer edits. The composer stays editable while the Scene responds, and late replies retain the reading position. Replace a held reply by sending the restored draft with or without edits. Replacement checks for already committed effects, retains the old evidence and fences late results before starting new work. If a failed status write leaves a request marked running, the coordinator can interrupt that exact owner once the Scene work fence is idle.
-
-## Retry an accepted reply
-
-**Retry** replaces the latest ordinary reply in the active Scene using the original message, positions, witnesses and Village day. The original stays readable until an alternate and its effects commit together. Memories, Wishes, relationship scores and daily limits are evaluated from before the replaced reply. Each explicit Retry starts one new Narration request. The control is disabled while generation runs or the latest reply is ineligible.
-
-A reply needs its retained original request and unchanged continuity and Episode history. Later Scene activity, changed attendance or access, and work that already depends on the reply can close the window. Unrelated Village settings, Place records and pending mail can advance independently. Appointments and other native effects are outside Retry. A failed or interrupted attempt retains its evidence and leaves the accepted turn in place unless its replacement already committed. Sending a new message atomically retires an interrupted Retry and preserves its evidence. Another explicit Retry starts a fresh attempt.
+Legacy retained requests still use their original evidence to establish what committed. A saved turn with a compatible retry record can retain its alternate-reply control. Openings, departure and automatic events have their own admission and recovery contracts.
 
 ## Hearing evidence and citations
 
@@ -32,7 +26,7 @@ Current nonverbal sounds use metadata on an ordinary narration segment. Full nar
 
 Consequential input citations bind exact excerpts and, when necessary, their occurrence. The submitted text establishes the source. Code checks the claimed communication or perception against captured positions and eligible witnesses. The full input remains private GM chronology with an empty resident audience. Generated segment labels and fitted source references bind accepted effects to the evidence the GM actually received.
 
-Ordinary responses omit private provider evidence and request checkpoints. Copy Discord report exports the package version, action, route template, HTTP result, elapsed time and available recovery state. It includes only recognized error codes and fixed descriptions. The report excludes player and place names, identifiers, dialogue, raw errors and provider details. Copying starts no server requests or recovery actions. The Changes evidence panel reads its own scoped diagnostics.
+Ordinary responses omit private provider evidence and request checkpoints. Copy Discord report includes the package version, action, route template, HTTP result, elapsed time, failure phase and available recovery state. Validator details use recognized codes, schema paths and expected types. The report excludes player and place names, identifiers, dialogue, raw errors and provider details. Copying starts no server requests or recovery actions. The Changes evidence panel reads its own scoped diagnostics.
 
 ## Response timings and validation
 

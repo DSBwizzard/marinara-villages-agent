@@ -30,8 +30,9 @@ export async function coordinatedCompletion<T>(
   fingerprint: string,
   work: (signal?: AbortSignal) => Promise<T>,
   beforeDispatch?: () => Promise<void>,
+  freshReply?: true,
 ): Promise<T> {
-  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work, beforeDispatch);
+  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work, beforeDispatch, freshReply);
 }
 export async function rejectVenueCompletion(
   ...args: Parameters<VenueCoordinatorService["rejectVenueCompletion"]>

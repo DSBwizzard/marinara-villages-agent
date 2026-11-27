@@ -1,7 +1,7 @@
 import type { AcceptedEpisode } from "../models/episode-model.js";
-import type { VenueScene } from "../models/scene-model.js";
+import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import { memoryRequire } from "./memory-integrity.js";
-import { contactPosition } from "./venue-contact.js";
+import { contactNeighbors, contactPosition } from "./venue-contact.js";
 import { movedAttentionContacts } from "./scene-attention.js";
 import { findLocation } from "./places.js";
 import { admitNpcParticipants } from "./npc-participation.js";
@@ -10,7 +10,7 @@ import { settleTrespassReaction } from "./scene-trespass.js";
 /** Applied with the saved turn's receipt; a lost acknowledgement reuses this canonical result. */
 export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpisode) {
   const delta = episode.sceneDelta;
-  if (!delta) return;
+  if (!delta) return recordDoorwayAnswers(scene, episode);
   memoryRequire(
     scene.id === episode.sceneId &&
       scene.villageSeed === episode.seed &&
@@ -108,6 +108,7 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
     scene.doorwayContacts = scene.doorwayContacts?.filter((row) => row.characterId !== departure.actorId);
   }
   const ended = new Set(delta.contactEndedIds);
+  recordDoorwayAnswers(scene, episode);
   scene.doorwayContacts = scene.doorwayContacts?.filter((row) => !ended.has(row.characterId));
   scene.activeIds = scene.activeIds.filter((id) => !ended.has(id) || contactPosition(scene, id) === scene.zoneId);
   if (delta.closed) {
@@ -116,4 +117,38 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
     scene.endReason = "scene";
   }
   settleTrespassReaction(scene);
+}
+
+function recordDoorwayAnswers(scene: VenueScene, episode: AcceptedEpisode) {
+  if (scene.id !== episode.sceneId || scene.villageSeed !== episode.seed) return;
+  const venue = scene.contactGeneration?.venue ?? findLocation(scene.continuity?.facts, scene.placeId);
+  if (venue && scene.zoneId) {
+    const neighbors = contactNeighbors(venue, scene.zoneId, scene);
+    for (const line of episode.segments) {
+      if (!isDoorwayAnswer(line)) continue;
+      const zoneId = contactPosition(scene, line.speakerId);
+      if (
+        zoneId !== line.zoneId ||
+        !neighbors.includes(zoneId) ||
+        scene.doorwayContacts?.some((contact) => contact.characterId === line.speakerId)
+      )
+        continue;
+      (scene.doorwayContacts ??= []).push({
+        characterId: line.speakerId,
+        playerZoneId: scene.zoneId,
+        characterZoneId: zoneId,
+        delivery: "voice",
+      });
+    }
+  }
+}
+
+export function isDoorwayAnswer(line: VenueLine) {
+  return (
+    line.kind === "dialogue" &&
+    line.viaDoorway &&
+    line.targetId === "player" &&
+    !line.contactHidden &&
+    line.heardBy.includes("player")
+  );
 }
