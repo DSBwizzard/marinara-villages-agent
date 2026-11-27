@@ -1328,7 +1328,10 @@ export function RepairPage({
                 </section>
               )
             ) : isSnapshots && !editing ? (
-              <section className="repair-directory">
+              <section className="repair-directory repair-scheduled-snapshots">
+                <button type="button" disabled={c.busy} onClick={() => void c.open('["snapshot-schedule"]')}>
+                  Snapshot schedule →
+                </button>
                 <form
                   autoComplete="off"
                   className="repair-snapshot-create"
@@ -1363,11 +1366,14 @@ export function RepairPage({
                         <strong>{snapshot.title}</strong>
                         <small>{new Date(snapshot.at).toLocaleString()}</small>
                         <small>
-                          {snapshot.mode === "manual"
-                            ? "Manual"
-                            : snapshot.title === "Before checkpoint restoration"
-                              ? "Before restore"
-                              : "Before repair"}
+                          {snapshot.mode === "scheduled"
+                            ? "Scheduled"
+                            : snapshot.mode === "manual"
+                              ? "Manual"
+                              : snapshot.title === "Before checkpoint restoration"
+                                ? "Before restore"
+                                : "Before repair"}
+                          {snapshot.villageAt ? `, Village time ${new Date(snapshot.villageAt).toLocaleString()}` : ""}
                         </small>
                         <span>Review restore →</span>
                       </button>

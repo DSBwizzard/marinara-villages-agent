@@ -32,6 +32,7 @@ type View = "hub" | "loading" | "list" | "edit" | "review" | "restored" | "histo
 
 function sameFieldValue({ key, type, value, multiline }: RepairField, next: RepairValue) {
   if (next === value) return true;
+  if (key === "timeZone" && value === "") return next === Intl.DateTimeFormat().resolvedOptions().timeZone;
   if (type === "number") return next !== "" && value !== "" && Number(next) === Number(value);
   if (type === "days") return String(next).split(",").sort().join(",") === String(value).split(",").sort().join(",");
   if (type === "clock") {
@@ -359,6 +360,8 @@ export function useRepairController(
       key = draftKey(id, pick, action, who),
       focus = record.people?.find((p) => p.id === who?.id),
       values = Object.fromEntries(editorFields(record, pick).map((f) => [f.key, f.value]));
+    if (record.id === '["snapshot-schedule"]' && !values.timeZone)
+      values.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setDraftActions((prior) => ({ ...prior, [recordKey(id, pick, who)]: action }));
     setDrafts((prior) =>
       prior[key] && !resetDraft
@@ -398,7 +401,12 @@ export function useRepairController(
       const score = Number(next);
       return next === "" || !Number.isInteger(score) || score < (min ?? -Infinity) || score > (max ?? Infinity);
     });
+  const isSchedule = selected?.id === '["snapshot-schedule"]';
   const activeFields = fields.filter(({ key }) => {
+    if (isSchedule && key !== "frequency") {
+      if (draft?.values.frequency === "off") return false;
+      if (key === "weekday" && draft?.values.frequency !== "weekly") return false;
+    }
     const target = /^target:\d+:/u.exec(key)?.[0];
     if (draft?.values.scope === "village" && (key === "venueId" || key === "zoneId" || target)) return false;
     if (target && key !== target + "keep" && draft?.values[target + "keep"] === false) return false;
@@ -479,15 +487,18 @@ export function useRepairController(
   const prepare = () => {
     if (!selected || !draft || !canReview) return;
     return act(async (ticket) => {
+      const memoryStatusOnly = selected.topic === "memories" && ["forget", "remember"].includes(draft.action);
+      const values = Object.fromEntries(
+        (memoryStatusOnly ? selected.fields : fields).map((field) => [field.key, field.value]),
+      );
+      if (!memoryStatusOnly) Object.assign(values, changedValues);
+      if (isSchedule && !values.timeZone) values.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       pending.current ??= {
         operationId: createVillagesClientId(),
         recordId: selected.id,
         action: draft.action,
         knowers: draft.knowers,
-        values:
-          selected.topic === "memories" && ["forget", "remember"].includes(draft.action)
-            ? Object.fromEntries(selected.fields.map((field) => [field.key, field.value]))
-            : { ...Object.fromEntries(fields.map((field) => [field.key, field.value])), ...changedValues },
+        values,
         expectedRecord: draft.agendaToken ?? selected.token ?? "",
         ...(person ? { personId: person.id } : {}),
       };

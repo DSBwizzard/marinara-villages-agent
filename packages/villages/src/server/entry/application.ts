@@ -11,6 +11,8 @@ import { startProgressRecovery } from "../features/scenes/progress.js";
 import { startRetainedStorageCleanup } from "../features/repair/retained-storage-cleanup.js";
 import { readVillageAuthority, readVillageState } from "../features/world/village-store.js";
 import { startBackgroundWork } from "../jobs/background-work.js";
+import { createSnapshotScheduler } from "../jobs/snapshot-scheduler.js";
+import { repairs } from "../features/repair/repair.js";
 import { startTownMapGeneration } from "../jobs/town-map-generation.js";
 import { stopVenueCoordinator } from "../jobs/venue-coordinator.js";
 import { startVillageRefreshScheduler } from "../jobs/village-refresh-scheduler.js";
@@ -45,6 +47,7 @@ export interface ApplicationServices {
   startRefreshScheduler(): Cleanup;
   startProgressRecovery(): Cleanup;
   startStorageCleanup?(): Cleanup;
+  startSnapshotScheduler?(): Cleanup;
   startPrivateSpacePreparation(): Promise<Cleanup>;
   readVillageState(): Promise<unknown>;
   assertSocialContract?(): Promise<unknown>;
@@ -64,6 +67,11 @@ const applicationServices: ApplicationServices = {
   startRefreshScheduler: startVillageRefreshScheduler,
   startProgressRecovery,
   startStorageCleanup: startRetainedStorageCleanup,
+  startSnapshotScheduler: () =>
+    createSnapshotScheduler(
+      () => repairs().runScheduledCheckpoint(),
+      (error) => villagesLogger().warn("[villages] scheduled snapshot failed: %s", String(error)),
+    ).start(),
   async startPrivateSpacePreparation() {
     const { startPrivateSpacePreparation } = await import("../jobs/private-space-preparation.js");
     return startPrivateSpacePreparation();
@@ -131,6 +139,7 @@ async function assembleApplication({ api }: ActivationContext, services: Applica
     // Started only once the routes are up, so a package that failed to activate
     // never leaves a timer behind pointing at a village nobody can reach.
     if (services.startStorageCleanup) cleanups.push(services.startStorageCleanup());
+    if (services.startSnapshotScheduler) cleanups.push(services.startSnapshotScheduler());
     cleanups.push(services.startBackgroundWork());
     cleanups.push(services.startRefreshScheduler());
     cleanups.push(services.startProgressRecovery());

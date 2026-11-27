@@ -113,7 +113,8 @@ export type RepairCheckpoint = {
   at: string;
   records: number;
   token: string;
-  mode: "automatic" | "manual";
+  mode: "automatic" | "manual" | "scheduled";
+  villageAt?: string;
 };
 export type RepairIndex = {
   seed: string;

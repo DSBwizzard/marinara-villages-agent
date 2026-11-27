@@ -1,4 +1,4 @@
-// Test cases: repair-capabilities/desktop, repair-capabilities/phone, repair-capabilities/compact, repair-capabilities/reverted-scope
+// Test cases: repair-capabilities/desktop, repair-capabilities/phone, repair-capabilities/compact, repair-capabilities/reverted-scope, repair-capabilities/reverted-snapshot-schedule
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { build } from "../scripts/esbuild.mjs";
@@ -107,5 +107,45 @@ await withBrowser(browser, async () => {
     assert.equal(values.zoneId, "");
     await expect(comparison.getByRole("heading", { name: "Location", exact: true })).toHaveCount(0);
     await page.close();
+  });
+  await runCase("repair-capabilities/reverted-snapshot-schedule", async () => {
+    const template = records.find((record) => record.id === '["snapshot-schedule"]');
+    for (const savedFrequency of ["daily", "off"]) {
+      const schedule = {
+        ...template,
+        fields: template.fields.map((field) =>
+          field.key === "frequency" ? { ...field, value: savedFrequency } : field,
+        ),
+      };
+      const { page, calls } = await repairBrowserFixture(browser, 1440, 900, { records: [schedule] });
+      await page.evaluate(async (id) => {
+        await window.c.chooseTopic("world");
+        await window.c.open(id);
+      }, schedule.id);
+      const review = page.getByRole("button", { name: "Review changes", exact: true });
+      const frequency = page.getByRole("combobox", { name: "Schedule", exact: true });
+      const day = page.getByRole("combobox", { name: "Day for weekly snapshots", exact: true });
+      await frequency.selectOption("weekly");
+      for (let step = 0; step < schedule.fields.length && !(await day.count()); step++)
+        await page.getByRole("button", { name: "Next", exact: true }).click();
+      await day.selectOption("4");
+      await expect(review).toBeEnabled();
+      await page.locator(".repair-steps").getByRole("button", { name: /^1 / }).click();
+      await frequency.selectOption(savedFrequency);
+      await expect(day).toHaveCount(0);
+      await expect(review).toBeDisabled();
+
+      if (savedFrequency === "daily") {
+        await page.locator('[id="repair-field-time"]').fill("21:00");
+        await review.click();
+        await expect(page.locator(".repair-review").getByRole("group", { name: "Time after" })).toHaveText("21:00");
+        const { values } = calls.findLast((call) => call.path.endsWith("/review")).body;
+        assert.equal(values.weekday, "3");
+        await expect(
+          page.locator(".repair-review").getByRole("heading", { name: "Day for weekly snapshots" }),
+        ).toHaveCount(0);
+      }
+      await page.close();
+    }
   });
 });
