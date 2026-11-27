@@ -248,6 +248,7 @@ const worldInput = z
   .object({
     version: z.literal(2),
     grant: worldGrant,
+    replyFormat: z.literal("compact").optional(),
     dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
     catchupBatchId: id.optional(),
     context: z

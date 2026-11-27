@@ -9,6 +9,7 @@ import {
   applyNarrativeDevelopment,
   assertNarrativeAdmission,
   ensureNarrative,
+  readCompactWorldDevelopment,
   readNarrativeDevelopment,
   mergeNarrativeAfter,
 } from "../../domain/rules/narrative-development.js";
@@ -23,7 +24,11 @@ import { fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
 import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain/rules/return-catchup-authority.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
-import { WORLD_GM_INSTRUCTION, worldNarrativeContext } from "../../domain/rules/narrative-prompts.js";
+import {
+  COMPACT_WORLD_GM_INSTRUCTION,
+  WORLD_GM_INSTRUCTION,
+  worldNarrativeContext,
+} from "../../domain/rules/narrative-prompts.js";
 
 type Ports = {
   read: (options?: import("../../domain/models/world-repository.js").VillageMemoryRead) => Promise<VillageState>;
@@ -114,6 +119,7 @@ export function createNarrative(ports: Ports) {
       input: {
         version: 2,
         grant,
+        replyFormat: "compact",
         dateKey: date,
         ...(batchId
           ? {
@@ -213,15 +219,27 @@ export function createNarrative(ports: Ports) {
   const handler: Handler = {
     authority: "raw",
     async generate(input) {
-      const result = await ask(WORLD_GM_INSTRUCTION, worldNarrativeContext(input.grant), 3000);
+      // A retained attempt is keyed to the exact prompt it originally sent.
+      const compact = input.replyFormat === "compact";
+      const result = await ask(
+        compact ? COMPACT_WORLD_GM_INSTRUCTION : WORLD_GM_INSTRUCTION,
+        worldNarrativeContext(input.grant),
+        3000,
+      );
       if (result.quiet === true && Object.keys(result).length === 1) return { quiet: true };
-      if (result.quiet !== false || !result.development)
+      if (result.quiet !== false || !result.development || (compact && Object.keys(result).length !== 2))
         throw new WorkFailureError({
           cause: "missing_result",
           stage: "world-development",
           message: "The GM world development is incomplete. Its response is retained.",
         });
-      return { quiet: false, development: readNarrativeDevelopment(result.development, input.grant) };
+      return {
+        quiet: false,
+        development: (compact ? readCompactWorldDevelopment : readNarrativeDevelopment)(
+          result.development,
+          input.grant,
+        ),
+      };
     },
     valid(state, input) {
       if (input.version !== 2 || state.backgroundPace === "off") return false;
