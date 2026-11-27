@@ -198,7 +198,11 @@ export function FoundingPersonaSelector({
         <p role="alert">The saved Persona is no longer in your library. Choose another Persona to continue.</p>
       ) : null}
       {open ? (
-        <FoundingDialog title="Choose Persona" onClose={() => setOpen(false)}>
+        <FoundingDialog
+          title="Choose Persona"
+          className="villages-founding-persona-dialog"
+          onClose={() => setOpen(false)}
+        >
           <input
             autoComplete="off"
             type="search"

@@ -1526,19 +1526,19 @@ export async function verifyFoundingLayout(group) {
         }
         const draftMapButton = button("Suggest");
         const draftMapBounds = await draftMapButton.boundingBox();
-        const mapReplies = await draftMapButton.locator("..").boundingBox();
+        const mapReplies = draftMapButton.locator("..");
+        const replyBounds = await mapReplies.boundingBox();
+        const backBounds = await mapReplies.getByRole("button", { name: "Back", exact: true }).boundingBox();
+        const nextBounds = await mapReplies.getByRole("button", { name: "Next", exact: true }).boundingBox();
         assert.ok(
-          Math.abs(draftMapBounds.x + draftMapBounds.width - mapReplies.x - mapReplies.width) < 1,
-          "Suggest sits at the right edge of its action row",
+          backBounds.x + backBounds.width <= draftMapBounds.x &&
+            draftMapBounds.x + draftMapBounds.width <= nextBounds.x,
+          "Map actions read Back, Suggest, Next",
         );
-        if (!phone) {
-          const backBounds = await button("Back").boundingBox();
-          const nextBounds = await button("Next").boundingBox();
-          assert.ok(
-            backBounds.x + backBounds.width <= nextBounds.x && nextBounds.x + nextBounds.width <= draftMapBounds.x,
-            "Map Back/Next stay together on the left",
-          );
-        }
+        assert.ok(
+          Math.abs(nextBounds.x + nextBounds.width - replyBounds.x - replyBounds.width) < 1,
+          "Next sits at the right edge of the Map action row",
+        );
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         assert.equal(settingCalls, 0, "The opening beats do not call a model");
         await expect(villageBrief).toHaveCount(0);
@@ -1690,25 +1690,33 @@ export async function verifyFoundingLayout(group) {
         );
         await expect(root.locator(".villages-chapter-guide")).not.toContainText("gets a home");
         await enterChapter();
-        if (view.width === 390 && view.height === 844) {
+        let personaSearchBackground;
+        if (view.width === 1366 || (view.width === 390 && view.height === 844)) {
           await root.locator(".marinara-capability-villages-founding-persona").getByRole("button").click();
           const personas = page.getByRole("dialog", { name: "Choose Persona", exact: true });
+          personaSearchBackground = await personas
+            .getByRole("searchbox", { name: "Search Personas" })
+            .evaluate((input) => getComputedStyle(input).backgroundColor);
           await personas.getByRole("group", { name: "Choose a Persona" }).getByRole("button").first().click();
           await expect(personas).toBeVisible();
           await personas.press("Escape");
           await expect(personas).toBeVisible();
           await expect(personas.getByRole("button", { name: "Next", exact: true })).toHaveCount(0);
           await personas.getByRole("button", { name: "Confirm", exact: true }).click();
-          await expect
-            .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.mobileMenu))
-            .toBe("people");
-          await page.reload();
-          await page.addScriptTag({ content: foundingBundle });
-          await expect(root.getByRole("dialog", { name: "People", exact: true })).toBeVisible();
+          if (phone) {
+            await expect
+              .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.mobileMenu))
+              .toBe("people");
+            await page.reload();
+            await page.addScriptTag({ content: foundingBundle });
+            await expect(root.getByRole("dialog", { name: "People", exact: true })).toBeVisible();
+          }
         }
         for (const person of characters.slice(0, view.count)) {
           await button("+ Add villager").click();
           const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
+          if (personaSearchBackground)
+            await expect(picker.getByRole("searchbox")).toHaveCSS("background-color", personaSearchBackground);
           await expect(picker.getByRole("button", { name: "Professor Mari · Add", exact: true })).toHaveCount(0);
           await picker.getByRole("button", { name: person.name + " · Add", exact: true }).click();
           await expect(picker.locator("footer").getByRole("button")).toHaveCount(1);
