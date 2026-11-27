@@ -953,13 +953,13 @@ await runCase("scene-travel/mixed-speech-actions", async () => {
     let calls = 0;
     host.model.chatComplete = async (messages) => {
       calls++;
-      const prompt = messages.map(({ content }) => content).join("\n");
-      const invites = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]) as {
+      const reminder = messages.at(-1)!.content;
+      const invites = JSON.parse(reminder.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]) as {
         actorId: string;
         zoneId: string;
         option: number;
       }[];
-      const following = JSON.parse(prompt.match(/Following decisions available.*: ([^\n]+)/)![1]) as Record<
+      const following = JSON.parse(reminder.match(/Following decisions available.*: ([^\n]+)/)![1]) as Record<
         string,
         [number, string][]
       >;

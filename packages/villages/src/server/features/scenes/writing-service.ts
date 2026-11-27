@@ -558,10 +558,8 @@ export function createSceneWriting({
           (nativeCommands || tagged) && !requestedMemory && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
           (nativeCommands || tagged) && !requestedMemory && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
           (nativeCommands || (tagged && !context.codeRequestedMemory)) && showAccess ? NARRATION_ACCESS_COMMANDS : "",
-          canInviteForVisit ? "Visit invitations available in this Scene: " + JSON.stringify(visitOptions) : "",
-          followingOptions.length
-            ? "Following decisions available in this Scene, grouped by speaker as [number, decision]: " +
-              JSON.stringify(followingMenu)
+          !tagged && canInviteForVisit
+            ? "Visit invitations available in this Scene: " + JSON.stringify(visitOptions)
             : "",
           (nativeCommands || tagged) && !requestedMemory && housing ? NARRATION_HOUSING_COMMANDS : "",
           tagged && showAccess && !requestedMemory
@@ -712,7 +710,14 @@ export function createSceneWriting({
         attendanceDirection +
         (tagged
           ? "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. Put each lasting change on its own tag line." +
-            (sceneSpeechActions.length ? " Use only the numbered [action N] lines for settled invitations and following." : "")
+            (canInviteForVisit ? "\nVisit invitations available in this Scene: " + JSON.stringify(visitOptions) : "") +
+            (followingOptions.length
+              ? "\nFollowing decisions available in this Scene, grouped by speaker as [number, decision]: " +
+                JSON.stringify(followingMenu)
+              : "") +
+            (sceneSpeechActions.length
+              ? "\nBefore writing talk about crossing, following or entry, check the choices above. If someone settles that decision this turn, use [action N]: with the matching number and leave its text empty. A yes or no in ordinary dialogue alone leaves the decision unsettled. If no numbered choice fits, leave the plan open in ordinary dialogue. Use separate speaker lines for other subjects."
+              : "")
           : 'Return "segments" and any "keep" or "commands" in one JSON object.'),
     );
     if (loreInspection) {
