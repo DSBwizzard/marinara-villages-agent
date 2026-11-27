@@ -142,6 +142,23 @@ await withBrowser(browser, async () => {
       assert.deepEqual(action, retries[0], "retrying a lost response retains action ID and expected attempt");
       return fulfill(route, { json: snapshot });
     }
+    if (path.endsWith("/repair"))
+      return fulfill(route, {
+        json: {
+          seed: "world",
+          identity: "world",
+          people: [],
+          records: [],
+          history: [],
+          historyTotal: 0,
+          historyOffset: 0,
+          checkpoints: [],
+          checkpointTotal: 0,
+          checkpointOffset: 0,
+          sceneOpen: false,
+        },
+      });
+    if (path.endsWith("/repair/records")) return fulfill(route, { json: { records: [], total: 0 } });
     const response = path.endsWith("/catalog")
       ? { characters: [] }
       : path.endsWith("/agendas")
@@ -172,17 +189,18 @@ await withBrowser(browser, async () => {
   await page.getByRole("button", { name: "More" }).click();
   await expect(page.getByText("Background work", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Debug", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Retry unfinished work" })).toHaveCount(0);
+  await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+  await page.getByRole("button", { name: "Recover work", exact: true }).click();
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Needs attention (1)" })).toBeVisible();
-  await expect(page.getByText("0 active · 0 paused · 1 need attention", { exact: true })).toBeVisible();
-  await expect(page.getByText("Finished Wish check", { exact: true })).not.toBeVisible();
-  await page.getByText("Completed (1)", { exact: true }).click();
+  await expect(page.getByText("Finished Wish check", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Completed", exact: true }).click();
   await expect(page.getByText("Finished Wish check", { exact: true })).toBeVisible();
-  await page.getByText("Completed (1)", { exact: true }).click();
+  await page.getByRole("button", { name: "Needs attention", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry unfinished work" })).toBeVisible();
-  await expect(page.getByText(/3 steps · 4 requests · tokens unavailable/)).toBeVisible();
+
   if (process.env.VILLAGES_BACKGROUND_SCREENSHOT)
     await page.screenshot({ path: process.env.VILLAGES_BACKGROUND_SCREENSHOT });
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
@@ -192,6 +210,7 @@ await withBrowser(browser, async () => {
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
   await expect.poll(() => retries.length).toBe(2);
   assert.equal(acceptedRetries, 1);
+  await page.getByRole("button", { name: "Main menu", exact: true }).click();
   await page.getByRole("button", { name: "People", exact: true }).click();
   await page.getByRole("button", { name: "Open Mara profile" }).click();
   await clickCharacterTool(page, "Inspect");

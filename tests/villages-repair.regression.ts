@@ -515,8 +515,12 @@ await runCase("repair/people", async () => {
   );
   assert.equal((await f.api.list("people")).records.length, 0);
   const before = await f.read();
-  assert.equal((await f.api.list("people", "compass", 0, "b")).total, 1);
-  assert.ok((await f.api.list("people", "", 0, "b")).records.some((record) => record.title.includes("harbor")));
+  assert.equal(
+    (await f.api.list("people", "compass", 0, "b")).total,
+    0,
+    "a subject does not own another person's account",
+  );
+  assert.ok(!(await f.api.list("people", "", 0, "b")).records.some((record) => record.title.includes("harbor")));
   assert.ok(!JSON.stringify(await f.api.list("people", "", 0, "player")).includes("compass"));
   assert.deepEqual(await f.api.list("all", "  "), { records: [], total: 0, next: null });
   assert.equal((await f.api.list("all", "compass nonexistent")).total, 0);
@@ -1206,7 +1210,7 @@ await runCase("repair/domain-editors", async () => {
     s.venues = [...[oldHome, newHome], ...sharedVenuesFixture()];
   });
   const home = await f.prepare({
-    ...edit(repairId("home", "a"), { destination: repairId("new-home", "bedroom") }, "fix-home"),
+    ...edit(repairId("home", "a"), { homeId: "new-home", sleepZoneId: "bedroom" }, "fix-home"),
   });
   await f.api.apply(home.id, home.token);
   const housed = await f.read();

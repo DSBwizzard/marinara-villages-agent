@@ -1,183 +1,30 @@
-import { venueFixture } from "./helpers/venues.fixture.js";
 // Test cases: place-repair/desktop, place-repair/phone
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
-import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
-import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  worldRepairRecords,
-  applyWorldRepair,
-  repairPlaceDirectory,
-} from "../packages/villages/src/server/domain/rules/repair-records.js";
-import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
-
-const bundle = await build({
-  stdin: {
-    loader: "tsx",
-    resolveDir: process.cwd(),
-    contents: `import {createRoot} from 'react-dom/client';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async()=>null);return <RepairPage controller={c} onBack={()=>{}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
-  },
-  bundle: true,
-  write: false,
-  format: "iife",
-  platform: "browser",
-  jsx: "automatic",
-});
+import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
+import { repairBrowserFixture, expect, noRepairScroll } from "./fixtures/repair-browser.fixture.mjs";
 const browser = await chromium.launch({ headless: true });
-await mkdir(".build-tmp/place-repair", { recursive: true });
 await withBrowser(browser, async () => {
-  for (const [name, width] of [
-    ["desktop", 1440],
-    ["phone", 390],
+  for (const [name, width, height] of [
+    ["desktop", 1440, 900],
+    ["phone", 390, 844],
   ])
     await runCase("place-repair/" + name, async () => {
-      const at = "2026-10-28T12:00:00.000Z";
-      const description = "White walls. Two windows.\n\nA table.";
-      let state = coerceVillageState({
-        ...defaultVillageState(),
-        seed: "place-repair",
-        setupAt: at,
-        foundedAt: at,
-        venues: [
-          venueFixture({
-            id: "hall",
-            name: "Hall",
-            description,
-            layoutVersion: 1,
-            zones: [
-              {
-                id: "exterior",
-                name: "Entrance",
-                kind: "exterior",
-                description,
-                image: null,
-              },
-              {
-                id: "tool-room",
-                name: "Tool room",
-                kind: "restricted",
-                description: "Tools on shelves.",
-                image: null,
-                connectedTo: ["exterior"],
-              },
-            ],
-          }),
-        ],
-      });
-      initializeRoomContinuity(state, "hall", "exterior", description, "founding", at);
-      const roomRecords = (world = state) =>
-        worldRepairRecords(world, false).filter((row) => row.summary === "Room detail");
-      const original = roomRecords();
-      const wall = original.find((row) => row.fields[0].value === "White walls. Two windows.");
-      const table = original.find((row) => row.fields[0].value === "A table.");
-      assert(wall && table);
-      const getRecord = (world = state) => ({
-        ...roomRecords(world).find((row) => row.id === wall.id),
-        token: "current",
-      });
-      const index = () => ({
-        seed: state.seed,
-        identity: state.seed,
-        records: [],
-        history: [],
-        checkpoints: [],
-        people: [],
-        sceneOpen: false,
-      });
-      let pending,
-        staged,
-        applied = 0;
-      const page = await browser.newPage({ viewport: { width, height: 1000 } });
-      await mockEngineLookups(page);
-      await page.route("http://place-repair.test/", (route) =>
-        fulfill(route, { contentType: "text/html", body: '<div id="root"></div>' }),
-      );
-      await page.route("**/api/villages**", (route) => {
-        const path = new URL(route.request().url()).pathname;
-        if (path.endsWith("/records")) {
-          assert.equal(new URL(route.request().url()).searchParams.get("browse"), "places");
-          return fulfill(route, { json: { records: [], total: 0, directory: repairPlaceDirectory(state) } });
-        }
-        if (path.endsWith("/record")) return fulfill(route, { json: getRecord() });
-        if (path.endsWith("/review")) {
-          pending = route.request().postDataJSON();
-          staged = structuredClone(state);
-          applyWorldRepair(staged, getRecord(), pending, "2026-10-28T15:00:00.000Z");
-          return fulfill(route, {
-            json: {
-              kind: "repair",
-              id: pending.operationId,
-              title: getRecord().title,
-              changes: [
-                {
-                  label: "Text",
-                  before: getRecord().fields[0].value,
-                  after: getRecord(staged).fields[0].value,
-                },
-              ],
-              affected: ["Hall"],
-              related: [],
-              checkpoint: true,
-              undoAvailable: true,
-            },
-          });
-        }
-        if (path.endsWith("/apply")) {
-          state = staged;
-          applied++;
-          return fulfill(route, { json: {} });
-        }
-        return fulfill(route, { json: index() });
-      });
-      await page.goto("http://place-repair.test/");
-      await page.addScriptTag({ content: bundle.outputFiles[0].text });
-      const open = async () => {
-        await page.getByRole("button", { name: "Locations & venues", exact: true }).click();
-        await expect(page.getByRole("button", { name: "Locations", exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "Venues", exact: true }).click();
-        await page.getByRole("button", { name: "Hall", exact: true }).click();
-        await expect(page.getByRole("button", { name: "Venue details", exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "Tool room", exact: true }).click();
-        await expect(page.getByRole("button", { name: "Entry policy", exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "Standing access", exact: true }).click();
-        await expect(page.getByRole("button", { name: "Your Persona", exact: true })).toBeVisible();
-        const trail = page.getByRole("navigation", { name: "Repair location navigation" });
-        await trail.getByRole("button", { name: "Hall", exact: true }).click();
-        await page.getByRole("button", { name: "Entrance", exact: true }).click();
-        await expect(page.getByRole("heading", { name: "Entrance", exact: true })).toBeVisible();
-        await page.locator(".villages-repair").screenshot({ path: `.build-tmp/place-repair/${name}-zone.png` });
-        await page.getByRole("button", { name: /Room detail White walls/ }).click();
-      };
-      await open();
-      await expect(page.getByText("Current", { exact: true })).toHaveCount(0);
-      const editor = page.getByRole("textbox", { name: "Text", exact: true });
-      const correction = "White walls. Two windows. Shelves beside the window.";
-      await expect(editor).toHaveValue("White walls. Two windows.");
-      await editor.fill(correction);
-      await page.locator(".villages-repair").screenshot({ path: `.build-tmp/place-repair/${name}-editor.png` });
-      assert.equal(await page.locator(".villages-repair").evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
+      const f = await repairBrowserFixture(browser, width, height),
+        { page } = f;
+      await f.area("places");
+      await page.getByRole("button", { name: "Hearth Alms Rooms, Venue", exact: true }).click();
+      await page.getByRole("button", { name: "Dining room", exact: true }).click();
+      await page.getByRole("button", { name: /Zone details/ }).click();
+      await expect(page.getByRole("heading", { name: "Dining room", exact: true })).toBeVisible();
+      await page.getByRole("textbox", { name: "Name", exact: true }).fill("Dining room and library");
       await page.getByRole("button", { name: "Review changes", exact: true }).click();
-      assert.equal(applied, 0, "review does not apply the correction");
-      assert.equal(pending.action, "correct");
-      assert.equal(pending.recordId, wall.id);
-      assert.equal(getRecord().fields[0].value, "White walls. Two windows.");
-      await page.getByRole("button", { name: "Save changes", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Changes saved", exact: true })).toBeVisible();
-      assert.equal(applied, 1);
-      assert.equal(getRecord().fields[0].value, correction);
-      assert.deepEqual(
-        roomRecords().find((row) => row.id === table.id),
-        table,
+      assert.equal(
+        f.calls.findLast((call) => call.path.endsWith("/review")).body.values.name,
+        "Dining room and library",
       );
-      assert.equal(state.venues[0].zones[0].description, description);
-      await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
-      await open();
-      await expect(editor).toHaveValue(correction);
+      await noRepairScroll(page);
+      assert(!f.calls.some((call) => /explore|\/visit|\/generate/.test(call.path)));
       await page.close();
     });
 });

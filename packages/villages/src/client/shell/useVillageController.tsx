@@ -2,7 +2,6 @@ import { useConfirmation } from "../shared/confirmation.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TownMapView, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
-import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
 import { useProgressDiagnostics } from "../features/background/useProgressDiagnostics.js";
 import {
   useCloseExploration,
@@ -606,8 +605,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * showing something the village has already forgotten.
    */
   const retryWork = useResidentsRetryWork({ loadAgendas, setSnapshot });
-
-  const backgroundPanel = <BackgroundWorkPanel jobs={snapshot?.backgroundWork ?? []} onRetry={retryWork} />;
 
   const rewriteAgenda = useRewriteAgenda({
     currentSnapshotRef,
@@ -1316,7 +1313,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     addVenue,
     agendas,
     applyVillagerRefresh,
-    backgroundPanel,
+
     writing,
     busy,
     catalog,

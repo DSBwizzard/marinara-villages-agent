@@ -21,6 +21,7 @@ export function registerRepairRoutes(app: FastifyInstance) {
       personId?: string;
       section?: string;
       browse?: string;
+      memoryState?: string;
     };
   }>("/repair/records", async (request, reply) => {
     try {
@@ -31,6 +32,7 @@ export function registerRepairRoutes(app: FastifyInstance) {
         request.query.personId,
         request.query.section,
         request.query.browse === "places",
+        request.query.memoryState,
       );
     } catch (e) {
       return fail(reply, e, "reading repair records");

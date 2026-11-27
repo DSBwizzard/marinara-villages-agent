@@ -29,6 +29,7 @@ export function AgendaPlanner<T extends Block>({
   onActivity,
   renderDayAction,
   disabled,
+  pageSize,
 }: {
   days: { date: string; weekday: string; blocks: T[] }[];
   date: string | undefined;
@@ -36,10 +37,15 @@ export function AgendaPlanner<T extends Block>({
   onActivity?: (day: { date: string }, block: T) => void;
   renderDayAction?: (day: { date: string }) => ReactNode;
   disabled?: boolean;
+  pageSize?: number;
 }) {
   const [selection, setSelection] = useState<{ date: string; block: T }>();
+  const [page, setPage] = useState({ date: "", index: 0 });
   if (!days.length) return null;
   const day = days.find((entry) => entry.date === date) ?? days[0];
+  const pageCount = pageSize ? Math.max(1, Math.ceil(day.blocks.length / pageSize)) : 1;
+  const currentPage = page.date === day.date ? Math.min(page.index, pageCount - 1) : 0;
+  const blocks = pageSize ? day.blocks.slice(currentPage * pageSize, (currentPage + 1) * pageSize) : day.blocks;
   const visibleSelection =
     selection?.date === day.date &&
     day.blocks.find(
@@ -72,7 +78,7 @@ export function AgendaPlanner<T extends Block>({
             <div className={P + "-planner-period-label"} aria-hidden="true">
               {period}
             </div>
-            {day.blocks
+            {blocks
               .filter((block) => periodOf(block.startMinute) === period)
               .map((block, index) => (
                 <button
@@ -100,6 +106,7 @@ export function AgendaPlanner<T extends Block>({
                 >
                   <span className={P + "-planner-time"}>{blockTime(block)}</span>
                   <span>{block.activity}</span>
+                  {onActivity && block.place ? <small className={P + "-planner-place"}>{block.place}</small> : null}
                 </button>
               ))}
           </div>
@@ -119,6 +126,27 @@ export function AgendaPlanner<T extends Block>({
         </p>
       ) : null}
       {onActivity && !day.blocks.length ? <p>No scheduled activities.</p> : null}
+      {pageCount > 1 ? (
+        <nav className={P + "-planner-pages"} aria-label="Agenda pages">
+          <button
+            type="button"
+            disabled={currentPage === 0}
+            onClick={() => setPage({ date: day.date, index: currentPage - 1 })}
+          >
+            Previous
+          </button>
+          <span>
+            {currentPage + 1} of {pageCount}
+          </span>
+          <button
+            type="button"
+            disabled={currentPage + 1 >= pageCount}
+            onClick={() => setPage({ date: day.date, index: currentPage + 1 })}
+          >
+            Next →
+          </button>
+        </nav>
+      ) : null}
     </div>
   );
 }
@@ -162,6 +190,8 @@ const agendaStyles = `
 .${P}-day-planner button.${P}-planner-block:is(:hover,[aria-pressed=true]){background:var(--period-fill)}
 .${P}-day-planner button.${P}-planner-block[data-source=agreed]{color:var(--plan-ink);border-inline-start-color:var(--plan-edge);background:var(--plan-fill)}
 .${P}-planner-time{font-size:12px;font-variant-numeric:tabular-nums}
+.${P}-planner-place{grid-column:2;font-size:12px;color:var(--repair-muted)}
+.${P}-planner-pages{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:12px}
 .${P}-dossier-overview .${P}-planner-detail{margin:6px 0 0}
 @container village-desk (min-width:701px){
  .${P}-planner-block span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { StorybookHeading, StorybookSearchIcon } from "../../shared/StorybookHeading.js";
 import { PeopleBook } from "./PeopleBook.js";
-import { AvatarFace } from "./ResidentPanels.js";
+import { PersonDirectoryCard } from "./PersonDirectoryCard.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AddVisitorDialog } from "./VisitorControls.js";
 import { visitorVisitLabel } from "./calculations.js";
@@ -128,26 +128,20 @@ export function RosterScreen({
                     ? snapshot?.visitors?.find((entry) => entry.characterId === person.characterId)
                     : undefined;
                   return (
-                    <button
-                      type="button"
+                    <PersonDirectoryCard
                       key={person.characterId}
-                      className={`${ELEMENT_TAG}-directory-card`}
-                      aria-label={`Open ${person.name} profile`}
-                      aria-pressed={selectedId === person.characterId}
-                      onClick={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
-                    >
-                      <AvatarFace
-                        portrait={portraits[person.characterId]}
-                        name={person.name}
-                        className={`${ELEMENT_TAG}-avatar`}
-                        fullResolution
-                      />
-                      <span className={`${ELEMENT_TAG}-directory-text`}>
-                        <strong>{person.name}</strong>
-                        {visitor ? <small>{visitorVisitLabel(visitor, snapshot?.clock?.timeZone)}</small> : null}
-                        {"missing" in person && person.missing ? <small>Card missing</small> : null}
-                      </span>
-                    </button>
+                      name={person.name}
+                      portrait={portraits[person.characterId]}
+                      selected={selectedId === person.characterId}
+                      label={`Open ${person.name} profile`}
+                      onOpen={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
+                      detail={
+                        <>
+                          {visitor ? <small>{visitorVisitLabel(visitor, snapshot?.clock?.timeZone)}</small> : null}
+                          {"missing" in person && person.missing ? <small>Card missing</small> : null}
+                        </>
+                      }
+                    />
                   );
                 })}
               </div>

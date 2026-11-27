@@ -83,6 +83,7 @@ const residentPlans = z
     selectedDate: z.string().refine((value) => value === "" || date.safeParse(value).success),
     plans: z.array(socialPlanSchema).max(64),
     appointments: playerAppointments.optional(),
+    appointmentRepairs: z.record(id, z.object({ operationId: id, at: z.iso.datetime() }).strict()).optional(),
     activities: z.record(id, completedActivity).optional(),
   })
   .strict()

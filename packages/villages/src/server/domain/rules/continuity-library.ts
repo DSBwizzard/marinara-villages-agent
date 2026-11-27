@@ -202,7 +202,7 @@ function projections(
 export function continuityRepairEntries(state: VillageState, at: string) {
   const ids = [
     "player",
-    ...knownCardCharacters(state).map((row) => row.characterId),
+    ...cardCharacters(state).map((row) => row.characterId),
     ...Object.keys(state.worldPlaces.npcs),
   ];
   return ids.flatMap((id) => {

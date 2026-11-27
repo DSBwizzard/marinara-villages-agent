@@ -38,7 +38,7 @@ export type MenuScreenController = {
   readonly housingVenueId: string;
   readonly setHousingVenueId: (id: string) => void;
   readonly projectsController: ProjectsController;
-  readonly backgroundPanel: React.JSX.Element;
+  readonly retryWork?: (job: import("../../shared/contracts/village.js").BackgroundWork) => Promise<void>;
   readonly writing: ReturnType<typeof import("../features/settings/WritingSettings.js").useVillageWriting>;
   readonly connections: ReturnType<typeof import("../features/settings/AgentConnections.js").useAgentConnections>;
   readonly busy: boolean;

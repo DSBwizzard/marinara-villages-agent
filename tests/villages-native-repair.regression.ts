@@ -1,5 +1,5 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
-// Test cases: native-repair/common-books, native-repair/undo, native-repair/repeated-undo, native-repair/offer-undo, native-repair/room, native-repair/circumstance, native-repair/founding-circumstance, native-repair/protected-circumstance, native-repair/stale, native-repair/checkpoint, native-repair/missing-page, native-repair/pending-target, native-repair/unread-targets, native-repair/recovery, native-repair/plan-allowance
+// Test cases: repair-familiar/work-booking, repair-familiar/place-ownership, native-repair/common-books, native-repair/undo, native-repair/repeated-undo, native-repair/offer-undo, native-repair/room, native-repair/circumstance, native-repair/founding-circumstance, native-repair/protected-circumstance, native-repair/stale, native-repair/checkpoint, native-repair/missing-page, native-repair/pending-target, native-repair/unread-targets, native-repair/recovery, native-repair/plan-allowance, repair-familiar/memory-accounts, repair-familiar/targets
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
@@ -907,4 +907,278 @@ await runCase("native-repair/recovery", async () => {
   assert.equal(Object.keys(restored.continuity.receipts).filter((id) => id === "recover").length, 1);
   await f.api.apply(review.id, review.token);
   assert.deepEqual(await f.read(), restored);
+});
+
+await runCase("repair-familiar/memory-accounts", async () => {
+  const f = await fixture();
+  await f.repository.mutateAuthority(
+    (state) =>
+      retainNativeFact(
+        state,
+        {
+          id: "about-leo",
+          kind: "initialization",
+          targetId: "leo",
+          revision: 1,
+          text: "Leo keeps a blue notebook.",
+          witnesses: ["mara"],
+        },
+        at,
+        { about: ["leo"] },
+      ),
+    { memories: true },
+  );
+  assert.equal(
+    (await f.api.list("people", "", 0, "leo", "memories")).records.length,
+    0,
+    "Being a subject does not expose another person's editable account",
+  );
+  const before = await f.read();
+  const page = await f.api.list("people", "", 0, "leo", "memories");
+  assert(page.creation);
+  const addition = await f.api.prepare({
+    operationId: "add-leo-memory",
+    recordId: page.creation.id,
+    expectedRecord: page.creation.token!,
+    action: "correct",
+    knowers: ["leo"],
+    personId: "leo",
+    values: { text: "I left the brass key at home.\n\nI will collect it on Friday." },
+  });
+  assert.deepEqual(await f.read(), before);
+  await f.api.apply(addition.id, addition.token);
+  const after = await f.read();
+  assert.deepEqual(after.episodes, before.episodes, "administrative memories retain original evidence");
+  assert.equal(
+    continuityMemoryLibrary(after, { inspection: true, characterId: "leo" }, later).entries.some((entry) =>
+      entry.text.includes("brass key"),
+    ),
+    true,
+  );
+  f.reopen();
+  const memory = (await f.api.list("people", "", 0, "leo", "memories")).records.find((entry) =>
+    entry.title.includes("brass key"),
+  )!;
+  const prepare = async (record: typeof memory, id: string, action: string, knowers = ["leo"]) =>
+    f.api.prepare({
+      operationId: id,
+      recordId: record.id,
+      expectedRecord: record.token!,
+      personId: "leo",
+      action,
+      knowers,
+      values: {},
+    });
+  const teach = await prepare(memory, "teach-key", "teach", ["player"]);
+  await f.api.apply(teach.id, teach.token);
+  assert(
+    continuityMemoryLibrary(await f.read(), { inspection: true, characterId: "player" }, later).entries.some((entry) =>
+      entry.text.includes("brass key"),
+    ),
+  );
+  const current = await f.api.inspect(memory.id, "leo");
+  const forgotten = await prepare(current, "forget-key", "forget");
+  await f.api.apply(forgotten.id, forgotten.token);
+  const hidden = await f.api.inspect(memory.id, "leo");
+  assert.deepEqual(hidden.actions, [{ id: "remember", label: "Restore memory" }]);
+  const restored = await prepare(hidden, "restore-key", "remember");
+  await f.api.apply(restored.id, restored.token);
+  assert.equal(
+    continuityMemoryLibrary(await f.read(), { inspection: true, characterId: "leo" }, later).entries.find(
+      (entry) => entry.id === partsId(memory.id),
+    )?.forgotten,
+    false,
+  );
+  assert.deepEqual((await f.read()).episodes, before.episodes);
+  await f.api.apply(restored.id, restored.token);
+  assert.equal((await f.api.index()).history.filter((entry) => entry.id === restored.id).length, 1);
+});
+function partsId(id: string) {
+  return JSON.parse(id)[1];
+}
+
+await runCase("repair-familiar/targets", async () => {
+  const f = await fixture();
+  const before = await f.read();
+  for (const id of ["mara", "leo"]) {
+    assert((await f.api.list("people", "", 0, id, "home")).records.every((record) => JSON.parse(record.id)[1] === id));
+    assert((await f.api.list("people", "", 0, id, "details")).records.length > 0);
+  }
+  const places = await f.api.list("places", "", 0, undefined, undefined, true);
+  assert(places.directory?.length);
+  assert.deepEqual(await f.read(), before, "browsing targets cannot mutate a Village");
+  const venue = before.venues[0]!;
+  const management = await f.api.inspect(repairId("management", venue.id));
+  const review = await f.api.prepare({
+    operationId: "change-manager",
+    recordId: management.id,
+    expectedRecord: management.token!,
+    action: "correct",
+    values: Object.fromEntries(management.fields.map((field) => [field.key, field.key === "manager:leo"])),
+    knowers: [],
+  });
+  await f.api.apply(review.id, review.token);
+  assert.deepEqual((await f.read()).venues[0].access?.managerIds, ["leo"]);
+});
+
+await runCase("repair-familiar/work-booking", async () => {
+  const f = await fixture();
+  await f.repository.mutateAuthority((state) => {
+    state.timeZone = "UTC";
+    state.venues.push(venueFixture({ id: "workshop", name: "Workshop" }));
+    for (const person of state.villagers)
+      person.agenda = agendaFixture({
+        day: [
+          { startMinute: 0, endMinute: 420, activity: "Sleep", venueId: "", essential: true },
+          {
+            startMinute: 420,
+            endMinute: 600,
+            activity: "Free time",
+            venueId: "workshop",
+            zoneId: "public",
+            flexible: true,
+          },
+          {
+            startMinute: 600,
+            endMinute: 630,
+            activity: "Rest",
+            venueId: "workshop",
+            zoneId: "public",
+            essential: true,
+          },
+          {
+            startMinute: 630,
+            endMinute: 1320,
+            activity: "Free time",
+            venueId: "workshop",
+            zoneId: "public",
+            flexible: true,
+          },
+          { startMinute: 1320, endMinute: 1440, activity: "Sleep", venueId: "", essential: true },
+        ],
+      });
+  });
+  const venue = (await f.read()).venues.find((venue) => venue.id === "workshop")!,
+    zone = venue.zones!.find((zone) => zone.kind !== "exterior")!;
+  const work = await f.api.inspect(repairId("work", "mara", "new"), "mara");
+  const review = await f.api.prepare({
+    operationId: "repair-work",
+    recordId: work.id,
+    expectedRecord: work.token!,
+    personId: "mara",
+    action: "correct",
+    knowers: [],
+    values: {
+      venueId: venue.id,
+      zoneId: zone.id,
+      activity: "Bind books",
+      days: "Monday,Tuesday,Wednesday,Thursday,Friday",
+      start: "09:00",
+      end: "12:00",
+      inviteGuests: true,
+    },
+  });
+  await f.api.apply(review.id, review.token);
+  f.reopen();
+  let state = await f.read();
+  assert.equal(state.venues.find((venue) => venue.id === "workshop")!.access!.work![0].inviteGuests, true);
+  assert.equal(state.venues.find((venue) => venue.id === "workshop")!.access!.work![0].days.length, 5);
+  const agendas = await f.api.list("people", "", 0, "mara", "agenda");
+  assert(
+    agendas.records.some((record) =>
+      record.agenda?.blocks.some(
+        (block) =>
+          block.activity === "Bind books" &&
+          block.repairRecordId === repairId("work", "mara", "workshop") &&
+          block.repairIndex === undefined,
+      ),
+    ),
+    "composed work opens its authoritative arrangement",
+  );
+  assert(
+    agendas.records.every((record) =>
+      record.agenda?.blocks
+        .filter((block) => block.activity === "Rest")
+        .every((block) => block.repairRecordId === undefined && block.repairIndex !== undefined),
+    ),
+    "rest preserved during a shift remains an ordinary Agenda correction",
+  );
+  const current = await f.api.inspect(repairId("work", "mara", "workshop"), "mara");
+  const shift = await f.api.prepare({
+    operationId: "repair-shift",
+    recordId: current.id,
+    expectedRecord: current.token!,
+    personId: "mara",
+    action: "correct",
+    knowers: [],
+    values: { end: "11:30" },
+  });
+  await f.api.apply(shift.id, shift.token);
+  f.reopen();
+  state = await f.read();
+  assert.equal(state.venues.find((venue) => venue.id === "workshop")!.access!.work![0].inviteGuests, true);
+});
+
+await runCase("repair-familiar/place-ownership", async () => {
+  const f = await fixture();
+  await f.repository.mutateAuthority(
+    (state) => {
+      state.worldPlaces.npcs["npc:keeper"] = {
+        id: "npc:keeper",
+        revision: 1,
+        name: "Keeper",
+        label: "Keeper",
+        characterization: "A caretaker.",
+        facts: [],
+        associations: [],
+        availability: "",
+        disabled: false,
+        source: "fixture",
+        updatedAt: at,
+      };
+    },
+    { memories: true },
+  );
+  await roomFixture(f);
+  const before = await f.read(),
+    venue = before.venues[0];
+  const management = await f.api.inspect(repairId("management", venue.id));
+  const review = await f.api.prepare({
+    operationId: "npc-manager",
+    recordId: management.id,
+    expectedRecord: management.token!,
+    action: "correct",
+    knowers: [],
+    values: Object.fromEntries(management.fields.map((field) => [field.key, field.key === "manager:npc:keeper"])),
+  });
+  await f.api.apply(review.id, review.token);
+  f.reopen();
+  assert.deepEqual((await f.read()).venues[0].access?.managerIds, ["npc:keeper"]);
+  const place = (await f.read()).worldPlaces.places["lantern"],
+    zone = place.location.zones![0];
+  const detail = await f.api.inspect(repairId("zone-details", place.id, zone.id));
+  await assert.rejects(
+    f.api.prepare({
+      operationId: "too-long-purpose",
+      recordId: detail.id,
+      expectedRecord: detail.token!,
+      action: "correct",
+      knowers: [],
+      values: { purpose: "a".repeat(241) },
+    }),
+    /Shorten/,
+  );
+  const change = await f.api.prepare({
+    operationId: "place-zone",
+    recordId: detail.id,
+    expectedRecord: detail.token!,
+    action: "correct",
+    knowers: [],
+    values: { purpose: "a".repeat(240) },
+  });
+  await f.api.apply(change.id, change.token);
+  f.reopen();
+  const after = (await f.read()).worldPlaces.places[place.id];
+  assert.equal(after.location.zones![0].purpose, "a".repeat(240));
+  assert(after.revision > place.revision);
 });

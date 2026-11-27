@@ -19,6 +19,7 @@ import { zoneActivityFits } from "./venue-presence.js";
 import { chooseAgendaZone, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { venueResidentIds } from "./venue-model.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { refreshWorkReservations } from "./venue-work.js";
 
 const villageCalendar = (state: VillageState, at: string) =>
   new ZonedDate(at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -56,8 +57,9 @@ function locationLabels<T extends { id: string; name: string }>(locations: T[]) 
 }
 
 export function agendaRepairRecords(state: VillageState, resident: VillageVillager, at: string): RepairRecord[] {
-  const agenda = resident.agenda;
-  if (!agenda) return [];
+  if (!resident.agenda) return [];
+  const agenda = structuredClone(resident.agenda);
+  refreshWorkReservations({ ...state, villagers: [{ ...resident, agenda }] }, villageCalendar(state, at));
   const today = villageCalendar(state, at);
   const availableVenues = state.venues.filter((venue) => venue.constructionStatus !== "worksite");
   const venues = locationLabels(availableVenues).map((option, index) => {
@@ -65,8 +67,8 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
     return { ...option, zones: locationLabels(venueZones(venue).filter((zone) => !zoneClosed(state, venue, zone))) };
   });
   const locationFields = (index: number | "new", block?: VillageAgendaBlock): RepairField[] => [
-    { key: `venue:${index}`, label: "Venue", type: "choice", value: block?.venueId ?? "" },
-    { key: `zone:${index}`, label: "Zone", type: "choice", value: block?.zoneId ?? "" },
+    { key: `venue:${index}`, label: "Venue", type: "choice", value: block?.venueId ?? "", group: "Location" },
+    { key: `zone:${index}`, label: "Zone", type: "choice", value: block?.zoneId ?? "", group: "Location" },
   ];
   return Array.from({ length: 7 }, (_, offset) => {
     const day = calendarDate(today, today.getFullYear(), today.getMonth(), today.getDate() + offset, 12);
@@ -84,9 +86,22 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
         return [];
       const activity = `Activity ${index + 1}`;
       return [
-        { key: `activity:${index}`, label: activity, type: "text", value: block.activity },
-        { key: `start:${index}`, label: `${activity} start`, type: "clock", value: clock(block.startMinute) },
-        { key: `end:${index}`, label: `${activity} end`, type: "clock", value: clock(block.endMinute) },
+        {
+          key: `activity:${index}`,
+          label: activity,
+          type: "text",
+          value: block.activity,
+          multiline: false,
+          group: "Activity",
+        },
+        {
+          key: `start:${index}`,
+          label: `${activity} start`,
+          type: "clock",
+          value: clock(block.startMinute),
+          group: "Time",
+        },
+        { key: `end:${index}`, label: `${activity} end`, type: "clock", value: clock(block.endMinute), group: "Time" },
         ...locationFields(index, block),
       ];
     });
@@ -94,10 +109,23 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
       const place = findLocation(state, block.venueId);
       const zone = place && block.zoneId ? resolveVenueZone(place, block.zoneId) : null;
       const option = venues.find((entry) => entry.value === block.venueId);
-      const booking = agenda.reservations?.find((entry) => entry.dateKey === date && entry.id === block.commitmentId);
-      const index = block.commitmentId
-        ? -1
-        : ordinary.findIndex((part) => part.startMinute <= block.startMinute && part.endMinute >= block.endMinute);
+      const booking = agenda.reservations?.find(
+        (entry) =>
+          entry.dateKey === date &&
+          (entry.id === block.commitmentId ||
+            (entry.source === "work" &&
+              !block.essential &&
+              !restingAgendaBlock(block) &&
+              entry.venueId === block.venueId &&
+              entry.zoneId === block.zoneId &&
+              entry.activity === block.activity &&
+              entry.startMinute <= block.startMinute &&
+              entry.endMinute >= block.endMinute)),
+      );
+      const index =
+        block.commitmentId || booking
+          ? -1
+          : ordinary.findIndex((part) => part.startMinute <= block.startMinute && part.endMinute >= block.endMinute);
       return {
         startMinute: block.startMinute,
         endMinute: block.endMinute,
@@ -117,6 +145,13 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
             ? { note: "Commitment" }
             : {}),
         ...(index >= 0 ? { repairIndex: index } : {}),
+        ...(booking?.source === "appointment"
+          ? { repairRecordId: JSON.stringify(["appointment", resident.characterId, booking.id]) }
+          : {}),
+        ...(booking?.source === "work"
+          ? { repairRecordId: JSON.stringify(["work", resident.characterId, booking.venueId]) }
+          : {}),
+        ...(booking?.source === "project" ? { repairRecordId: JSON.stringify(["project", booking.id]) } : {}),
       };
     });
     return {
@@ -135,9 +170,9 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
       summary: offset === 0 ? "Today · Agenda" : "Agenda",
       fields: [
         ...fields,
-        { key: "activity:new", label: "Activity", type: "text", value: "" },
-        { key: "start:new", label: "Start", type: "clock", value: "" },
-        { key: "end:new", label: "End", type: "clock", value: "" },
+        { key: "activity:new", label: "Activity", type: "text", value: "", multiline: false, group: "Activity" },
+        { key: "start:new", label: "Start", type: "clock", value: "", group: "Time" },
+        { key: "end:new", label: "End", type: "clock", value: "", group: "Time" },
         ...locationFields("new"),
       ],
       source: blocks.map((block) =>

@@ -11,7 +11,12 @@ import {
   defaultVillageState,
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { sceneAgendaContext, agendaWeek } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
+import {
+  sceneAgendaContext,
+  agendaWeek,
+  repairSceneAppointment,
+  applySceneAppointment,
+} from "../packages/villages/src/server/domain/rules/agenda-overview.js";
 import {
   activityMoments,
   keepsakeAvailable,
@@ -253,6 +258,30 @@ await runCase("weekly-agenda/agreement", () => {
   const due = new Date(tomorrow + "T12:15:00Z");
   assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].source, "agreed");
   assert.equal(Object.hasOwn(agendaWeek(state, "mara", due, false).days[0].blocks[0], "join"), false);
+  const originalEpisodes = structuredClone(state.episodes),
+    booking = state.residentPlans.appointments![0];
+  repairSceneAppointment(
+    state,
+    booking.id,
+    { time: { ...booking.time, startMinute: 780, endMinute: 840 }, activity: "Read maps together" },
+    at,
+    "repair-booking",
+  );
+  let repaired = coerceVillageState(JSON.parse(JSON.stringify(state)));
+  assert(
+    agendaWeek(repaired, "mara", when, false).days[1].blocks.some(
+      (block) => block.startMinute === 780 && block.activity === "Read maps together" && block.source === "agreed",
+    ),
+  );
+  assert.deepEqual(repaired.episodes, originalEpisodes);
+  repairSceneAppointment(repaired, booking.id, null, at, "cancel-booking");
+  repaired = coerceVillageState(JSON.parse(JSON.stringify(repaired)));
+  assert(!agendaWeek(repaired, "mara", when, false).days[1].blocks.some((block) => block.source === "agreed"));
+  assert.equal(
+    applySceneAppointment(repaired, repaired.continuity, { target: { id: booking.id } } as any, "old-delayed-work", at),
+    false,
+  );
+  assert.equal(repaired.residentPlans.appointments?.length, 0);
 });
 
 await runCase("weekly-agenda/compact-context", () => {

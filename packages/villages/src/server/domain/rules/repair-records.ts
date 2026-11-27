@@ -18,6 +18,9 @@ import { venueResidentIds } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { normalizeVillageMutation } from "./world-mutation.js";
 import { retainNativeFact } from "./native-continuity.js";
+import { addRepairMemory } from "./repair-memory.js";
+import { initializeVenueAccess, venueManagers, zoneManagers } from "./venue-access.js";
+import { arrangementRepairRecords, applyArrangementRepair } from "./repair-arrangements.js";
 
 export function retainAdministrativeCircumstance(
   state: VillageState,
@@ -103,7 +106,15 @@ export const repairParts = (id: string): string[] => {
   }
   throw badRequest("Choose a record from REPAIR.");
 };
-const text = (key: string, label: string, value: string): RepairField => ({ key, label, value, type: "text" });
+const text = (key: string, label: string, value: string): RepairField => ({
+  key,
+  label,
+  value,
+  type: "text",
+  multiline:
+    !["name", "label", "title", "worldName", "homeworld", "newRole"].includes(key) &&
+    !key.startsWith("association-role:"),
+});
 const choices = (
   key: string,
   label: string,
@@ -121,6 +132,7 @@ export function worldRepairRecords(
   includePlaceScopes = false,
 ): ScopedRepairRecord[] {
   const records: ScopedRepairRecord[] = [];
+  records.push(...arrangementRepairRecords(state));
   const add = (
     parts: string[],
     topic: RepairRecord["topic"],
@@ -281,6 +293,12 @@ export function worldRepairRecords(
       .map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
   ];
   if (includeMemories) {
+    if (personId && continuityActor(state, personId))
+      add(["new-memory", personId], "memories", "Add memory", "", [text("text", "Memory", "")], {
+        creating: true,
+        people: people.filter((person) => person.id === personId),
+        source: [],
+      });
     const grouped = new Map<string, ReturnType<typeof continuityRepairEntries>>();
     for (const row of continuityRepairEntries(state, at)) {
       const rows = grouped.get(row.record.id) ?? [];
@@ -290,7 +308,7 @@ export function worldRepairRecords(
     for (const rows of grouped.values()) {
       const focused = rows.find((row) => row.holder.id === personId),
         row = focused ?? rows[0];
-      if (personId && !focused && !row.entry.subjects.some((subject) => subject.id === personId)) continue;
+      if (personId && !focused) continue;
       add(
         ["memory", row.record.id],
         "memories",
@@ -299,7 +317,11 @@ export function worldRepairRecords(
         [text("text", "Text", row.entry.text)],
         {
           source: [...new Set(rows.flatMap((value) => value.version.sources.map((source) => source.excerpt)))],
-          actions: [...actions, { id: "forget", label: "Forget" }],
+          actions: focused?.entry.forgotten
+            ? [{ id: "remember", label: "Restore memory" }]
+            : [...actions, { id: "forget", label: "Forget" }, { id: "teach", label: "Add person" }],
+          recipients: people.filter((person) => !rows.some((value) => value.person.id === person.id)),
+          account: { personId: row.person.id, versionId: row.version.id },
           people: rows.map((value) => ({ ...value.person, text: value.entry.text, forgotten: value.entry.forgotten })),
           revision: row.record.revision,
           target: {
@@ -324,13 +346,31 @@ export function worldRepairRecords(
       );
     const home = state.venues.find((v) => venueResidentIds(v).includes(id)),
       sleep = home?.destinations?.[id]?.sleep ?? (home && venueZones(home).find((z) => z.ownerId === id)?.id);
-    if ("admission" in person && homeOptions.length)
+    if ("admission" in person)
       add(
         ["home", id],
         "places",
         `${name} · home assignment`,
         "Residence and sleep destination",
-        [choices("destination", "Home", home && sleep ? repairId(home.id, sleep) : "", homeOptions)],
+        [
+          choices("homeId", "Home", home?.id ?? "", [
+            { value: "", label: "No home" },
+            ...state.venues
+              .filter((venue) => homeOptions.some((option) => repairParts(option.value)[0] === venue.id))
+              .map((venue) => ({ value: venue.id, label: venue.name })),
+          ]),
+          {
+            ...choices("sleepZoneId", "Sleeping Zone", sleep ?? "", [
+              { value: "", label: "Choose a sleeping Zone" },
+              ...homeOptions.map((option) => ({
+                value: repairParts(option.value)[1]!,
+                label: option.label.slice(option.label.indexOf(" · ") + 3),
+                parent: repairParts(option.value)[0]!,
+              })),
+            ]),
+            dependsOn: "homeId",
+          },
+        ],
         {
           source: ["Repairs ownership and the sleep destination. Objects stay in their recorded Zones."],
         },
@@ -456,6 +496,37 @@ export function worldRepairRecords(
     }
   for (const venue of state.venues) {
     add(
+      ["management", venue.id],
+      "places",
+      venue.name + ", Runs this Venue",
+      "Runs this Venue",
+      people.map((person) => ({
+        key: "manager:" + person.id,
+        label: person.name,
+        type: "boolean",
+        value: venue.access?.managerIds.includes(person.id) ?? false,
+      })),
+      {
+        location: { kind: "venue", id: venue.id },
+        source: [
+          "Venue control: " +
+            venueManagers(venue)
+              .map((id) => people.find((person) => person.id === id)?.name ?? "Unavailable person")
+              .join(", "),
+          ...venueZones(venue)
+            .filter((zone) => zone.kind !== "exterior")
+            .map(
+              (zone) =>
+                zone.name +
+                ": " +
+                zoneManagers(venue, zone)
+                  .map((id) => people.find((person) => person.id === id)?.name ?? "Unavailable person")
+                  .join(", "),
+            ),
+        ],
+      },
+    );
+    add(
       ["venue", venue.id],
       "places",
       venue.name,
@@ -540,6 +611,35 @@ export function worldRepairRecords(
       }
     }
   }
+  for (const venue of [...state.venues, ...Object.values(state.worldPlaces.places).map((place) => place.location)]) {
+    const kind = state.venues.some((entry) => entry.id === venue.id) ? "venue" : "place";
+    for (const zone of venueZones(venue))
+      add(
+        ["zone-details", venue.id, zone.id],
+        "places",
+        zone.name,
+        "Zone details",
+        [
+          text("name", "Name", zone.name),
+          choices(
+            "kind",
+            "Zone kind",
+            zone.kind,
+            zone.kind === "exterior"
+              ? [{ value: "exterior", label: "Entrance" }]
+              : [
+                  { value: "public", label: "Public" },
+                  { value: "restricted", label: "Restricted" },
+                  { value: "personal", label: "Private Space" },
+                ],
+          ),
+          text("purpose", "Used for", zone.purpose ?? ""),
+          text("roomSpecification", "Room details", zone.roomSpecification ?? ""),
+          { key: "seen", label: "Player has seen this Zone", type: "boolean", value: zone.seen ?? false },
+        ],
+        { source: [], location: { kind, id: venue.id, zoneId: zone.id } },
+      );
+  }
   for (const project of state.projects)
     add(
       ["project", project.id],
@@ -613,14 +713,64 @@ export function repairPlaceDirectory(state: VillageState, at?: string): RepairBr
         }
       }
       if (access.length) items.push(folder(id + "/access", "Standing access", "access", access));
+      const conditions = (state.narrative?.conditions ?? []).filter(
+        (condition) => condition.venueId === value.id && condition.zoneId === zone.id,
+      );
+      if (conditions.length)
+        items.push(
+          folder(
+            id + "/conditions",
+            "Conditions",
+            "details",
+            conditions.map((condition) => ({
+              id: repairId("narrative-condition", condition.id),
+              title: condition.observation,
+              icon: "details",
+            })),
+          ),
+        );
       return folder(id, zone.name, "zone", items);
     });
     const details: RepairBrowseItem[] = (scoped.get(repairId(kind, value.id, "")) ?? []).map((record) => ({
       id: record.id,
-      title: kind === "place" ? "Place details" : "Venue details",
+      title:
+        repairParts(record.id)[0] === "management"
+          ? "Runs this Venue"
+          : kind === "place"
+            ? "Place details"
+            : "Venue details",
       icon: "details",
     }));
-    return folder(node, value.name, kind === "place" ? "places" : "venue", [...details, ...zones]);
+    const conditions = (state.narrative?.conditions ?? []).filter((condition) => condition.venueId === value.id);
+    if (kind === "venue") {
+      const personRows = (ids: string[]) =>
+        ids.flatMap((personId) => {
+          const person = cardCharacters(state).find((entry) => entry.characterId === personId);
+          return person
+            ? [{ id: repairId("person", personId), personId, title: person.cardSnapshot.name, icon: "people" as const }]
+            : [];
+        });
+      details.push(folder(node + "/residents", "Residents", "people", personRows(venueResidentIds(value))));
+      details.push(folder(node + "/workers", "Workers", "people", personRows(value.workerIds ?? [])));
+    }
+    if (conditions.length)
+      details.push(
+        folder(
+          node + "/conditions",
+          "Conditions",
+          "details",
+          conditions.map((condition) => ({
+            id: repairId("narrative-condition", condition.id),
+            title: condition.observation,
+            icon: "details",
+          })),
+        ),
+      );
+    return {
+      ...folder(node, value.name, kind === "place" ? "places" : "venue", [...details, ...zones]),
+      mapId: value.presentation.mapId,
+      mapName: state.maps.find((map) => map.id === value.presentation.mapId)?.name,
+    };
   };
   const places = Object.values(placeRegistry(state)?.places ?? {}).map((place) => location("place", place.location));
   const venues = state.venues.map((venue) => location("venue", venue));
@@ -649,7 +799,15 @@ function inputValues(record: RepairRecord, request: RepairRequest) {
     } else if (typeof value !== typeof field.value) throw repairFieldError(field.key, `Check ${field.label}.`);
     if (typeof value === "string" && value.length > 16000 && value !== field.value)
       throw repairFieldError(field.key, `Shorten ${field.label}.`);
-    if (field.options && !field.options.some((option) => option.value === value))
+    if (
+      field.type === "days"
+        ? !String(value).split(",").length ||
+          new Set(String(value).split(",")).size !== String(value).split(",").length ||
+          String(value)
+            .split(",")
+            .some((day) => !field.options?.some((option) => option.value === day))
+        : field.options && !field.options.some((option) => option.value === value)
+    )
       throw repairFieldError(field.key, `Choose ${field.label}.`);
     result[field.key] = value;
   }
@@ -662,6 +820,19 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
   const values = inputValues(record, request),
     [kind, id, sub, actor] = repairParts(record.id);
   const str = (key: string) => String(values[key] ?? "");
+  if (kind === "work" || kind === "appointment") {
+    normalizeVillageMutation(state, () => applyArrangementRepair(state, record, request, at), {
+      now: () => new Date(at),
+      seed: () => request.operationId,
+    });
+    return;
+  }
+  if (kind === "new-memory") {
+    if (request.knowers.length !== 1 || request.knowers[0] !== id)
+      throw badRequest("Choose the selected person's memory account.");
+    addRepairMemory(state, request.operationId, id, str("text"), at);
+    return;
+  }
   if (kind === "agenda") {
     applyAgendaRepair(state, id, sub!, values, at, request.action === "add-activity");
     return;
@@ -805,12 +976,36 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
     return;
   }
   if (kind === "memory") {
+    if (request.action === "teach") {
+      if (request.knowers.length !== 1 || !record.recipients?.some((person) => person.id === request.knowers[0]))
+        throw badRequest("Choose someone without an existing account.");
+      if (!record.account) throw conflict("Reopen the selected memory account.");
+      addRepairMemory(state, request.operationId, request.knowers[0]!, String(record.fields[0]!.value), at, {
+        recordId: id,
+        ...record.account,
+      });
+      return;
+    }
     if (
       !record.target ||
       !request.knowers.length ||
       request.knowers.some((id) => !record.people?.some((person) => person.id === id))
     )
       throw badRequest("Choose existing continuity holders.");
+    if (request.action === "remember") {
+      const root = state.continuity.records.find((row) => row.id === id)!;
+      if (request.knowers.length !== 1) throw badRequest("Restore one memory account at a time.");
+      const holder = continuityActor(state, request.knowers[0]!)!,
+        key = continuityHolderKey(holder),
+        head = root.heads[key];
+      if (!head || !root.protection[key]?.forgotten) throw conflict("This memory account changed.");
+      const version = state.continuity.versions.find((row) => row.id === head.versionId)!;
+      state.continuity = protectContinuity(state.continuity, record.target, [holder], request.operationId, at, {
+        text: version.text,
+        restore: version.id,
+      });
+      return;
+    }
     state.continuity = changeContinuityMemory(
       state,
       id,
@@ -838,24 +1033,35 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         if (str("worldRules").length > 4096) throw badRequest("Shorten the standing rules.");
         state.worldRules = str("worldRules");
       } else if (kind === "home") {
-        if (!str("destination")) throw badRequest("Choose a residential Private Space.");
-        const [venueId, zoneId] = repairParts(str("destination")),
+        const venueId = str("homeId"),
+          zoneId = str("sleepZoneId"),
           destination = state.venues.find((v) => v.id === venueId);
-        if (!destination || destination.constructionStatus === "worksite") throw conflict("That home is unavailable.");
-        assertResidencePrivateDestination(state, destination, id, zoneId);
+        if (venueId) {
+          if (!destination || destination.constructionStatus === "worksite")
+            throw conflict("That home is unavailable.");
+          assertResidencePrivateDestination(state, destination, id, zoneId);
+        } else if (zoneId) throw badRequest("Choose a home before a sleeping Zone.");
         for (const venue of state.venues) {
           venue.residentIds = venueResidentIds(venue).filter((p) => p !== id);
           venue.occupancy.residentCharacterId = venue.residentIds[0] ?? null;
           venue.zones ??= venueZones(venue);
           venue.layoutVersion = 1;
           for (const zone of venue.zones) if (zone.ownerId === id) zone.ownerId = undefined;
-          if (venue.destinations) delete venue.destinations[id];
+          if (venue.destinations?.[id]) {
+            delete venue.destinations[id]!.home;
+            delete venue.destinations[id]!.sleep;
+          }
+        }
+        if (!destination) {
+          state.residences = state.residences.filter((row) => row.characterId !== id);
+          keepAgendaPlaces(state);
+          return;
         }
         destination.residentIds!.push(id);
         destination.occupancy.residentCharacterId = destination.residentIds![0];
         destination.zones!.find((z) => z.id === zoneId)!.ownerId = id;
         destination.destinations ??= {};
-        destination.destinations[id] = { home: zoneId, sleep: zoneId };
+        destination.destinations[id] = { ...destination.destinations[id], home: zoneId, sleep: zoneId };
         const residence = state.residences.find((r) => r.characterId === id);
         if (residence)
           Object.assign(residence, {
@@ -895,6 +1101,37 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         v.form = str("form");
         if (Object.hasOwn(values, "x")) v.presentation.x = Number(values.x);
         if (Object.hasOwn(values, "y")) v.presentation.y = Number(values.y);
+      } else if (kind === "management") {
+        const venue = state.venues.find((entry) => entry.id === id);
+        if (!venue) throw conflict("This Venue changed.");
+        initializeVenueAccess(venue);
+        venue.access!.managerIds = ["player", ...sceneActorIds(state)].filter(
+          (person) => values["manager:" + person] === true,
+        );
+        venue.access!.revision++;
+      } else if (kind === "zone-details") {
+        const venue = findLocation(state, id),
+          zone = venue && venueZones(venue).find((entry) => entry.id === sub);
+        if (!venue || !zone) throw conflict("This Zone changed.");
+        if (
+          !str("name").trim() ||
+          str("name").length > 100 ||
+          str("purpose").length > 240 ||
+          str("roomSpecification").length > 4000
+        )
+          throw badRequest("Shorten the Zone details.");
+        if (zone.kind === "exterior" && str("kind") !== "exterior")
+          throw badRequest("Keep the Entrance as an Entrance.");
+        zone.name = str("name");
+        zone.kind = str("kind") as typeof zone.kind;
+        zone.purpose = str("purpose");
+        zone.roomSpecification = str("roomSpecification");
+        zone.seen = values.seen === true;
+        const place = state.worldPlaces.places[id];
+        if (place) {
+          place.revision++;
+          state.worldPlaces.revision++;
+        }
       } else if (kind === "access" || kind === "permission") {
         const v = state.venues.find((v) => v.id === id)!;
         v.zones ??= venueZones(v);

@@ -20,7 +20,6 @@ import { MENU_PAGE_TITLES } from "./navigation.js";
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
   const confirmVillages = useConfirmation(controller.menuPage);
   const {
-    backgroundPanel,
     connections,
     busy,
     debugDiscardEnabled,
@@ -128,6 +127,8 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
         preparation={snapshot?.foundingPreparation}
         preparationProblem={preparationProblem}
         onRetryPreparation={retryPreparation}
+        jobs={snapshot?.backgroundWork}
+        onRetryWork={controller.retryWork}
         onBack={() => rawOpenMenu("index")}
         onScene={room && room.status !== "closed" ? () => setScreen("room") : undefined}
       />
@@ -269,7 +270,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             // reads the village afresh, so a panel is never stale by the time it
             // is opened.
             <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
-              {menuSection === "debug" ? backgroundPanel : null}
               {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
               {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
               {menuSection === "debug" ? <ReturnCatchupDebug snapshot={snapshot} /> : null}
