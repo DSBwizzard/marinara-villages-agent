@@ -189,7 +189,11 @@ const directory = [
   { id: "places", title: "Locations", icon: "places", children: [] },
 ];
 export async function repairBrowserFixture(browser, width = 1440, height = 900, options = {}) {
-  const page = await browser.newPage({ viewport: { width, height } });
+  const page = await browser.newPage({
+    viewport: { width, height },
+    isMobile: options.mobile,
+    hasTouch: options.mobile,
+  });
   await mockEngineLookups(page);
   const calls = [],
     reviews = new Map(),
@@ -243,6 +247,7 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
     token: "visitor",
   };
   const localMemories = structuredClone(memories);
+  if (options.memoryPreview) Object.assign(localMemories[0], options.memoryPreview);
   for (let index = 0; index < (options.extraMemories ?? 0); index++)
     localMemories.push({
       ...structuredClone(localMemories[0]),
@@ -404,7 +409,7 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
   await page.route("http://repair.test/", (route) =>
     fulfill(route, {
       contentType: "text/html",
-      body: '<style>html,body{margin:0;height:100%;width:100%}#root{display:block;margin-top:52px;height:calc(100% - 52px);width:100%}</style><marinara-capability-villages id="root"></marinara-capability-villages>',
+      body: '<meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;height:100%;width:100%}#root{display:block;margin-top:52px;height:calc(100% - 52px);width:100%}</style><marinara-capability-villages id="root"></marinara-capability-villages>',
     }),
   );
   await page.route("**/api/villages/repair**", async (route) => {
