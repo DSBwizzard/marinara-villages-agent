@@ -251,7 +251,7 @@ export function useRepairController(
       await showRecords(nextTopic, 0, search, null, "memories", ticket);
     });
   };
-  const choosePerson = (who: RepairPerson, part: Section = "memories") => {
+  const choosePerson = (who: RepairPerson, part: Section = "memories", openId?: string) => {
     invalidate();
     setPerson(who);
     setTopic("people");
@@ -262,7 +262,7 @@ export function useRepairController(
     setView("loading");
     return act(async (ticket) => {
       await readIndex();
-      await showRecords("people", 0, "", who, part, ticket);
+      await showRecords("people", 0, "", who, part, ticket, openId);
     });
   };
   const chooseSection = (part: Section) => {
