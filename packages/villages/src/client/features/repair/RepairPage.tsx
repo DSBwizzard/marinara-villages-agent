@@ -1148,6 +1148,7 @@ export function RepairPage({
                     <span className="repair-sr">Home and work section</span>
                     <select
                       aria-label="Home and work section"
+                      disabled={c.busy}
                       value={selected.id}
                       onChange={(event) => void c.open(event.target.value)}
                     >

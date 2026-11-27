@@ -1,4 +1,4 @@
-// Test cases: repair-people/navigation, repair-people/agenda, repair-people/letter-font, repair-people/visitor, repair-people/late-responses, repair-people/restore-draft
+// Test cases: repair-people/navigation, repair-people/home-work-switching, repair-people/agenda, repair-people/letter-font, repair-people/visitor, repair-people/late-responses, repair-people/restore-draft
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
@@ -36,6 +36,49 @@ await withBrowser(browser, async () => {
     assert(!f.calls.some((call) => /explore|visit|generate/.test(call.path)));
     await noRepairScroll(page);
     await page.close();
+  });
+  await runCase("repair-people/home-work-switching", async () => {
+    for (const width of [1440, 390]) {
+      const f = await repairBrowserFixture(browser, width, 900),
+        { page } = f;
+      await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+      await f.section("home");
+      const home = page.getByRole("combobox", { name: "Home", exact: true });
+      await home.selectOption("inn");
+      const workId = '["work","nora","house"]';
+      const choose = async (id) => {
+        if (width > 700)
+          await page
+            .locator(".repair-steps")
+            .getByRole("button", { name: id === workId ? "3 Work" : "1 Home", exact: true })
+            .click();
+        else await page.getByRole("combobox", { name: "Home and work section" }).selectOption(id);
+      };
+      const toWork = f.hold("record:" + workId);
+      await choose(workId);
+      await toWork.started;
+      await expect(home).toBeVisible();
+      await expect(home).toBeDisabled();
+      await expect(page.locator(".repair-record-list")).toHaveCount(0);
+      toWork.release();
+      const work = page.getByRole("textbox", { name: "Work", exact: true });
+      await work.fill("Keep this work correction.");
+      const homeId = '["home","nora"]';
+      const toHome = f.hold("record:" + homeId);
+      await choose(homeId);
+      await toHome.started;
+      await expect(work).toBeVisible();
+      await expect(work).toBeDisabled();
+      await expect(page.locator(".repair-record-list")).toHaveCount(0);
+      toHome.release();
+      await expect(home).toHaveValue("inn");
+      await choose(workId);
+      await expect(work).toHaveValue("Keep this work correction.");
+      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      assert.equal(f.calls.findLast((call) => call.path.endsWith("/review")).body.recordId, workId);
+      await noRepairScroll(page);
+      await page.close();
+    }
   });
   await runCase("repair-people/agenda", async () => {
     const f = await repairBrowserFixture(browser, 390, 844),

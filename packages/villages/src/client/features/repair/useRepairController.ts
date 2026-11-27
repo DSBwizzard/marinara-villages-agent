@@ -309,7 +309,7 @@ export function useRepairController(
     } else {
       abandonReview();
       epoch.current++;
-      setSelected(null);
+      if (view !== "edit") setSelected(null);
       setAgendaPick(undefined);
       setFailure(undefined);
       setView("edit");
