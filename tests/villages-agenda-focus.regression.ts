@@ -38,6 +38,7 @@ async function prepared() {
     for (const resident of state.villagers) {
       resident.agenda!.week = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, structuredClone(routine)]));
       resident.agenda!.routineProfile = routineProfileFromWeek(resident.agenda!.week!);
+      resident.agenda!.personalizationPending = false;
       resident.agenda!.activeDay = undefined;
       resident.agenda!.plannedDays = {};
     }
@@ -127,6 +128,7 @@ await crowded.mutate((state) => {
   }));
   for (const person of state.villagers) {
     person.agenda!.activeDay = undefined;
+    person.agenda!.personalizationPending = false;
     person.agenda!.week = Object.fromEntries(
       VILLAGE_WEEKDAYS.map((day) => [
         day,

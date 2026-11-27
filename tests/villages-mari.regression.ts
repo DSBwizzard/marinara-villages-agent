@@ -5,6 +5,7 @@ import { PNG } from "pngjs";
 import { villagesDefinition } from "../packages/villages/package-definition.mjs";
 import {
   MARI_SPRITE_NAMES,
+  MARI_SPRITE_FOLDER,
   PROFESSOR_MARI_ID as id,
   mariSpriteFiles,
 } from "../packages/villages/src/shared/helpers/professor-mari.js";
@@ -26,14 +27,29 @@ import { createSpriteWrites } from "../packages/villages/src/server/features/med
 import { socialWorldFixture } from "./fixtures/social-world.fixture.js";
 
 const defaults = withMariSpriteDefaults(id, null)!;
-assert.equal(defaults.assignments.length, 12);
+assert.equal(defaults.assignments.length, 14);
 assert(defaults.assignments.every((slot) => slot.view === "front"));
 assert.equal(defaults.expressions.find((row) => row.id === defaults.defaultExpressionId)?.name, "Neutral");
 const groups = groupNumberedSpritePairs(defaults.expressions);
 assert.equal(groups.find((group) => group.name === "Happy")?.members.length, 2);
-assert.equal(groups.find((group) => group.name === "Neutral")?.members.length, 3);
+assert.equal(groups.find((group) => group.name === "Neutral")?.members.length, 4);
 assert.equal(groups.find((group) => group.name === "Thinking")?.members.length, 2);
 assert(defaults.expressions.some((row) => row.name === "Playful"));
+assert(defaults.expressions.some((row) => row.name === "Presenting"));
+const previousDefaults = automaticVisitorSprites(
+  mariSpriteFiles.filter((file) => file.label !== "Neutral_4" && file.label !== "Presenting"),
+  [MARI_SPRITE_FOLDER],
+)!;
+assert.deepEqual(
+  withMariSpriteDefaults(id, previousDefaults),
+  defaults,
+  "Earlier bundled assignments pick up the new poses",
+);
+for (const slot of previousDefaults.assignments)
+  assert.deepEqual(
+    defaults.assignments.find((row) => row.expressionId === slot.expressionId),
+    slot,
+  );
 const old = automaticVisitorSprites([{ filename: "happy.webp", label: "Happy", url: "" }], [])!;
 assert.deepEqual(withMariSpriteDefaults(id, old), defaults, "Untouched old automatic art adopts the final set");
 for (const custom of [
@@ -65,6 +81,11 @@ for (const name of MARI_SPRITE_NAMES) {
   assert(engineSpriteUrl("someone-else", file.filename).startsWith("/api/sprites/"));
 }
 assert.equal(engineSpriteUrl(id, "custom.png", "12"), `/api/sprites/${id}/file/custom.png?v=12`);
+assert(villagesDefinition.contributions.assets.paths.includes("mari-founding-presenting.webp"));
+assert.equal(
+  engineSpriteUrl(id, "villages-mari-Presenting.webp"),
+  "/api/capability-packages/villages/assets/mari-founding-presenting.webp",
+);
 
 let world = socialWorldFixture();
 const mari = {
@@ -113,7 +134,7 @@ const service = createSpriteSetup({
   },
 } as SpriteSetupPorts);
 const appearance = await service.settled(id, true);
-assert.equal(appearance.files.length, 12, "Bundled Appearance library works without a native card");
+assert.equal(appearance.files.length, 14, "Bundled Appearance library works without a native card");
 const expressions = defaults.expressions.map((row) => ({
   ...row,
   front: { filename: defaults.assignments.find((slot) => slot.expressionId === row.id)!.engineFilename! },
@@ -130,7 +151,7 @@ const saved = await service.save(
   },
   new AbortController().signal,
 );
-assert.equal(saved.manager.assignments.length, 12);
+assert.equal(saved.manager.assignments.length, 14);
 await service.save(
   id,
   {

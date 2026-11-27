@@ -2,7 +2,7 @@ import { request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingSetting, FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
-import { FOUNDING_DRAFT_UNAVAILABLE } from "../../../shared/contracts/founding.js";
+import { FOUNDING_DRAFT_UNAVAILABLE, MODEL_CONNECTION_UNAVAILABLE } from "../../../shared/contracts/founding.js";
 import type { FoundingState } from "./useFoundingState.js";
 
 export type FoundingSuggestionOptions = {
@@ -10,12 +10,20 @@ export type FoundingSuggestionOptions = {
   quickStart?: boolean;
   separateHomes?: boolean;
   venueId?: string;
+  addVenue?: boolean;
+  venueBrief?: string;
   fullVenue?: boolean;
   draftEntranceImage?: boolean;
   draftSetting?: boolean;
   checkSetting?: boolean;
   settingReplacement?: FoundingSetting;
 };
+export function foundingConnectionUnavailable(message: string, code?: string) {
+  return (
+    code === MODEL_CONNECTION_UNAVAILABLE ||
+    (code === undefined && /^Language model connection not found(?::|\.?$)/iu.test(message))
+  );
+}
 type Result = FoundingSuggestionsResult;
 type Receipt = {
   id: string;
@@ -23,6 +31,7 @@ type Receipt = {
   status: "running" | "complete" | "failed" | "interrupted";
   result: Result | null;
   error: string;
+  errorCode?: typeof MODEL_CONNECTION_UNAVAILABLE;
 };
 type Ports = {
   signal?: AbortSignal;
@@ -51,8 +60,11 @@ export async function requestFoundingSuggestions(
     quickStart: !!options?.quickStart,
     ...(options?.plan ? { plan: true } : {}),
     ...(options?.separateHomes ? { separateHomes: true } : {}),
-    ...(options?.plan || options?.separateHomes ? { sourceVenues: JSON.stringify(setupDraftData.venues) } : {}),
+    ...(options?.plan || options?.separateHomes || options?.addVenue
+      ? { sourceVenues: JSON.stringify(setupDraftData.venues) }
+      : {}),
     venueId: options?.venueId,
+    ...(options?.addVenue ? { addVenue: true } : {}),
     ...(options?.fullVenue ? { fullVenue: true, draftEntranceImage: !!options.draftEntranceImage } : {}),
     ...(options?.draftSetting ? { draftSetting: true, settingReplacement: options.settingReplacement } : {}),
     ...((!options?.quickStart && options?.venueId) || options?.plan || options?.separateHomes || options?.draftSetting
@@ -79,10 +91,17 @@ export async function requestFoundingSuggestions(
     setSetupWorkspace((state) =>
       state.suggestionRequest?.id === pending.id ? { ...state, suggestionRequest: undefined } : state,
     );
-  const failed = (message: string) =>
+  const failed = (message: string, code?: string) =>
     setSetupWorkspace((state) =>
       state.suggestionRequest?.id === pending.id
-        ? { ...state, suggestionRequest: { ...pending, failure: message } }
+        ? {
+            ...state,
+            suggestionRequest: {
+              ...pending,
+              failure: message,
+              ...(code === MODEL_CONNECTION_UNAVAILABLE ? { failureCode: code } : {}),
+            },
+          }
         : state,
     );
   if (!existing) {
@@ -129,23 +148,22 @@ export async function requestFoundingSuggestions(
       if (receipt.status === "failed" || receipt.status === "interrupted") {
         terminal = true;
         const message = receipt.error || "Suggestions stopped without a saved result.";
-        failed(message);
+        failed(message, receipt.errorCode);
         throw new Error(message);
       }
       if (receipt.status === "complete" && receipt.result) {
         terminal = true;
-        if (!pending.draftSetting) clear();
-        if (receipt.sourceKey !== ports.setupBeginningSourceKey)
-          throw new Error(
-            "Founding choices changed since these suggestions were requested. Your draft is kept; generate fresh suggestions when ready.",
-          );
+        if (!pending.draftSetting && !pending.addVenue) clear();
         if (
+          receipt.sourceKey !== ports.setupBeginningSourceKey ||
           (pending.sourceInputs !== undefined && pending.sourceInputs !== JSON.stringify(input)) ||
           (pending.sourceVenues !== undefined && pending.sourceVenues !== JSON.stringify(setupDraftData.venues))
-        )
-          throw new Error(
-            "Founding choices changed since these suggestions were requested. Your draft is kept; request fresh suggestions when ready.",
-          );
+        ) {
+          const message =
+            "Founding choices changed since these suggestions were requested. Your draft is kept; request fresh suggestions when ready.";
+          if (pending.addVenue) failed(message);
+          throw new Error(message);
+        }
         return receipt.result;
       }
       if (receipt.status !== "running") throw new Error("Suggestion status is unavailable.");
@@ -163,7 +181,7 @@ export async function requestFoundingSuggestions(
       ((admitting && error.status >= 400 && error.status < 500) ||
         (!admitting && error.status === 404 && error.code === FOUNDING_DRAFT_UNAVAILABLE))
     ) {
-      failed(error.message);
+      failed(error.message, error.code);
       terminal = true;
     }
     if (terminal) throw error;

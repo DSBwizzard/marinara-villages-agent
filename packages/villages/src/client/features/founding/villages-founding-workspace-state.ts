@@ -5,6 +5,7 @@ import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
   venueBrief?: string;
+  addVenueBrief?: string;
   venueBriefs?: Record<string, string>;
   venueReview?: { baseline: string; venues: VillageVenue[]; sourceKey?: string; replaceAll?: boolean };
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
@@ -26,12 +27,14 @@ export type FoundingWorkspaceState = {
     separateHomes?: boolean;
     sourceVenues?: string;
     venueId?: string;
+    addVenue?: true;
     sourceInputs?: string;
     fullVenue?: boolean;
     draftEntranceImage?: boolean;
     draftSetting?: boolean;
     settingReplacement?: FoundingSetting;
     failure?: string;
+    failureCode?: string;
   };
 
   view: "map" | "details";

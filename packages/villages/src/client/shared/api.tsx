@@ -104,7 +104,8 @@ const GENERIC_HTTP_ERROR =
   /^(?:Bad Request|Unauthorized|Forbidden|Not Found|Conflict|Payload Too Large|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)$/iu;
 
 function requestRefusal(payload: unknown, status: number, fallback: string): Error {
-  const response = payload as { message?: unknown; error?: unknown } | null;
+  const response = payload as { message?: unknown; error?: unknown; code?: unknown } | null;
+  const code = typeof response?.code === "string" ? response.code : undefined;
   const detail = [response?.message, response?.error].find(
     (value) => typeof value === "string" && value.trim() && !GENERIC_HTTP_ERROR.test(value.trim()),
   );
@@ -113,16 +114,13 @@ function requestRefusal(payload: unknown, status: number, fallback: string): Err
     accessRevision++;
     globalThis.window?.dispatchEvent?.(new CustomEvent(VILLAGE_ACCESS_DENIED, { detail: message }));
   }
-  if (status === 409 && /clock/i.test(message)) window.dispatchEvent(new Event("villages-clock-changed"));
-  if (status === 403 && /admin[-_ ]?secret/iu.test(message)) {
-    return new VillageApiError(
-      `${PRIVILEGED_ACCESS_HINT} (${message})`,
-      status,
-      (payload as { code?: string } | null)?.code,
-    );
+  if (status === 409 && (code === "CLOCK_CHANGED" || (!code && /clock/i.test(message))))
+    globalThis.window?.dispatchEvent(new Event("villages-clock-changed"));
+  if (status === 403 && (code === "ADMIN_REQUIRED" || (!code && /admin[-_ ]?secret/iu.test(message)))) {
+    return new VillageApiError(`${PRIVILEGED_ACCESS_HINT} (${message})`, status, code);
   }
-  const details = payload as { code?: string; sceneFailure?: SceneFailureMetadata } | null;
-  return new VillageApiError(message, status, details?.code, details?.sceneFailure);
+  const details = payload as { sceneFailure?: SceneFailureMetadata } | null;
+  return new VillageApiError(message, status, code, details?.sceneFailure);
 }
 
 function requestContext(path: string, init?: RequestInit): string {

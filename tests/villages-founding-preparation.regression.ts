@@ -1,9 +1,9 @@
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { sharedVenuesFixture, venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import { keyedFoundingSetup, keyedStarterReply, starterAgendaReply } from "./helpers/agenda.fixture.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { continuityWishes } from "../packages/villages/src/server/domain/rules/continuity-library.js";
-import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import {
   foundingReadyForPlay,
   foundingSlot,
@@ -174,6 +174,17 @@ const release = configureVillagesRuntime({
           row.data.subjectId === "feddy"
         )
           row.data.input.now = "";
+        if (
+          ["obsolete-wish", "obsolete-wish-dispatched"].includes(mode) &&
+          input.kind === "background-work" &&
+          row.data.kind === "wish" &&
+          row.data.subjectId === "aqua"
+        ) {
+          row.data.status = "obsolete";
+          row.data.input = null;
+          row.data.requests = Number(mode === "obsolete-wish-dispatched");
+          mode = "valid";
+        }
         rows.set(row.id, row);
         return row;
       },
@@ -182,6 +193,24 @@ const release = configureVillagesRuntime({
         if (!previous || previous.revision !== input.expectedRevision) return null;
         if (input.id === "villages-village" && conflicts-- > 0) return null;
         const row = { ...previous, ...structuredClone(input), revision: previous.revision + 1 };
+        if (
+          mode === "founding-context-drift" &&
+          input.id === "villages-village" &&
+          row.data.foundingPreparation?.tasks?.sneak?.routine?.status === "completed"
+        ) {
+          row.data.worldRules = "The community keeps a lantern lit at the station.";
+          mode = "valid";
+        }
+        if (
+          mode === "stale-wish-context" &&
+          input.id === "villages-village" &&
+          row.data.foundingPreparation?.currentTask === "wish" &&
+          row.data.foundingPreparation?.currentId === "aqua" &&
+          row.data.foundingPreparation?.stage === "lore"
+        ) {
+          row.data.worldRules = "The last person out closes the station before sunset.";
+          mode = "valid";
+        }
         if (
           holdRoutinePublication &&
           input.id === "villages-village" &&
@@ -295,7 +324,8 @@ const release = configureVillagesRuntime({
         }
         assert.match(messages[1].content, /STARTING-CONTEXT-/);
         assert.doesNotMatch(messages[1].content, /UNSCOPED-OLD-ROOM-PROSE/);
-        assert.equal(options.reasoningEffort, "none");
+        const packet = JSON.parse(messages[1].content);
+        assert.equal(options.reasoningEffort, packet.residents ? undefined : "none");
         assert.equal(options.responseFormat.type, "json_object");
         if (messages[0].content.includes("{wish:null}")) {
           calls.push("wish");
@@ -320,22 +350,38 @@ const release = configureVillagesRuntime({
           return { content: JSON.stringify({ wish }), finishReason: "stop" };
         }
         calls.push("routine");
-        const actorId = JSON.parse(messages[1].content).identity.id;
-        if (
-          ["routine-timeout", "inherited-pause"].includes(mode) &&
-          JSON.parse(messages[1].content).identity.id === "aqua"
-        )
+        const actorId =
+          packet.identity?.id ??
+          rows
+            .get("villages-village")
+            .data.villagers.find((resident: any) => resident.cardSnapshot.name === packet.residents[0].name)
+            ?.characterId;
+        if (["routine-timeout", "inherited-pause"].includes(mode) && actorId === "aqua")
           throw new Error("Provider request exceeded 30 seconds.");
         if (mode === "json-unsupported") throw new Error("response_format json_object is not supported");
-        assert.equal(options.maxTokens, Math.min(limit, 2048));
+        assert.equal(options.maxTokens, Math.min(limit, packet.residents ? 8192 : 2048));
         if (mode === "routine-recovery-malformed" && actorId === "aqua") return { content: "{}", finishReason: "stop" };
-        const invalid =
-          mode === "routine-invalid" ||
-          (mode === "routine-one-fail" && actorId === "aqua") ||
-          (mode.startsWith("routine-recovery-") && actorId !== "aqua");
+        const invalid = mode === "routine-invalid" || (mode === "routine-one-fail" && actorId === "aqua");
+        if (packet.residents) {
+          if (packet.setup) assert.equal(packet.residents.length, 1, "Founding sends one character card at a time");
+          const planned = keyedStarterReply(packet, "Station activity", invalid ? "0" : 0);
+          if (mode === "routine-recovery-current" && actorId === "aqua")
+            planned.setup.rest = [
+              { kind: "sleep", startMinute: 0, endMinute: 360 },
+              { kind: "sleep", startMinute: 1290, endMinute: 1440 },
+            ];
+          return {
+            content: JSON.stringify({
+              ...planned,
+              setup: packet.setup ? planned.setup : keyedFoundingSetup(packet, planned.setup),
+            }),
+            finishReason: mode === "routine-recovery-truncated" && actorId === "aqua" ? "length" : "stop",
+          };
+        }
         return {
           content: JSON.stringify({
             routine: "Quiet days at the station",
+            ...starterAgendaReply("Station activity", invalid ? "0" : 0),
             palette: ["resting", "reading", "walking", "writing", "thinking", "tidying"].map((activity) => ({
               activity,
               venue: invalid ? "0" : 0,
@@ -360,21 +406,15 @@ async function main() {
   try {
     install();
     const local = fixture();
-    assert.equal(foundingReadyForPlay(local), true, "Local routines and usable places allow play during optional work");
-    const incomplete = structuredClone(local);
-    incomplete.villagers[0]!.agenda = null;
-    assert.equal(foundingReadyForPlay(incomplete), false, "A resident still needs a usable local routine");
-    incomplete.villagers = [];
-    incomplete.venues = [];
-    assert.equal(foundingReadyForPlay(incomplete), false, "An unfinished Village needs usable places");
-    await assertFoundedVillageReady();
+    assert.equal(foundingReadyForPlay(local), false, "Usable places and starter placeholders cannot open the Village");
+    await assert.rejects(assertFoundedVillageReady(), /Finish Founding preparation/);
     assert.equal(calls.length, 0, "Entering does not authorize extra generation");
     mode = "context-loss";
     await prepareFoundedVillage();
     assert.equal(calls.length, 0, "required resident context cannot be trimmed before dispatch");
     assert.equal((await readVillageState({ memories: true })).foundingPreparation?.status, "failed");
-    await assertFoundedVillageReady();
-    assert.equal((await foundingPreparationSnapshot()).foundingPreparation?.canPlay, true);
+    await assert.rejects(assertFoundedVillageReady(), /Finish Founding preparation/);
+    assert.equal((await foundingPreparationSnapshot()).foundingPreparation?.canPlay, false);
     install();
     mode = "held";
     failVenue = "aqua";
@@ -400,7 +440,12 @@ async function main() {
     hold!();
     await preparing;
     const withNewcomer = await readVillageState({ memories: true });
-    assert.equal(withNewcomer.foundingPreparation?.status, "ready");
+    assert.equal(
+      withNewcomer.foundingPreparation?.status,
+      "ready",
+      JSON.stringify(withNewcomer.foundingPreparation?.tasks),
+    );
+    await assertFoundedVillageReady();
     assert.equal(
       withNewcomer.foundingPreparation?.tasks?.newcomer,
       undefined,
@@ -426,12 +471,47 @@ async function main() {
     assert.equal(state.foundingPreparation?.completedIds.length, 3);
     assert.ok(stages.includes("private-spaces:model:aqua"));
     assert.ok(stages.includes("residents:model:aqua"));
-    assert.ok(stages.includes("residents:saving:aqua"));
+    assert.ok(stages.includes("residents:applying:aqua"));
     assert.equal(state.townMapImage, fixture().townMapImage);
     for (const { venue, zone } of privatePreparationRooms(state)) {
       const description = observableRoomDescription(state, venue.id, zone.id, new Date().toISOString());
       assert(description.includes("PRIVATE CONTENT MUST STAY HIDDEN") && description.length <= 4000);
       assert.equal(zone.description, "");
+    }
+
+    install();
+    mode = "founding-context-drift";
+    await prepareFoundedVillage();
+    state = await readVillageState({ memories: true });
+    assert.equal(state.foundingPreparation?.status, "ready");
+    assert.equal(calls.filter((call) => call === "routine").length, 3);
+    assert.equal(calls.filter((call) => call === "wish").length, 3);
+
+    install();
+    mode = "stale-wish-context";
+    await prepareFoundedVillage();
+    state = await readVillageState({ memories: true });
+    assert.equal(state.foundingPreparation?.tasks?.aqua?.wish?.status, "failed");
+    assert.match(state.foundingPreparation?.tasks?.aqua?.wish?.error ?? "", /context changed/);
+    assert.equal(calls.filter((call) => call === "wish").length, 2);
+    await retryFoundedVillagePreparation({ actionId: "refresh-stale-wish" });
+    await prepareFoundedVillage();
+    assert.equal((await readVillageState()).foundingPreparation?.status, "ready");
+    assert.equal(calls.filter((call) => call === "wish").length, 3);
+
+    for (const dispatched of [false, true]) {
+      install();
+      mode = dispatched ? "obsolete-wish-dispatched" : "obsolete-wish";
+      await prepareFoundedVillage();
+      const prior = rows.get(foundingSlot("wish", "aqua")).data;
+      assert.equal(prior.status, "obsolete");
+      assert.equal(calls.filter((call) => call === "wish").length, 2);
+      await retryFoundedVillagePreparation({ actionId: "retry-obsolete-wish" });
+      await prepareFoundedVillage();
+      const after = rows.get(foundingSlot("wish", "aqua")).data;
+      assert.equal(after.status, dispatched ? "obsolete" : "completed");
+      assert.equal(after.instanceId === prior.instanceId, dispatched);
+      assert.equal(calls.filter((call) => call === "wish").length, dispatched ? 2 : 3);
     }
 
     install();
@@ -509,7 +589,7 @@ async function main() {
       await prepareFoundedVillage();
       state = await readVillageState({ memories: true });
       assert.equal(state.foundingPreparation?.status, "failed");
-      await assertFoundedVillageReady();
+      await assert.rejects(assertFoundedVillageReady(), /Finish Founding preparation/);
       assert.equal(
         state.foundingPreparation?.completedIds.length,
         2,
@@ -524,8 +604,8 @@ async function main() {
       );
       assert.equal(
         calls.filter((call) => call === "routine").length,
-        failure === "routine-one-fail" ? 4 : 3,
-        "a transient failure does not block other residents",
+        3,
+        "Each Agenda has one independent request before deliberate retries",
       );
       assert.equal(
         calls.filter((call) => call === "wish").length,
@@ -582,9 +662,9 @@ async function main() {
     );
 
     // Recover current purchased replies locally before discarding a failed checkpoint.
-    for (const recovery of ["current", "malformed", "truncated", "stale"]) {
+    for (const recovery of ["current", "delayed", "malformed", "truncated", "stale"]) {
       install();
-      const valid = recovery === "current" || recovery === "stale";
+      const valid = recovery === "current" || recovery === "delayed" || recovery === "stale";
       mode = "routine-recovery-" + recovery;
       holdRoutinePublication = valid;
       await prepareFoundedVillage();
@@ -593,13 +673,14 @@ async function main() {
         (row) => row.kind === "background-work" && row.data.kind === "agenda" && row.data.subjectId === "aqua",
       )!;
       const current = await readVillageState({ memories: true });
-      assert.equal(checkpoint.data.revision, foundingTaskRevision(current, "aqua", "routine"));
+      assert.equal(checkpoint.data.input.revision, foundingTaskRevision(current, "aqua", "routine"));
       const saved = validateBackgroundResponse(rows.get(checkpoint.data.steps[0].responseRef.id)).response;
+      assert.equal(checkpoint.data.steps[0].key, "weekly-agenda-v8");
       if (valid) {
         assert.equal(holdRoutinePublication, false);
         assert.equal(checkpoint.data.hasResult, true);
-        assert.ok(parseCompactFoundingCompletion(saved, checkpoint.data.input.context).agenda);
-      } else assert.throws(() => parseCompactFoundingCompletion(saved, checkpoint.data.input.context));
+        assert.ok(JSON.parse(saved.content!).plans);
+      } else assert.equal(checkpoint.data.hasResult, false);
       mode = "valid";
       calls.length = 0;
       if (recovery === "stale") {
@@ -619,18 +700,24 @@ async function main() {
         continue;
       }
       const previewWrites = writes;
-      assert.equal((await previewVillageBurst({ action: "founding" })).requests, valid ? 2 : 3);
+      assert.equal((await previewVillageBurst({ action: "founding" })).requests, valid ? 0 : 1);
       assert.equal(writes, previewWrites, "recovery forecasts do not write");
       assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
       conflicts = 2;
-      await Promise.all([retryFoundedVillagePreparation(), retryFoundedVillagePreparation()]);
-      await prepareFoundedVillage();
-      state = await readVillageState({ memories: true });
+      const realNow = Date.now;
+      if (recovery === "delayed") Date.now = () => realNow() + 10 * 86_400_000;
+      try {
+        await Promise.all([retryFoundedVillagePreparation(), retryFoundedVillagePreparation()]);
+        await prepareFoundedVillage();
+        state = await readVillageState({ memories: true });
+      } finally {
+        Date.now = realNow;
+      }
       assert.equal(state.foundingPreparation?.status, "ready");
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
       assert.equal(
         calls.length,
-        valid ? 2 : 3,
+        valid ? 0 : 1,
         "only invalid saved replies need replacement requests: " + recovery + JSON.stringify(calls),
       );
       assert.ok(
@@ -638,6 +725,18 @@ async function main() {
         "completed private spaces are preserved",
       );
       assert.equal(state.townMapImage, fixture().townMapImage);
+      if (recovery === "delayed") {
+        const agenda = state.villagers[0]!.agenda!;
+        assert.equal(agenda.starterWeekThrough, undefined, "expired plans do not claim dated coverage");
+        const today = agenda.activeDay!;
+        assert.ok(today.dateKey > checkpoint.data.input.weekPlan.start);
+        assert.ok(today.blocks.every((block) => !block.activity.startsWith("Station activity")));
+        assert.equal(agenda.starterWeekFrom, today.dateKey);
+        assert.ok(
+          Object.keys(agenda.plannedDays!).every((date) => date < today.dateKey),
+          "expired replies leave new dates pending",
+        );
+      }
       const before = calls.length;
       await retryFoundedVillagePreparation();
       await prepareFoundedVillage();
@@ -836,7 +935,7 @@ async function main() {
     install();
     const beforeWrites = writes;
     const preview = await previewVillageBurst({ action: "founding" });
-    assert.equal(preview.requests, 10, "four spaces plus three routines and three initial Wishes");
+    assert.equal(preview.requests, 10, "four spaces plus three Agendas and three initial Wishes");
     assert.equal(writes, beforeWrites);
     assert.equal(calls.length, 0);
     await mutateVillageState((current) => {

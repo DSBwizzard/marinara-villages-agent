@@ -29,6 +29,7 @@ import {
   matchesOpeningGathering,
 } from "../../domain/rules/opening-project.js";
 import { captureSceneAttendance, sameSceneRoutine, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
+import { assertTodayAgendas } from "../../domain/rules/weekly-agenda.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
 import { sceneContinuityView, cloneSceneFacts, captureSceneContinuity } from "../../domain/rules/scene-continuity.js";
 import {
@@ -317,6 +318,7 @@ export function createSceneCommands({
     operationId ??= `${follow ? "follow:" : ""}${trespass ? "trespass" : "move"}:${zoneId}:${expectedSceneRevision ?? (await readSession(sessionId)).sceneRevision}`;
     const saved = await readSession(sessionId);
     const receipt = saved.navigationReceipts?.find((entry) => entry.id === operationId);
+    if (!receipt && saved.operation?.id !== operationId) assertTodayAgendas(await readVillageState(), villageNow());
     if (follow && !receipt && saved.operation?.id !== operationId) await requireLiveVenueSession(sessionId);
     if (receipt) {
       if (
@@ -696,7 +698,9 @@ export function createSceneCommands({
         const offer = sceneTravelOffer(current);
         if (!offer?.travel || offer.id !== offerId) throw conflict("That invitation is no longer offered here.");
         const { venueId, zoneId, grantId } = offer.travel;
-        const destination = (await readVillageState()).worldPlaces.places[venueId];
+        const village = await readVillageState();
+        assertTodayAgendas(village, villageNow());
+        const destination = village.worldPlaces.places[venueId];
         if (destination && !destination.prepared)
           throw conflict("Conclude this Scene, then Visit the Place from Places.");
         if (venueId !== current.placeId) await prepareVisit(venueId);
@@ -722,6 +726,7 @@ export function createSceneCommands({
     const world = await readVillageState({ memories: true });
     const discovery = world.worldPlaces.places[placeId];
     if (!discovery || discovery.prepared) return;
+    if (!startingHistoryReady(world)) throw conflict("Finish starting history before opening a Scene.");
     const result = await preparePlace(
       {
         worldScope: villageWorldScope(world),
@@ -746,6 +751,7 @@ export function createSceneCommands({
     if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
       throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another Zone.");
     const existing = travel ? null : await activeVenueSession();
+    if (!travel && !existing) assertTodayAgendas(await readVillageState(), villageNow());
     if (!existing && !travel) {
       await rollActiveAgendas();
     }
@@ -796,6 +802,7 @@ export function createSceneCommands({
     if (existing) {
       if (existing.placeId !== placeId) throw conflict(`Finish the Scene in ${existing.placeName} first.`);
       if (existing.zoneId === zone.id) return existing;
+      assertTodayAgendas(live, now);
       if (expectedSceneRevision === undefined)
         throw venueRefusal("SCENE_STALE", "Refresh this Scene before moving to another Zone.");
       return coordinateVenue(
@@ -1139,6 +1146,8 @@ export function createSceneCommands({
         if (admission.visitorIntroduction && admission.status !== "opening") return admission;
         const freshVisit =
           admission.status === "opening" && admission.visitEvent && admission.operation?.kind !== "greet";
+        if (admission.status === "opening" && admission.operation?.kind !== "greet")
+          assertTodayAgendas(await readVillageState(), villageNow());
         if (freshVisit) admission = await requireLiveVenueSession(id);
         assertCurrentSceneGeneration(admission);
         signal.throwIfAborted();
@@ -1406,7 +1415,10 @@ export function createSceneCommands({
     if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
     if (!prior && scene.navigationReceipts?.some(({ id }) => id === input.submissionId))
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID already belongs to a Zone move.");
-    if (!prior) await requireLiveVenueSession(input.sessionId);
+    if (!prior) {
+      if (scene.operation?.id !== input.submissionId) assertTodayAgendas(await readVillageState(), villageNow());
+      await requireLiveVenueSession(input.sessionId);
+    }
     const payload = venueTurnPayload(input);
     if (prior && prior.requestFingerprint !== requestFingerprint(input))
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");
@@ -1449,6 +1461,7 @@ export function createSceneCommands({
     const scene = await readSession(sessionId);
     assertCurrentSceneGeneration(scene);
     const prior = scene.submissions.find((entry) => entry.id === submissionId);
+    if (!prior && scene.operation?.id !== submissionId) assertTodayAgendas(await readVillageState(), villageNow());
     if (!prior && replaceOfOperationId === submissionId) throw conflict("A replacement needs a new submission ID.");
     if (!prior && replaceOfOperationId)
       await abandonFailedRequest(scene, replaceOfOperationId, retryOfAttemptId, expectedSceneRevision, "turn");

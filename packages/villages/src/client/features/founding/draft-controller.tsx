@@ -191,6 +191,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       !Array.isArray(data.lorebooks) ||
       !data.workspace ||
       !data.workspace.inactive ||
+      (data.workspace.addVenueBrief != null && typeof data.workspace.addVenueBrief !== "string") ||
       (data.workspace.settingBrief != null && typeof data.workspace.settingBrief !== "string") ||
       (data.workspace.settingWorldBrief != null && typeof data.workspace.settingWorldBrief !== "string") ||
       (data.workspace.settingBeat != null &&

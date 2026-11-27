@@ -6,7 +6,12 @@ import { ReturnCatchup } from "../features/background/ReturnCatchup.js";
 import { LoreActivity } from "../shared/LoreActivity.js";
 import { useMenuDaylight } from "../shared/useVillageLighting.js";
 type FrameProps = { controller: ReturnType<typeof useVillageController>; children: ReactNode };
-export function VillagesFrame({ controller, children, mapVisible = false }: FrameProps & { mapVisible?: boolean }) {
+export function VillagesFrame({
+  controller,
+  children,
+  mapVisible = false,
+  menu = false,
+}: FrameProps & { mapVisible?: boolean; menu?: boolean }) {
   const daylight = useMenuDaylight(controller.snapshot);
   return (
     <VillageActivity
@@ -23,26 +28,32 @@ export function VillagesFrame({ controller, children, mapVisible = false }: Fram
         ),
       }}
     >
-      <div style={{ position: "relative", height: "100%" }}>
-        <LoreActivity
-          key={controller.snapshot?.worldScope ?? ""}
-          enabled={
-            !mapVisible &&
-            controller.screen !== "setup" &&
-            controller.screen !== "preparing" &&
-            !(controller.screen === "menu" && controller.menuPage === "repair") &&
-            controller.snapshot?.settings.lorebookChipsEnabled !== false
-          }
-          daylight={daylight}
-        >
-          <VillageContent key={controller.snapshot?.worldScope ?? ""} controller={controller}>
-            {children}
-          </VillageContent>
-        </LoreActivity>
+      <div className="villages-frame" style={{ position: "relative", height: "100%" }}>
         <ReturnCatchup
-          enabled={controller.visible && !!controller.snapshot?.isFounded}
+          key={controller.snapshot?.worldScope ?? ""}
+          enabled={controller.visible && !!controller.snapshot?.isFounded && controller.screen !== "preparing"}
+          pendingOnSnapshot={controller.snapshot?.todayAgendasPending === true}
           onSettled={controller.loadSnapshot}
-        />
+          menu={menu}
+          venue={controller.screen === "venue"}
+          repair={controller.screen === "menu" && controller.menuPage === "repair"}
+        >
+          <LoreActivity
+            key={controller.snapshot?.worldScope ?? ""}
+            enabled={
+              !mapVisible &&
+              controller.screen !== "setup" &&
+              controller.screen !== "preparing" &&
+              !(controller.screen === "menu" && controller.menuPage === "repair") &&
+              controller.snapshot?.settings.lorebookChipsEnabled !== false
+            }
+            daylight={daylight}
+          >
+            <VillageContent key={controller.snapshot?.worldScope ?? ""} controller={controller}>
+              {children}
+            </VillageContent>
+          </LoreActivity>
+        </ReturnCatchup>
       </div>
     </VillageActivity>
   );

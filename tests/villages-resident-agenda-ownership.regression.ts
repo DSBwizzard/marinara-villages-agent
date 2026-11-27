@@ -64,6 +64,20 @@ function fixture(name: string) {
     owners.push(activationScope());
   };
   const ports: ResidentAgendaPorts = {
+    backgroundJobSnapshot: async () => null,
+    weeklyAgenda: {
+      queueResidentWeek: async () => {
+        throw new Error("Unexpected weekly regeneration");
+      },
+      handler: { valid: () => false, generate: async () => undefined, apply: () => {} },
+      captureStartingWeek: () => undefined as any,
+      planner: {
+        generate: async () => {
+          throw new Error("Unexpected new Agenda planner call");
+        },
+        recoverSavedResult: () => undefined,
+      },
+    },
     async readVillageState() {
       note("read");
       if (pauseRead) {
@@ -323,6 +337,7 @@ const now = new Date(),
   today = agendaDateKey(now),
   weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
 const current = { dateKey: today, weekday, blocks: [], scheduleInformed: false };
+a.resident.agenda.personalizationPending = false;
 a.resident.agenda.activeDay = structuredClone(current);
 const result = structuredClone(a.resident.agenda);
 const wishesBefore = continuityWishes(a.state, "same", true, now.toISOString());

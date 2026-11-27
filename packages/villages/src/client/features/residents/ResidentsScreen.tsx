@@ -177,20 +177,38 @@ export function ResidentsScreen({
       <VillagerWishJournal request={request} characterId={personProfile.actorId} prefix={ELEMENT_TAG} inspect />
     );
     const agendaStatus = selectedAgendas[0]?.agenda;
+    const agendaJob = snapshot?.backgroundWork?.find(
+      ({ kind, subjectId }) => kind === "agenda" && subjectId === personProfile.actorId,
+    );
+    const failedAgendaJob = agendaJob && ["failed", "paused", "interrupted"].includes(agendaJob.status);
+    const agendaFailure = (failedAgendaJob && agendaJob.error) || agendaStatus?.personalizationFailure;
+    const preparingAgenda = agendaJob
+      ? ["queued", "running"].includes(agendaJob.status)
+      : agendaStatus?.personalizationPending && !agendaFailure;
+    const canRetryAgenda = !preparingAgenda && (failedAgendaJob || !!agendaFailure);
+    const failureDetail =
+      agendaJob?.failure?.cause === "output_limit" || agendaFailure?.startsWith("Response reached the output limit")
+        ? "The model’s reply was cut short."
+        : agendaJob?.failure?.cause === "empty_output"
+          ? "The model returned an empty reply."
+          : agendaFailure;
     const agendaInspection = (
-      <div className={`${ELEMENT_TAG}-agenda-actions`}>
-        {agendaStatus?.personalizationFailure ? (
-          <p role="status">{agendaStatus.personalizationFailure}</p>
-        ) : agendaStatus?.personalizationPending ? (
+      <div className={`${ELEMENT_TAG}-agenda-actions${canRetryAgenda ? ` ${ELEMENT_TAG}-dossier-warning` : ""}`}>
+        {canRetryAgenda ? (
+          <div className={`${ELEMENT_TAG}-agenda-warning-copy`} role="alert">
+            <strong>Couldn’t refresh the Agenda</strong>
+            {failureDetail ? <p>{failureDetail}</p> : null}
+          </div>
+        ) : preparingAgenda ? (
           <p role="status">Preparing Agenda…</p>
         ) : null}
         <button
           type="button"
           className={`${ELEMENT_TAG}-button`}
-          disabled={busy}
+          disabled={busy || preparingAgenda}
           onClick={() => void rewriteAgenda(personProfile.actorId)}
         >
-          {agendaStatus?.personalizationFailure ? "Retry Agenda" : "Regenerate Agenda"}
+          {canRetryAgenda ? "Retry Agenda" : "Regenerate Agenda"}
         </button>
       </div>
     );

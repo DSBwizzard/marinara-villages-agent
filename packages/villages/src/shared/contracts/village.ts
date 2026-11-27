@@ -122,7 +122,8 @@ export type BackgroundWork = {
     | "wish"
     | "personal-mail"
     | "starting-ties"
-    | "schedule-influence";
+    | "schedule-influence"
+    | "weekly-agenda";
   subjectId: string;
   label: string;
   status: "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
@@ -153,8 +154,22 @@ export type ReturnCatchupView = {
   issue: "preparation" | "generation" | "authority" | null;
 };
 
+export type AgendaCatchupView = {
+  expired: boolean;
+  completed: number;
+  total: number;
+  failure?: {
+    name: string;
+    message: string;
+    id: string;
+    expectedAttempt: number;
+    expectedInstanceId: string;
+  };
+};
+
 export type VillageSnapshot = {
   worldScope: string;
+  todayAgendasPending?: true;
   mailboxUnread?: boolean;
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };

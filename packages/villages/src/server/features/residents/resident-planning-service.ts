@@ -10,10 +10,9 @@ import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-at
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { acceptResidentLetter } from "../../domain/rules/mail-delivery.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
-import { assertPersonalLetter } from "../../domain/rules/personal-letter.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residenceProposal } from "../../domain/rules/residence-agreement.js";
-import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
+import { planRoutineDays, restoreCapturedAgendaDay } from "../../domain/rules/resident-agenda.js";
 import {
   captureResidentNarration,
   assertResidentNarrationCurrent,
@@ -195,8 +194,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         "historical Venue changed",
       );
       memoryRequire(memoryHash(state.opening) === memoryHash(historical.opening), "historical opening changed");
-      planRoutineDays(historical, at);
-      assertResidentNarrationCurrent(historical, context.narration);
+      projectAdmittedHistory(state, catchup.world, context.narration, at);
     } else {
       assertResidentNarrationCurrent(state, context.narration);
       if (context.activity) {
@@ -213,6 +211,27 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           socialContinuationValid(state, input.socialPlan.id, input.socialPlan, new Date(context.narration.context.at)),
         "due resident plan changed",
       );
+    }
+  }
+  function projectAdmittedHistory(
+    state: VillageState,
+    world: NonNullable<ResidentPlanningInput["catchup"]>["world"],
+    narration: ResidentPlanningInput["context"]["narration"],
+    at: Date,
+  ) {
+    const historical = { ...state, ...structuredClone(world) };
+    planRoutineDays(historical, at);
+    try {
+      assertResidentNarrationCurrent(historical, narration);
+      return historical;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("resident narration native authority changed"))
+        throw error;
+      const captured = { ...state, ...structuredClone(world) };
+      restoreCapturedAgendaDay(captured, at);
+      planRoutineDays(captured, at);
+      assertResidentNarrationCurrent(captured, narration);
+      return captured;
     }
   }
   function relationshipContextCurrent(state: VillageState, context: ResidentPlanningContext) {
@@ -571,10 +590,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       if (proposal.mail) {
         const from = continuityActor(next, proposal.mail.senderId)!,
           to = continuityActor(next, "player")!;
-        assertPersonalLetter(
-          proposal.mail.text,
-          input.context.residents.find((row) => row.characterId === from.id)?.name,
-        );
         const letterId = "resident-mail-" + memoryHash([state.seed, opportunity.id]).slice(0, 32);
         acceptResidentLetter(
           next,
@@ -609,12 +624,17 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         next.residentPlans.activities![opportunity.id].outcome = "quiet";
       } else if (opportunity.kind !== "relationship" || relationshipContextCurrent(state, input.context)) {
         const target =
-          input.catchup && capture.historical ? { ...next, ...structuredClone(input.catchup.world) } : next;
-        if (capture.historical)
-          planRoutineDays(
-            target,
-            new ZonedDate(capture.context.at, target.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
-          );
+          input.catchup && capture.historical
+            ? projectAdmittedHistory(
+                next,
+                input.catchup.world,
+                capture,
+                new ZonedDate(
+                  capture.context.at,
+                  input.catchup.world.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+                ),
+              )
+            : next;
         const unchanged = new Set(
           proposal.keep.flatMap((row) => {
             const result = unchangedPerception.safeParse(row);

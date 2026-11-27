@@ -37,6 +37,6 @@ Provider-free suites exercise current GM routing, source capture, witness privac
 
 ## Founding preparation
 
-Founding uses independent Agenda, Initial Wish and Opening Idea requests. Each task binds the admitted resident, source and contract, and commits its own receipt. A quiet Wish result is complete. Usable places and starter Agendas allow entry while optional preparation finishes; an interior failure does not discard independent resident progress.
+Founding uses independent Agenda, Initial Wish and Opening Idea requests. Each task binds the admitted resident, source and contract, and commits its own receipt. A quiet Wish result is complete. Founding preparation and starting history must be ready before entry. The preparation screen offers retries and preserves completed results.
 
 Existing finite admission, one settled-invalid-result retry allowance, output limits and explicit recovery remain. Saved valid results apply without another request. Unknown billing, changed sources, unsupported contracts and configuration failures remain held. Public preparation data contains statuses and receipts rather than frozen prompts or raw responses.

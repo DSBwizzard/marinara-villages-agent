@@ -16,7 +16,7 @@ export function VenueRunnersRow({
   onOpen(): void;
 }) {
   return (
-    <nav className={`${P}-venue-zone-picker villages-arrangement-summary`}>
+    <nav className={`${P}-venue-zone-picker villages-arrangement-summary villages-venue-runners-row`}>
       <VenueZoneRow
         name="Runs this Venue"
         accessLabel={ids.length === 0 ? "Nobody" : ids.length === 1 ? nameOf(ids[0]!) : String(ids.length)}

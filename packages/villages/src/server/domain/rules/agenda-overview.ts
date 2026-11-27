@@ -5,8 +5,8 @@ import type { ContinuityEvidence, ContinuityWrite } from "../models/continuity-m
 import type { NarrationReadset } from "../models/narration-model.js";
 import { recentAgendaChanges } from "./agenda-changes.js";
 import type { VillageAgendaBlock, VillageState } from "../models/world.js";
-import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
-import { restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
+import { agendaBlocksFor, agendaDateKey, agendaPersonalPlansPending } from "./agenda-week.js";
+import { generatedAgendaActivityLabel, restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuityProtectionUnits, continuityViews, latestRelationshipScores, relationshipKey } from "./continuity.js";
@@ -114,10 +114,12 @@ export function sceneAgendaContext(
       endMinute,
     }));
   const available = Object.fromEntries(
-    schedules.map(({ speaker }, index) => [
+    schedules.map(({ speaker, agenda }, index) => [
       speaker.characterId,
       Object.fromEntries(
-        calendar.map(({ date, start, schedules }) => [date, flexibleAgendaRanges(schedules[index].blocks, start)]),
+        calendar
+          .filter(({ date }) => !agendaPersonalPlansPending(agenda, date))
+          .map(({ date, start, schedules }) => [date, flexibleAgendaRanges(schedules[index].blocks, start)]),
       ),
     ]),
   );
@@ -245,6 +247,8 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
         : { ...control, activity: "Booked appointment" };
     });
   const privateAppointments = new Set(confirmed.filter((entry) => !("time" in entry)).map((entry) => entry.id));
+  const profile = resident.agenda?.routineProfile;
+  const generatedActivities = new Set(profile?.baseWeek ? [] : profile?.activities.map(({ activity }) => activity));
   return {
     ...(confirmed.length ? { confirmed } : {}),
     visibility: inspect ? "inspect" : shared ? "shared" : "known",
@@ -261,42 +265,66 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
         date = agendaDateKey(day);
       const visible = known.filter((row) => row.time.date === date);
       const effective = resident.agenda ? agendaBlocksFor(resident.agenda, day).filter(scheduledAgendaActivity) : [];
+      const authoredShifts = new Set(
+        resident.agenda?.reservations
+          ?.filter((row) => row.dateKey === date && row.source === "work")
+          .map(({ activity }) => activity),
+      );
       const times: (Omit<AgendaTime, "date"> & {
         activity: string;
+        label?: string;
         purpose?: VillageAgendaBlock["purpose"];
+        restKind?: VillageAgendaBlock["restKind"];
         source?: "told" | "seen" | "agreed";
       })[] =
         inspect || shared
-          ? effective.map((block) => ({
-              ...block,
-              ...(!inspect && block.commitmentId && privateAppointments.has(block.commitmentId)
-                ? { activity: "Booked appointment", venueId: "", zoneId: undefined }
-                : {}),
-              source: visible.find(
-                (row) =>
-                  row.source === "agreed" &&
-                  row.id === block.commitmentId &&
-                  row.time.startMinute <= block.startMinute &&
-                  row.time.endMinute >= block.endMinute &&
-                  row.time.venueId === block.venueId,
-              )?.source,
-            }))
+          ? effective.map((block) => {
+              const activity =
+                !block.commitmentId &&
+                !resident.agenda?.repairedDays?.includes(date) &&
+                !authoredShifts.has(block.activity) &&
+                generatedActivities.has(block.activity)
+                  ? generatedAgendaActivityLabel(block.activity)
+                  : block.activity;
+              return {
+                ...block,
+                activity,
+                ...(activity !== block.activity ? { label: activity.split(",", 1)[0] } : {}),
+                ...(!inspect && block.commitmentId && privateAppointments.has(block.commitmentId)
+                  ? { activity: "Booked appointment", venueId: "", zoneId: undefined }
+                  : {}),
+                source: visible.find(
+                  (row) =>
+                    row.source === "agreed" &&
+                    row.id === block.commitmentId &&
+                    row.time.startMinute <= block.startMinute &&
+                    row.time.endMinute >= block.endMinute &&
+                    row.time.venueId === block.venueId,
+                )?.source,
+              };
+            })
           : visible.map(({ time, activity, source }) => ({ ...time, activity, source }));
-      const blocks = times.map(({ startMinute, endMinute, activity, purpose, venueId, zoneId, source }) => {
-        const venue = findLocation(world, venueId);
-        const zone = venue && zoneId && resolveVenueZone(venue, zoneId);
-        return {
-          startMinute,
-          endMinute,
-          activity,
-          ...(restingAgendaBlock({ activity, purpose }) ? { resting: true as const } : {}),
-          ...(venue ? { place: zone && (inspect || zone.seen || source === "agreed") ? zone.name : venue.name } : {}),
-          ...(source ? { source } : {}),
-        };
-      });
+      const blocks = times.map(
+        ({ startMinute, endMinute, activity, label, purpose, restKind, venueId, zoneId, source }) => {
+          const venue = findLocation(world, venueId);
+          const zone = venue && zoneId && resolveVenueZone(venue, zoneId);
+          return {
+            startMinute,
+            endMinute,
+            activity,
+            ...(label ? { label } : {}),
+            ...(restingAgendaBlock({ activity, purpose, restKind }) ? { resting: true as const } : {}),
+            ...(venue ? { place: zone && (inspect || zone.seen || source === "agreed") ? zone.name : venue.name } : {}),
+            ...(source ? { source } : {}),
+          };
+        },
+      );
       return {
         date,
         weekday: VILLAGE_WEEKDAYS[(day.getDay() + 6) % 7]!,
+        ...((inspect || shared) && resident.agenda && agendaPersonalPlansPending(resident.agenda, date)
+          ? { personalPlansPending: true as const }
+          : {}),
         blocks: [...new Map(blocks.map((block) => [memoryHash(block), block])).values()].sort(
           (a, b) => a.startMinute - b.startMinute,
         ),

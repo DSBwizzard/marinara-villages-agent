@@ -177,6 +177,13 @@ const appointment = {
   replaces: "flexible" as const,
 };
 const day = composeAgenda(routine, [appointment, work]);
+for (const activity of ["Napping", "Sleeping (nap)"]) {
+  const overlappedNap = composeAgenda(
+    [{ startMinute: 600, endMinute: 645, venueId: "", activity, flexible: true }],
+    [work],
+  );
+  assert.equal(overlappedNap[0]?.activity, "Serving coffee", "Established work takes priority over a flexible nap");
+}
 assert.equal(day.find((row) => row.startMinute === 0)!.activity, "Sleeping");
 assert.equal(day.find((row) => row.startMinute === 720)!.activity, "Lunch");
 assert.equal(day.find((row) => row.startMinute === 840)!.activity, "Meeting");

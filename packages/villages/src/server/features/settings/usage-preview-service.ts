@@ -7,6 +7,7 @@ import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { agendaRequestCount, remainingRequests } from "../../domain/rules/generation-budgets.js";
 import { routineVenues } from "../../domain/rules/prompt-preset.js";
+import { FOUNDING_AGENDA_SLOT, FOUNDING_AGENDA_SUBJECT } from "../../domain/rules/founding-tasks.js";
 import { VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
 import type { previewBackgroundJobs } from "../../jobs/background-work.js";
 import { privatePreparationRooms } from "../../jobs/private-space-preparation.js";
@@ -96,6 +97,7 @@ export function createUsagePreview({
           j.subjectId === id &&
           !["completed", "obsolete"].includes(j.status),
       );
+    let foundingBatchCounted = false;
     for (const resident of proposed.villagers) {
       if (action === "images" || action === "retry" || (target && resident.characterId !== target)) continue;
       if (!target && action === "agenda") continue;
@@ -108,13 +110,19 @@ export function createUsagePreview({
       ) {
         const tasks = proposed.foundingPreparation.tasks?.[resident.characterId];
         if (proposed.foundingPreparation.tasksVersion === 1 && !tasks) continue;
-        for (const [task, kind] of [
-          ["routine", "agenda"],
-          ["wish", "wish"],
-        ] as const) {
-          if (tasks?.[task]?.status === "completed") continue;
-          const saved = active(kind, resident.characterId);
+        if (tasks?.wish?.status !== "completed") {
+          const saved = active("wish", resident.characterId);
           requests += saved?.remainingRequests ?? remainingRequests(1, saved?.completedSteps ?? 0);
+        }
+        if (tasks?.routine?.status !== "completed") {
+          if (tasks?.routine?.jobId !== FOUNDING_AGENDA_SLOT) {
+            const individual = active("agenda", resident.characterId);
+            requests += individual?.remainingRequests ?? remainingRequests(1, individual?.completedSteps ?? 0);
+          } else if (!foundingBatchCounted) {
+            const saved = active("weekly-agenda", FOUNDING_AGENDA_SUBJECT);
+            languageRequests += saved?.remainingRequests ?? remainingRequests(1, saved?.completedSteps ?? 0);
+            foundingBatchCounted = true;
+          }
         }
       }
       if (

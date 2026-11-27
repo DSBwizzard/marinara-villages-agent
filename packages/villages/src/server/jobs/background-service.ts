@@ -1,5 +1,6 @@
 import { readResidentPlanningInput } from "../domain/rules/resident-planning.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { ZonedDate } from "../../shared/helpers/zoned-date.js";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
@@ -45,6 +46,7 @@ import { agendaRequestCount, remainingRequests } from "../domain/rules/generatio
 import { localDateKey } from "../domain/rules/resident-planning.js";
 import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { VILLAGE_WEEKDAYS } from "../domain/rules/village-clock.js";
+import { weeklyAgendaDue } from "../domain/rules/weekly-agenda.js";
 import { type WorkFailure, WorkFailureError } from "../domain/rules/work-failure.js";
 import {
   backgroundRecoveryState,
@@ -577,7 +579,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   function requestTurn<T>(start: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       tickets.push({
-        start: async () => {
+        // The previous ticket may pump the queue from its own provider context.
+        start: AsyncLocalStorage.bind(async () => {
           try {
             await recoveryReady;
             if (recoveryError)
@@ -586,7 +589,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           } catch (error) {
             reject(error);
           }
-        },
+        }),
         reject,
       });
       pump();
@@ -610,7 +613,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       memories:
         ["starting-ties", "wish", "agenda", "personal-mail", "resident-planning", "world-development"].includes(
           job.kind,
-        ) || !!catchupBatchId(job),
+        ) ||
+        (job.kind === "weekly-agenda" && job.finite && !job.automaticDate) ||
+        !!catchupBatchId(job),
     };
     if (handlers.get(job.kind)?.authority === "raw" && ports.readVillageAuthority)
       return ports.readVillageAuthority(options);
@@ -628,20 +633,38 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           sourceJobs,
         })
       : mutateVillageState(update, {
-          memories: ["wish", "resident-planning", "world-development"].includes(job.kind) ? true : undefined,
+          memories:
+            ["wish", "resident-planning", "world-development"].includes(job.kind) ||
+            (job.kind === "weekly-agenda" && job.finite && !job.automaticDate)
+              ? true
+              : undefined,
           sourceJobs,
         });
   }
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;
-    if (job.kind === "world-development" && state.backgroundPace === "off")
+    if (
+      (job.kind === "world-development" ||
+        (job.kind === "weekly-agenda" &&
+          job.automaticDate &&
+          !job.retrying &&
+          asRecord(job.input).coverage !== true)) &&
+      state.backgroundPace === "off"
+    )
       throw new Paused("Pace is Off. The admitted world source is preserved.");
     const batchId = catchupBatchId(job),
       batch = state.returnCatchup?.batch;
     const holding = batch && !["completed", "cancelled"].includes(batch.status);
     if (batchId && (!holding || batch.id !== batchId || batch.status !== "running"))
       throw new Obsolete("This catch-up opportunity is no longer active.");
-    if (holding && !batchId && (!job.finite || job.kind === "resident-planning"))
+    if (
+      holding &&
+      !batchId &&
+      (!job.finite ||
+        job.kind === "resident-planning" ||
+        (job.kind === "weekly-agenda" && !!job.automaticDate) ||
+        (job.kind === "agenda" && typeof asRecord(job.input).weekActionId === "string"))
+    )
       throw new Paused("Waiting for Village catch-up.");
     if (
       superseded.has(job.instanceId) ||
@@ -679,10 +702,30 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Error("Letter processing is unavailable. Try again when Villages is running.");
         return;
       }
+      const residentWeek = work.kind === "agenda" && typeof asRecord(work.input).weekActionId === "string";
+      const rebuild = work.kind === "weekly-agenda" && typeof asRecord(work.input).rebuildActionId === "string";
+      if (residentWeek || rebuild) {
+        const prefix = "villages-background-history-" + jobId(work) + "-";
+        for (const row of await documents.list(VILLAGES_PACKAGE_ID, "background-history")) {
+          if (!row.id.startsWith(prefix)) continue;
+          validateBackgroundJobRecord(row);
+          if (activityDispatched(row.data as Job)) return;
+        }
+      }
       await changeJob(
         id,
         (previous) => {
           if (previous?.id === jobId(work)) {
+            if (
+              work.kind === "wish" &&
+              work.retryActionId &&
+              previous.retryActionId !== work.retryActionId &&
+              previous.status === "obsolete" &&
+              !activityDispatched(previous) &&
+              !uncertainAttempt(previous) &&
+              !previous.steps.length
+            )
+              return fresh(work, previous);
             if (work.finite && !previous.finite) previous.finite = true;
             return previous;
           }
@@ -715,6 +758,20 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             work.automaticDate <= previous.highWaterDate
           )
             return previous;
+          if (previous && work.kind === "weekly-agenda" && previous.seed === work.seed) {
+            if (running.has(id) || (work.automaticDate && !weeklyAgendaDue(previous, work.seed, work.automaticDate)))
+              return previous;
+            if (uncertainAttempt(previous)) {
+              previous.replacement = copyBackgroundWork(work);
+              return holdReplacement(previous);
+            }
+          }
+          if (
+            previous?.seed === work.seed &&
+            residentWeek &&
+            (running.has(id) || !["completed", "obsolete"].includes(previous.status) || uncertainAttempt(previous))
+          )
+            throw conflict("An Agenda request is already saved. Let it finish or retry it.");
           if (running.has(id) && previous) {
             superseded.add(previous.instanceId);
             previous.replacement = copyBackgroundWork(work);
@@ -884,6 +941,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     let cursor = 0;
     let lastIndex = -1;
     let invoked = false;
+    let replayed = false;
     let stage = "generation";
     let dispatched = false;
     let counted = false;
@@ -900,6 +958,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if (saved.fingerprint !== fingerprint)
           throw new Obsolete("The generation inputs changed; saved responses cannot be mixed.");
         runtimeDebug("background completion replay", { jobId: id, step: index, fingerprint });
+        replayed = true;
         return saved.response!;
       }
       const queuedAt = Date.now(),
@@ -918,7 +977,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           }));
           throw new Paused("This connection is paused. Retry an affected job to resume it.");
         }
-        checkCurrent(job!, await readForJob(job!));
+        const dispatchState = await readForJob(job!);
+        checkCurrent(job!, dispatchState);
         if (options.beforeBackgroundDispatch) {
           const fittedTokens = await options.beforeBackgroundDispatch();
           if (fittedTokens !== undefined) {
@@ -999,6 +1059,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           current.steps[index]!.timing = timing;
           return current;
         });
+        const claimedJob = job;
+        const claim = claimedJob.steps[index]?.responseClaim;
+        if (!claim) throw new Obsolete("The background request reservation changed before dispatch.");
         const assertActive = () => {
           if (stopped || owner !== runOwner || controller.signal.aborted)
             throw new Paused("Background generation stopped.");
@@ -1016,8 +1079,16 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               throw new Obsolete("This catch-up opportunity is no longer active.");
             if ((!job!.finite || catchupBatchId(job!)) && !hasVillagePresence())
               throw new Paused("Waiting until Villages is visible.");
+            if (
+              job!.kind === "weekly-agenda" &&
+              !job!.retrying &&
+              !handlers.get(job!.kind)!.valid(dispatchState, job!.input)
+            )
+              throw new Obsolete("The weekly Agenda window has already started.");
             pendingCatchupDispatch.delete(id);
-            unsubmittedSteps.delete(job!.steps[index].responseClaim!.id);
+            if (job!.steps[index]?.responseClaim?.id !== claim.id)
+              throw new Obsolete("The background request reservation changed before dispatch.");
+            unsubmittedSteps.delete(claim.id);
             invoked = true;
             dispatched = true;
           };
@@ -1057,11 +1128,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         } catch (error) {
           if (error instanceof Paused || error instanceof Obsolete) throw error;
           const lateResponses = backgroundResponseStore(documents);
-          const physicalJob = job!;
           retainLateProviderResponse(error, (value) =>
-            lateResponses
-              .publish(physicalJob, index, value as Awaited<ReturnType<BackgroundCompletion>>)
-              .then(() => {}),
+            lateResponses.publish(claimedJob, index, value as Awaited<ReturnType<BackgroundCompletion>>).then(() => {}),
           );
           assertActive();
           const connectionIssue = connectionFailureKind(error, !!options.responseFormat);
@@ -1099,17 +1167,22 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           });
         }
         stage = "response-storage";
-        const savedResponse = await responses.publish(job!, index, response);
+        const savedResponse = await responses.publish(claimedJob, index, response);
         if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
         job = await updateJob((current) => {
-          if (current?.id !== job!.id || current.owner !== runOwner) throw new Obsolete("This job was replaced.");
+          if (
+            current?.id !== runJobId ||
+            current.owner !== runOwner ||
+            current.steps[index]?.responseClaim?.id !== claim.id
+          )
+            throw new Obsolete("This job was replaced.");
           current.steps[index] = {
             key: options.checkpointId,
             fingerprint,
             status: "completed",
             response: savedResponse.response,
             responseRef: savedResponse.ref,
-            responseClaim: current.steps[index].responseClaim,
+            responseClaim: claim,
             timing: {
               ...hostTiming,
               hostFinishedAt: new Date().toISOString(),
@@ -1134,6 +1207,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       });
     };
     complete.signal = controller.signal;
+    complete.readSavedCheckpoint = (key) => {
+      const index = job!.steps.findIndex((step) => step.key === key && step.status === "completed");
+      const saved = job!.steps[index]?.response;
+      if (!saved) return;
+      lastIndex = index;
+      replayed = true;
+      return saved;
+    };
     complete.metadata = {
       id: job.id,
       kind: job.kind,
@@ -1161,10 +1242,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if (!partialFailure) state.backgroundReceipts[id] = job!.id;
       });
       if (partialFailure) {
+        const consumed = lastIndex >= 0 ? lastIndex : job.steps.findLastIndex((step) => step.status === "completed");
         job = await updateJob((current) => ({
           ...current!,
           partialResult: true,
-          failedStep: lastIndex >= 0 ? lastIndex : null,
+          failedStep: consumed >= 0 ? consumed : null,
         }));
         throw new WorkFailureError(partialFailure);
       }
@@ -1206,9 +1288,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             if (counted) current.requests = Math.max(0, current.requests - 1);
           }
           if (obsolete && current.replacement && uncertainAttempt(current)) return holdReplacement(current);
+          const discard = obsolete && asRecord(current.input).coverage !== true;
           return {
             ...current!,
-            status: obsolete
+            status: discard
               ? "obsolete"
               : paused
                 ? current!.steps.some((step) => step.status === "running")
@@ -1229,11 +1312,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                 ? null
                 : paused ||
                     obsolete ||
-                    (!invoked && !current!.steps[lastIndex]?.lateResponse) ||
+                    (!invoked && !replayed && !current!.steps[lastIndex]?.lateResponse) ||
                     ["storage", "response-storage"].includes(stage)
                   ? current!.failedStep
                   : Math.max(0, lastIndex),
-            ...(obsolete ? { steps: [], input: null, result: undefined, hasResult: false } : {}),
+            ...(discard ? { steps: [], input: null, result: undefined, hasResult: false } : {}),
           };
         },
         paused || obsolete
@@ -1357,18 +1440,31 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     if (foundPrior?.retryActions.includes(action)) return;
     if (!foundPrior || foundPrior.instanceId !== expectedInstanceId || foundPrior.attempt !== expectedAttempt)
       throw conflict("That job changed. Refresh its status before retrying.");
-    const savedPrior =
-      foundPrior && !running.has(id) ? await adoptLateResponses(id, foundPrior, documents) : foundPrior;
+    let savedPrior = !running.has(id) ? await adoptLateResponses(id, foundPrior, documents) : foundPrior;
     let recovered: { result: unknown } | undefined;
+    let refreshedInput: unknown;
     if (
-      savedPrior &&
-      !savedPrior.hasResult &&
       !running.has(id) &&
       savedPrior.attempt === expectedAttempt &&
       !savedPrior.retryActions.includes(action) &&
       ["failed", "interrupted", "paused"].includes(savedPrior.status)
     ) {
       recovered = recoverSavedResult(savedPrior);
+      if (!recovered && (!savedPrior.hasResult || savedPrior.partialResult) && !savedPrior.replacement) {
+        const seed = savedPrior.seed;
+        refreshedInput = await handlers.get(savedPrior.kind)?.refreshRetryInput?.(savedPrior.input, async () => {
+          const state = await (ports.readVillageAuthority ?? readVillageState)({
+            memories: savedPrior.kind === "weekly-agenda" && asRecord(savedPrior.input).coverage === true,
+          });
+          if (state.seed !== seed) throw conflict("That job belongs to a different Village.");
+          return state;
+        });
+        if (refreshedInput !== undefined) {
+          // A provider can publish its late reply while we read the new capture data.
+          savedPrior = await adoptLateResponses(id, savedPrior, documents);
+          recovered = recoverSavedResult(savedPrior);
+        }
+      }
     }
     // Apply a saved partial response before discarding its bad rows. A lost effect
     // acknowledgement must not cause valid, purchased answers to be regenerated.
@@ -1393,8 +1489,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         }
         resetFailedAttempt(
           job,
-          recovered && job.id === savedPrior?.id && job.instanceId === savedPrior.instanceId ? recovered : undefined,
+          recovered && job.id === savedPrior.id && job.instanceId === savedPrior.instanceId ? recovered : undefined,
         );
+        if (refreshedInput !== undefined && job.id === savedPrior.id && !job.hasResult && !job.steps.length)
+          job.input = refreshedInput;
         job.retrying = true;
         job.finite = true;
         job.retryActions = [...job.retryActions, action].slice(-32);
@@ -1402,7 +1500,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       },
       documents,
     );
-    if (savedPrior) superseded.delete(savedPrior.instanceId);
+    superseded.delete(savedPrior.instanceId);
     launch(id, documents);
   }
   async function recoverBackgroundWork(documents = villagesDocuments()): Promise<void> {
@@ -1430,7 +1528,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         !["completed", "obsolete"].includes(job.status);
       const interruptedPreparation =
         job.owner !== recoveryOwner &&
-        (job.kind === "wish" || asRecord(job.input).foundingContract === 1) &&
+        (job.kind === "wish" ||
+          asRecord(job.input).foundingContract === 1 ||
+          typeof asRecord(job.input).rebuildActionId === "string") &&
         !job.hasResult &&
         ["queued", "paused", "running"].includes(job.status);
       if (unknownRequest || interruptedPreparation) {
@@ -1484,6 +1584,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const retired =
         job?.kind !== "resident-planning" &&
         job?.kind !== "world-development" &&
+        job?.kind !== "weekly-agenda" &&
         job?.kind !== "starting-ties" &&
         job?.kind !== "personal-mail" &&
         !state.villagers.some((resident) => resident.characterId === job?.subjectId);
@@ -1585,7 +1686,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const completedSteps =
         job.completedCount ||
         job.steps.filter((step, i) => step.status === "completed" && (i !== job.failedStep || recovered)).length;
-      const planned = job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : null;
+      const planned =
+        job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : job.kind === "weekly-agenda" ? 1 : null;
       previews.push({
         id: record.id,
         seed: job.seed,

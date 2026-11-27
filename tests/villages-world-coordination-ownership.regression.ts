@@ -183,11 +183,11 @@ for (const status of ["pending", "failed"] as const) {
         ),
       ]),
   );
-  local.state.foundingPreparation = { status, completedIds: [], currentId: "", error: "Optional request unfinished" };
+  local.state.foundingPreparation = { status, completedIds: [], currentId: "", error: "Preparation unfinished" };
   await A.scope.run(() => local.service.reconcileVillage({ now }));
-  A.scope.run(() => assert.equal(local.state.simulatedThrough, now.toISOString()));
-  assert(local.calls.includes("roll"), "Local routines advance while optional preparation is unfinished");
-  assert(local.calls.includes("projects"), "Existing Projects continue");
+  A.scope.run(() => assert.equal(local.state.simulatedThrough, stamp));
+  assert(!local.calls.includes("roll"), "Gameplay waits for Founding");
+  assert(!local.calls.includes("projects"), "Founding keeps gameplay reconciliation closed");
   assert(
     !local.calls.includes("prepare") && !local.calls.includes("agendas") && !local.calls.includes("resident-planning"),
     "A pulse does not redispatch founding generation",

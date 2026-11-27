@@ -9,10 +9,12 @@ export function StartingHistoryPreparation({
   ready,
   work,
   onChange,
+  retryMissing,
 }: {
   ready: boolean;
   work: VillageSnapshot["backgroundWork"][number] | undefined;
   onChange: () => Promise<void>;
+  retryMissing?: () => Promise<void>;
 }) {
   const { visible, backgroundRevision } = useVillageActivity();
   const [inspect, setInspect] = useState(false);
@@ -38,6 +40,7 @@ export function StartingHistoryPreparation({
     return () => controller.abort();
   }, [inspect, visible, backgroundRevision, work?.status, work?.attempt, refresh]);
   const active = work && ["queued", "running"].includes(work.status);
+  const missing = !work || ["completed", "obsolete"].includes(work.status);
   return (
     <section aria-label="Starting history">
       <div className="villages-founding-progress-row">
@@ -46,6 +49,44 @@ export function StartingHistoryPreparation({
           {ready ? "Ready" : active ? "Preparing" : "Needs review"}
         </p>
       </div>
+      {!ready && work?.error ? <p role="alert">{work.error}</p> : null}
+      {!ready && missing && retryMissing && !view?.conflicts.length ? (
+        <button type="button" onClick={() => void retryMissing()}>
+          Retry starting history
+        </button>
+      ) : null}
+      {!ready && work && ["failed", "interrupted", "paused"].includes(work.status) ? (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={async () => {
+            const key = work.instanceId + ":" + work.attempt;
+            retryActions.current[key] ??= createVillagesClientId();
+            setSaving(true);
+            setError("");
+            try {
+              await request("/background/retry", {
+                method: "POST",
+                body: JSON.stringify({
+                  id: work.id,
+                  expectedAttempt: work.attempt,
+                  expectedInstanceId: work.instanceId,
+                  actionId: retryActions.current[key],
+                }),
+              });
+              delete retryActions.current[key];
+              setRefresh((value) => value + 1);
+              await onChange();
+            } catch (cause) {
+              setError(cause instanceof Error ? cause.message : "Starting history could not be retried.");
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          Retry starting history
+        </button>
+      ) : null}
       {!ready ? (
         <details onToggle={(event) => setInspect(event.currentTarget.open)}>
           <summary>Inspect starting history</summary>
@@ -64,47 +105,14 @@ export function StartingHistoryPreparation({
                   await onChange();
                 }}
               />
-              {work?.error ? <p role="alert">{work.error}</p> : null}
-              {work && ["failed", "interrupted", "paused"].includes(work.status) ? (
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={async () => {
-                    const key = work.instanceId + ":" + work.attempt;
-                    retryActions.current[key] ??= createVillagesClientId();
-                    setSaving(true);
-                    setError("");
-                    try {
-                      await request("/background/retry", {
-                        method: "POST",
-                        body: JSON.stringify({
-                          id: work.id,
-                          expectedAttempt: work.attempt,
-                          expectedInstanceId: work.instanceId,
-                          actionId: retryActions.current[key],
-                        }),
-                      });
-                      delete retryActions.current[key];
-                      setRefresh((value) => value + 1);
-                      await onChange();
-                    } catch (cause) {
-                      setError(cause instanceof Error ? cause.message : "Starting history could not be retried.");
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                >
-                  Retry starting history
-                </button>
-              ) : null}
               {!view.conflicts.length && !active && !ready ? <p>Starting history has not completed.</p> : null}
             </>
           ) : (
             <p role="status">Reading starting history…</p>
           )}
-          {error ? <p role="alert">{error}</p> : null}
         </details>
       ) : null}
+      {error && !ready ? <p role="alert">{error}</p> : null}
     </section>
   );
 }
