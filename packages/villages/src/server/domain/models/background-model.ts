@@ -112,6 +112,8 @@ export type Handler = {
   apply(state: VillageState, input: any, result: any, context: { retrying: boolean }): void | WorkFailure;
   /** Pure local validation of saved replies on deliberate retry, before discarding failed steps. */
   recoverSavedResult?(input: any, steps: readonly Step[]): unknown;
+  /** Fill in missing capture data for an explicit retry that will start a new request. */
+  refreshRetryInput?(input: any, readState: () => Promise<VillageState>): Promise<unknown>;
   afterApply?(input: any, finite: boolean): Promise<void>;
   afterFailure?(input: any): Promise<void>;
 };

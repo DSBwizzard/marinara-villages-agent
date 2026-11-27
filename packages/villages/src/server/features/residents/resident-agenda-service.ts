@@ -229,6 +229,9 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
   }
 
   const agendaBackgroundHandler: Handler = {
+    async refreshRetryInput(input, readState) {
+      if (typeof input.weekActionId === "string") return weeklyAgenda.handler.refreshRetryInput!(input, readState);
+    },
     recoverSavedResult: (input, steps) => {
       if (typeof input.weekActionId === "string") return weeklyAgenda.handler.recoverSavedResult!(input, steps);
       const key = "founding-routine-v2";

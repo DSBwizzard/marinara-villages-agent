@@ -195,16 +195,16 @@ const release = configureVillagesRuntime({
           calls++;
           lastOptions = options;
           const { residents } = JSON.parse(String(messages.at(-1).content)) as {
-            residents: { name: string; brief: string; recent?: string[]; days: [string, number][] }[];
+            residents: { name: string; brief: string; recent?: string[]; days: [string, string, number][] }[];
           };
           assert.equal(residents.length, 1, "Regeneration supplies only the selected villager.");
           assert.equal(residents[0]!.brief, "An autonomous gardener Patient");
           assert.equal(residents[0]!.recent, undefined, "Saved plans stay out of the regeneration request.");
-          const plans = residents.map(({ days }) =>
-            days.map(([date, count]) => {
+          const plans = Object.fromEntries(
+            residents[0]!.days.map(([id, date, count]) => {
               const prefix = fail ? "Another" : "A dated";
               const activities = Array.from({ length: count }, (_, index) => `${prefix} pursuit ${date} ${index}`);
-              return fail ? activities.fill(activities[0]!) : activities;
+              return [id, fail ? activities.fill(activities[0]!) : activities];
             }),
           );
           return {

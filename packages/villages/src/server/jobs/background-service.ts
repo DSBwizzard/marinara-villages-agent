@@ -1393,18 +1393,29 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     if (foundPrior?.retryActions.includes(action)) return;
     if (!foundPrior || foundPrior.instanceId !== expectedInstanceId || foundPrior.attempt !== expectedAttempt)
       throw conflict("That job changed. Refresh its status before retrying.");
-    const savedPrior =
-      foundPrior && !running.has(id) ? await adoptLateResponses(id, foundPrior, documents) : foundPrior;
+    let savedPrior = !running.has(id) ? await adoptLateResponses(id, foundPrior, documents) : foundPrior;
     let recovered: { result: unknown } | undefined;
+    let refreshedInput: unknown;
     if (
-      savedPrior &&
-      !savedPrior.hasResult &&
       !running.has(id) &&
       savedPrior.attempt === expectedAttempt &&
       !savedPrior.retryActions.includes(action) &&
       ["failed", "interrupted", "paused"].includes(savedPrior.status)
     ) {
       recovered = recoverSavedResult(savedPrior);
+      if (!recovered && (!savedPrior.hasResult || savedPrior.partialResult) && !savedPrior.replacement) {
+        const seed = savedPrior.seed;
+        refreshedInput = await handlers.get(savedPrior.kind)?.refreshRetryInput?.(savedPrior.input, async () => {
+          const state = await (ports.readVillageAuthority ?? readVillageState)();
+          if (state.seed !== seed) throw conflict("That job belongs to a different Village.");
+          return state;
+        });
+        if (refreshedInput !== undefined) {
+          // A provider can publish its late reply while we read the new capture data.
+          savedPrior = await adoptLateResponses(id, savedPrior, documents);
+          recovered = recoverSavedResult(savedPrior);
+        }
+      }
     }
     // Apply a saved partial response before discarding its bad rows. A lost effect
     // acknowledgement must not cause valid, purchased answers to be regenerated.
@@ -1429,8 +1440,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         }
         resetFailedAttempt(
           job,
-          recovered && job.id === savedPrior?.id && job.instanceId === savedPrior.instanceId ? recovered : undefined,
+          recovered && job.id === savedPrior.id && job.instanceId === savedPrior.instanceId ? recovered : undefined,
         );
+        if (refreshedInput !== undefined && job.id === savedPrior.id && !job.hasResult && !job.steps.length)
+          job.input = refreshedInput;
         job.retrying = true;
         job.finite = true;
         job.retryActions = [...job.retryActions, action].slice(-32);
@@ -1438,7 +1451,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       },
       documents,
     );
-    if (savedPrior) superseded.delete(savedPrior.instanceId);
+    superseded.delete(savedPrior.instanceId);
     launch(id, documents);
   }
   async function recoverBackgroundWork(documents = villagesDocuments()): Promise<void> {

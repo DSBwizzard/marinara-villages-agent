@@ -147,7 +147,7 @@ async function main() {
   let failWednesday = false;
   const agendaRequests: string[] = [];
   let weeklyResponses = 0;
-  let weeklyOutputLimit = 4096;
+  let weeklyOutputLimit = 12_288;
   let minimumWeeklyReplyTokens = 0;
   let incompleteWeek = false;
   let repetitiveWeek = false;
@@ -185,33 +185,39 @@ async function main() {
             modelCalls += 1;
             if (String(messages[0]?.content).includes("Plan the entire coming week")) {
               weeklyResponses++;
-              assert.ok(options.maxTokens <= weeklyOutputLimit, "The planner honors the model output limit.");
+              assert.equal(options.maxTokens, Math.min(8_192, weeklyOutputLimit));
               if (options.maxTokens < minimumWeeklyReplyTokens)
-                return { content: '{"plans":[', finishReason: "length" };
+                return { content: '{"plans":{', finishReason: "length" };
               const request = String(messages.at(-1)?.content);
               const input = JSON.parse(request) as {
-                residents: Array<{ name: string; brief: string; days: [string, number][]; slots?: unknown[] }>;
+                residents: Array<{ name: string; brief: string; days: [string, string, number][]; slots?: unknown[] }>;
               };
               assert.doesNotMatch(request, /"recent"|"interests"|Reading| pursuit \d+\//);
               assert.doesNotMatch(String(messages[0]?.content), /Tend seedlings|Buy twine/);
-              const plans = input.residents.map(({ name, brief, days, slots }) => {
+              const plans: Record<string, Array<string | [string, number]>> = {};
+              for (const { name, brief, days, slots } of input.residents) {
                 assert.equal(brief, `${name} values independence. Curious and inventive.`);
                 assert.equal(slots, undefined, "The provider sees day counts without exact schedule slots.");
                 let index = 0;
-                return days.map(([, count]) =>
-                  Array.from(
-                    { length: count },
-                    (): string | [string, number] => `${name} pursuit ${weeklyResponses}/${++index}`,
-                  ),
-                );
-              });
-              if (incompleteWeek) plans[0]![2] = [];
-              if (repetitiveWeek) for (const day of plans[0]!) day.fill(day[0]!);
-              if (repeatSameDay) {
-                plans[0]![0]![1] = plans[0]![0]![0]!;
-                plans[0]![1]!.unshift(plans[0]![0]![0]!, recentSuggestion, ["Try an unavailable venue", 999]);
+                for (const [id, , count] of days) {
+                  assert.ok(!Object.hasOwn(plans, id), "Each resident and date has its own ID.");
+                  plans[id] = Array.from({ length: count }, () => `${name} pursuit ${weeklyResponses}/${++index}`);
+                }
               }
-              return { content: JSON.stringify({ plans }), finishReason: "stop" };
+              const [first, second, third] = input.residents[0]!.days.map(([id]) => id);
+              if (incompleteWeek) {
+                plans["unexpected-day"] = plans[third!]!;
+                delete plans[third!];
+              }
+              if (repetitiveWeek) for (const day of Object.values(plans)) day.fill(day[0]!);
+              if (repeatSameDay) {
+                plans[first!]![1] = plans[first!]![0]!;
+                plans[second!]!.unshift(plans[first!]![0]!, recentSuggestion, ["Try an unavailable venue", 999]);
+              }
+              return {
+                content: JSON.stringify({ plans: Object.fromEntries(Object.entries(plans).reverse()) }),
+                finishReason: "stop",
+              };
             }
             if (agendaMode) {
               agendaRequests.push("Write routine profile.");
@@ -687,7 +693,7 @@ async function main() {
     );
     setToday(28);
     incompleteWeek = false;
-    minimumWeeklyReplyTokens = 2_000;
+    minimumWeeklyReplyTokens = 4_500;
     await clearVillagerAgenda("Ari", "personal-week");
     await settleBackgroundWork();
     assert.equal(weeklyResponses, 4);
@@ -766,8 +772,13 @@ async function main() {
       ),
     );
 
-    weeklyOutputLimit = 4096;
-    await retryBackgroundJob(truncated.id, truncated.attempt, "retry-with-room", truncated.instanceId);
+    const saved = documentsByKey.get(`villages::${truncated.id}`);
+    delete saved.data.input.residents[0].brief;
+    weeklyOutputLimit = 12_288;
+    await Promise.all([
+      retryBackgroundJob(truncated.id, truncated.attempt, "retry-with-room", truncated.instanceId),
+      retryBackgroundJob(truncated.id, truncated.attempt, "retry-with-room", truncated.instanceId),
+    ]);
     await settleBackgroundWork();
     assert.equal(weeklyResponses, 9, "One retry with sufficient room saves the entire week.");
     const complete = (await readVillageState()).villagers[0]!.agenda!;
