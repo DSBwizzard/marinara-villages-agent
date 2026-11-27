@@ -642,7 +642,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;
     if (
-      (job.kind === "world-development" || (job.kind === "weekly-agenda" && job.automaticDate)) &&
+      (job.kind === "world-development" ||
+        (job.kind === "weekly-agenda" &&
+          job.automaticDate &&
+          !job.retrying &&
+          asRecord(job.input).coverage !== true)) &&
       state.backgroundPace === "off"
     )
       throw new Paused("Pace is Off. The admitted world source is preserved.");
@@ -1254,9 +1258,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             if (counted) current.requests = Math.max(0, current.requests - 1);
           }
           if (obsolete && current.replacement && uncertainAttempt(current)) return holdReplacement(current);
+          const discard = obsolete && asRecord(current.input).coverage !== true;
           return {
             ...current!,
-            status: obsolete
+            status: discard
               ? "obsolete"
               : paused
                 ? current!.steps.some((step) => step.status === "running")
@@ -1281,7 +1286,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                     ["storage", "response-storage"].includes(stage)
                   ? current!.failedStep
                   : Math.max(0, lastIndex),
-            ...(obsolete ? { steps: [], input: null, result: undefined, hasResult: false } : {}),
+            ...(discard ? { steps: [], input: null, result: undefined, hasResult: false } : {}),
           };
         },
         paused || obsolete

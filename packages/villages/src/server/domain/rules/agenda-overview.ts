@@ -263,6 +263,7 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
       );
       const times: (Omit<AgendaTime, "date"> & {
         activity: string;
+        restKind?: VillageAgendaBlock["restKind"];
         label?: string;
         source?: "told" | "seen" | "agreed";
       })[] =
@@ -291,7 +292,7 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
               };
             })
           : visible.map(({ time, activity, source }) => ({ ...time, activity, source }));
-      const blocks = times.map(({ startMinute, endMinute, activity, label, venueId, zoneId, source }) => {
+      const blocks = times.map(({ startMinute, endMinute, activity, label, venueId, zoneId, source, restKind }) => {
         const venue = findLocation(world, venueId);
         const zone = venue && zoneId && resolveVenueZone(venue, zoneId);
         return {
@@ -299,7 +300,7 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
           endMinute,
           activity,
           ...(label ? { label } : {}),
-          ...(restingAgendaBlock({ activity }) ? { resting: true as const } : {}),
+          ...(restingAgendaBlock({ activity, restKind }) ? { resting: true as const } : {}),
           ...(venue ? { place: zone && (inspect || zone.seen || source === "agreed") ? zone.name : venue.name } : {}),
           ...(source ? { source } : {}),
         };

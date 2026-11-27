@@ -9,8 +9,10 @@ export type VillageAgenda = {
   calendarVersion?: 1;
   recentChanges?: import("../decoding/agenda-codec.js").AgendaChange[];
   plannedDays?: Record<string, VillageAgendaBlock[]>;
-  manualWeek?: { actionId: string; through: string };
+  manualWeek?: { actionId: string; through: string; from?: string };
+  weeklyFrom?: string;
   starterWeekThrough?: string;
+  weeklyThrough?: string;
   /** Preserve dated corrections when the Agenda is regenerated. */
   repairedDays?: string[];
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
@@ -36,7 +38,7 @@ export type VillageAgenda = {
 };
 
 export type VillageAgendaBlock = {
-  restKind?: "sleep" | "other";
+  restKind?: "sleep" | "other" | "nap";
   essential?: boolean;
   commitmentId?: string;
   flexible?: boolean;

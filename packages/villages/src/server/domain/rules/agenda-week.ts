@@ -73,7 +73,9 @@ export function completeAgendaWeek(
           return [
             {
               ...block(start as number, end as number, venueId, normalizeAgendaNap(activity)),
-              ...(row.restKind === "sleep" || row.restKind === "other" ? { restKind: row.restKind } : {}),
+              ...(row.restKind === "sleep" || row.restKind === "other" || row.restKind === "nap"
+                ? { restKind: row.restKind }
+                : {}),
               zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
               ...(row.essential === true ? { essential: true } : {}),
               ...(typeof row.commitmentId === "string" ? { commitmentId: row.commitmentId } : {}),

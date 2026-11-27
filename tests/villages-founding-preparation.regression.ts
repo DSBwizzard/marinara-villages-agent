@@ -332,11 +332,9 @@ const release = configureVillagesRuntime({
         if (mode === "json-unsupported") throw new Error("response_format json_object is not supported");
         assert.equal(options.maxTokens, Math.min(limit, packet.residents ? 8192 : 2048));
         if (mode === "routine-recovery-malformed" && actorId === "aqua") return { content: "{}", finishReason: "stop" };
-        const invalid =
-          mode === "routine-invalid" ||
-          (mode === "routine-one-fail" && actorId === "aqua") ||
-          (mode.startsWith("routine-recovery-") && actorId !== "aqua");
+        const invalid = mode === "routine-invalid" || (mode === "routine-one-fail" && actorId === "aqua");
         if (packet.residents) {
+          if (packet.setup) assert.equal(packet.residents.length, 1, "Founding sends one character card at a time");
           const planned = keyedStarterReply(packet, "Station activity", invalid ? "0" : 0);
           if (mode === "routine-recovery-current" && actorId === "aqua")
             planned.setup.rest = [
@@ -427,13 +425,24 @@ async function main() {
     mode = "valid";
     install(false);
     await Promise.all([prepareFoundedVillage(), prepareFoundedVillage()]);
-    assert.deepEqual(calls, ["aqua", "feddy", "sneak", "hall", "routine", "wish", "wish", "wish"]);
+    assert.deepEqual(calls, [
+      "aqua",
+      "feddy",
+      "sneak",
+      "hall",
+      "routine",
+      "routine",
+      "routine",
+      "wish",
+      "wish",
+      "wish",
+    ]);
     let state = await readVillageState({ memories: true });
     assert.equal(state.foundingPreparation?.status, "ready");
     assert.equal(state.foundingPreparation?.completedIds.length, 3);
     assert.ok(stages.includes("private-spaces:model:aqua"));
-    assert.ok(stages.includes("residents:model:"));
-    assert.ok(stages.includes("residents:applying:"));
+    assert.ok(stages.includes("residents:model:aqua"));
+    assert.ok(stages.includes("residents:applying:aqua"));
     assert.equal(state.townMapImage, fixture().townMapImage);
     for (const { venue, zone } of privatePreparationRooms(state)) {
       const description = observableRoomDescription(state, venue.id, zone.id, new Date().toISOString());
@@ -519,7 +528,7 @@ async function main() {
       await assert.rejects(assertFoundedVillageReady(), /Finish Founding preparation/);
       assert.equal(
         state.foundingPreparation?.completedIds.length,
-        failure === "wish-one-fail" ? 2 : 0,
+        2,
         failure +
           JSON.stringify({
             calls,
@@ -531,8 +540,8 @@ async function main() {
       );
       assert.equal(
         calls.filter((call) => call === "routine").length,
-        1,
-        "Agendas use the same explicit retry policy as the automatic weekly batch",
+        3,
+        "Each Agenda has one independent request before deliberate retries",
       );
       assert.equal(
         calls.filter((call) => call === "wish").length,
@@ -597,13 +606,12 @@ async function main() {
       await prepareFoundedVillage();
       assert.equal((await readVillageState({ memories: true })).foundingPreparation?.status, "failed");
       const checkpoint = [...rows.values()].find(
-        (row) =>
-          row.kind === "background-work" && row.data.kind === "weekly-agenda" && row.data.subjectId === "founding",
+        (row) => row.kind === "background-work" && row.data.kind === "agenda" && row.data.subjectId === "aqua",
       )!;
       const current = await readVillageState({ memories: true });
-      assert.equal(checkpoint.data.input.members[0].revision, foundingTaskRevision(current, "aqua", "routine"));
+      assert.equal(checkpoint.data.input.revision, foundingTaskRevision(current, "aqua", "routine"));
       const saved = validateBackgroundResponse(rows.get(checkpoint.data.steps[0].responseRef.id)).response;
-      assert.equal(checkpoint.data.steps[0].key, "weekly-agenda-v7");
+      assert.equal(checkpoint.data.steps[0].key, "weekly-agenda-v8");
       if (valid) {
         assert.equal(holdRoutinePublication, false);
         assert.equal(checkpoint.data.hasResult, true);
@@ -701,16 +709,16 @@ async function main() {
     assert.equal(rows.get(retainedWish.id).data.status, "completed");
     retainedWishProof = undefined;
 
-    for (const kind of ["weekly-agenda", "wish"])
+    for (const kind of ["agenda", "wish"])
       for (const interruptedStatus of ["queued", "paused"]) {
         install();
-        mode = kind === "weekly-agenda" ? "routine-invalid" : "wish-one-fail";
+        mode = kind === "agenda" ? "routine-invalid" : "wish-one-fail";
         await prepareFoundedVillage();
         const row = [...rows.values()].find(
           (record) =>
             record.kind === "background-work" &&
             record.data.kind === kind &&
-            record.data.subjectId === (kind === "weekly-agenda" ? "founding" : "feddy"),
+            record.data.subjectId === (kind === "agenda" ? "aqua" : "feddy"),
         )!;
         assert.equal(row.data.status, "failed");
         Object.assign(row.data, {
@@ -745,7 +753,7 @@ async function main() {
       assert.equal(state.foundingPreparation?.status, "failed", failure);
       assert.deepEqual(
         calls,
-        ["aqua", "feddy", "routine", "wish", "wish", "wish"],
+        ["aqua", "feddy", "routine", "routine", "routine", "wish", "wish", "wish"],
         "interior failure preserves independent resident preparation",
       );
       assert.equal(state.venues[0].zones![1].preparation?.status, "ready");
@@ -759,7 +767,7 @@ async function main() {
       await preparePrivateSpaces();
       assert.deepEqual(
         calls,
-        ["aqua", "feddy", "routine", "wish", "wish", "wish"],
+        ["aqua", "feddy", "routine", "routine", "routine", "wish", "wish", "wish"],
         "reads and direct discovery never resume a failed sequence",
       );
       mode = "valid";
@@ -767,7 +775,19 @@ async function main() {
       await prepareFoundedVillage();
       state = await readVillageState({ memories: true });
       assert.equal(state.foundingPreparation?.status, "ready");
-      assert.deepEqual(calls, ["aqua", "feddy", "routine", "wish", "wish", "wish", "feddy", "sneak", "hall"]);
+      assert.deepEqual(calls, [
+        "aqua",
+        "feddy",
+        "routine",
+        "routine",
+        "routine",
+        "wish",
+        "wish",
+        "wish",
+        "feddy",
+        "sneak",
+        "hall",
+      ]);
       assert.equal(state.venues[1].zones![1].preparation?.attempt, 2);
       assert.equal(state.townMapImage, fixture().townMapImage);
     }
@@ -851,13 +871,13 @@ async function main() {
     install();
     const beforeWrites = writes;
     const preview = await previewVillageBurst({ action: "founding" });
-    assert.equal(preview.requests, 8, "four spaces plus one Agenda batch and three initial Wishes");
+    assert.equal(preview.requests, 10, "four spaces plus three Agendas and three initial Wishes");
     assert.equal(writes, beforeWrites);
     assert.equal(calls.length, 0);
     await mutateVillageState((current) => {
       current.venues[0].zones![1].preparation = { status: "ready" };
     });
-    assert.equal((await previewVillageBurst({ action: "founding" })).requests, 7);
+    assert.equal((await previewVillageBurst({ action: "founding" })).requests, 9);
     const cleanup = startPrivateSpacePreparation();
     await new Promise((resolve) => setTimeout(resolve, 10));
     cleanup();

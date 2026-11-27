@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import { fail } from "../../adapters/http/route-support.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { badRequest } from "../../domain/rules/errors.js";
+import { asRecord } from "../../domain/rules/coerce.js";
+import { agendaDateKey } from "../../domain/rules/agenda-week.js";
+import { backgroundSlotId } from "../../domain/rules/background-revision.js";
+import { AGENDA_WEEK_DAYS, agendaCoverage, shiftAgendaDate } from "../../domain/rules/weekly-agenda.js";
 import {
   backgroundJobSnapshot,
   backgroundWorkSummaries,
@@ -20,9 +24,68 @@ import {
   retryReturnCatchup,
 } from "./return-catchup.js";
 import { readVillageSnapshot } from "../world/village-store.js";
+import type { AgendaCatchupView } from "../../../shared/contracts/village.js";
 
 export function registerBackgroundRoutes(engine: FastifyInstance) {
   const app = engine;
+  async function agendaView(): Promise<AgendaCatchupView | null> {
+    const { residents, ready, prepared, start } = agendaCoverage(await readVillageSnapshot(), villageNow());
+    if (prepared.length === residents.length) return null;
+    const jobs = await backgroundWorkSummaries();
+    const retryable = ["failed", "interrupted", "paused"];
+    const failed = residents.flatMap((resident) => {
+      if (prepared.includes(resident)) return [];
+      const initial = resident.agenda?.personalizationPending || resident.agenda?.personalizationFailure;
+      const job = jobs.find(
+        (candidate) =>
+          retryable.includes(candidate.status) &&
+          (candidate.id === backgroundSlotId({ kind: "weekly-agenda", subjectId: resident.incarnation }) ||
+            (initial && candidate.kind === "agenda" && candidate.subjectId === resident.characterId)),
+      );
+      return job ? [{ resident, job }] : [];
+    })[0];
+    const legacy = !failed ? await backgroundJobSnapshot("weekly-agenda", "village") : null;
+    const input = asRecord(legacy?.input);
+    const startKey = agendaDateKey(start);
+    const endKey = agendaDateKey(shiftAgendaDate(start, AGENDA_WEEK_DAYS - 1));
+    const batchFailure =
+      legacy &&
+      retryable.includes(legacy.status) &&
+      typeof input.start === "string" &&
+      typeof input.end === "string" &&
+      input.start <= endKey &&
+      startKey <= input.end
+        ? jobs.find((job) => job.id === backgroundSlotId({ kind: "weekly-agenda", subjectId: "village" }))
+        : undefined;
+    const job = failed?.job ?? batchFailure;
+    const reason = job?.failure;
+    return {
+      expired: ready.length !== residents.length,
+      completed: prepared.length,
+      total: residents.length,
+      ...(job
+        ? {
+            failure: {
+              name: failed?.resident.cardSnapshot.name ?? "",
+              message:
+                reason?.cause === "empty_output"
+                  ? "The planner returned an empty reply."
+                  : reason?.cause === "output_limit"
+                    ? "The planner’s reply was cut short."
+                    : reason?.message.startsWith("Not enough variety") ||
+                        reason?.message.startsWith("The model returned too few")
+                      ? reason.message
+                      : reason?.cause === "insufficient_budget"
+                        ? "The System connection needs more room for the character card and its Agenda."
+                        : "The Agenda couldn’t be prepared.",
+              id: job.id,
+              expectedAttempt: job.attempt,
+              expectedInstanceId: job.instanceId,
+            },
+          }
+        : {}),
+    };
+  }
   async function returnView() {
     const state = await readVillageSnapshot({ memories: true });
     const batch = state.returnCatchup?.batch;
@@ -71,7 +134,7 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
     try {
       const view = await returnView();
       await advanceReturnCatchup();
-      return { batch: view };
+      return { batch: view, agenda: await agendaView() };
     } catch (error) {
       return fail(reply, error, "checking Village catch-up");
     }
@@ -115,6 +178,7 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
     try {
       if (typeof request.body?.batchId !== "string") throw badRequest("Choose a Village catch-up.");
       await continueReturnCatchup(request.body.batchId);
+      await reconcileVillage();
       return { batch: await returnView() };
     } catch (error) {
       return fail(reply, error, "continuing to the Village");

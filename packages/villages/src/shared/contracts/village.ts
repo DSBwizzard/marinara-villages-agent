@@ -154,6 +154,19 @@ export type ReturnCatchupView = {
   issue: "preparation" | "generation" | "authority" | null;
 };
 
+export type AgendaCatchupView = {
+  expired: boolean;
+  completed: number;
+  total: number;
+  failure?: {
+    name: string;
+    message: string;
+    id: string;
+    expectedAttempt: number;
+    expectedInstanceId: string;
+  };
+};
+
 export type VillageSnapshot = {
   worldScope: string;
   mailboxUnread?: boolean;

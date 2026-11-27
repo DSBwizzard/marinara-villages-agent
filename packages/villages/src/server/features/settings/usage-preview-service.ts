@@ -115,9 +115,9 @@ export function createUsagePreview({
           requests += saved?.remainingRequests ?? remainingRequests(1, saved?.completedSteps ?? 0);
         }
         if (tasks?.routine?.status !== "completed") {
-          const individual = tasks?.routine?.jobId !== FOUNDING_AGENDA_SLOT && active("agenda", resident.characterId);
-          if (individual) {
-            requests += individual.remainingRequests ?? remainingRequests(1, individual.completedSteps ?? 0);
+          if (tasks?.routine?.jobId !== FOUNDING_AGENDA_SLOT) {
+            const individual = active("agenda", resident.characterId);
+            requests += individual?.remainingRequests ?? remainingRequests(1, individual?.completedSteps ?? 0);
           } else if (!foundingBatchCounted) {
             const saved = active("weekly-agenda", FOUNDING_AGENDA_SUBJECT);
             languageRequests += saved?.remainingRequests ?? remainingRequests(1, saved?.completedSteps ?? 0);

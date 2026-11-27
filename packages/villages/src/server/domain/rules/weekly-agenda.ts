@@ -9,6 +9,7 @@ import { accessibleVenueRoute } from "./venue-path.js";
 import { zoneActivityFits } from "./venue-presence.js";
 import { canOccupyZone, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { hashString } from "./village-clock.js";
+import { conflict } from "./errors.js";
 
 export const AGENDA_WEEK_DAYS = 7;
 const dayParts = [360, 720, 1020, 1440];
@@ -23,9 +24,47 @@ export const agendaActivityKey = (activity: string) =>
     .trim();
 
 export function preparedAgendaThrough(agenda: VillageAgenda | null | undefined): string {
-  const manual = agenda?.manualWeek?.through ?? "";
-  const starter = agenda?.starterWeekThrough ?? "";
-  return manual > starter ? manual : starter;
+  return [agenda?.manualWeek?.through ?? "", agenda?.starterWeekThrough ?? "", agenda?.weeklyThrough ?? ""]
+    .sort()
+    .at(-1)!;
+}
+
+export function agendaReadyOn(agenda: VillageAgenda | null, date: string): boolean {
+  if (!agenda) return false;
+  if ((agenda.starterWeekThrough ?? "") >= date) return true;
+  if (agenda.weeklyFrom && agenda.weeklyThrough && agenda.weeklyFrom <= date && agenda.weeklyThrough >= date)
+    return true;
+  const manual = agenda.manualWeek;
+  if (!manual || manual.through < date) return false;
+  const through = Date.parse(manual.through);
+  if (!Number.isFinite(through)) return false;
+  const from = manual.from ?? new Date(through - (AGENDA_WEEK_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+  return from <= date;
+}
+
+export function weeklyAgendaResidents(state: Pick<VillageState, "villagers" | "foundingPreparation">) {
+  if (state.foundingPreparation && state.foundingPreparation.status !== "ready") return [];
+  const started = state.villagers.some(
+    ({ agenda }) =>
+      agenda &&
+      (agenda.starterWeekThrough || agenda.manualWeek || agenda.weeklyThrough || agenda.personalizationPending),
+  );
+  if (!started) return [];
+  return state.villagers.filter(({ agenda }) => agenda?.calendarVersion === 1);
+}
+
+export function agendaCoverage(state: Pick<VillageState, "villagers" | "foundingPreparation" | "timeZone">, now: Date) {
+  const today = agendaCalendar(state, now);
+  const residents = weeklyAgendaResidents(state);
+  const readyOn = (day: Date) => residents.filter(({ agenda }) => agendaReadyOn(agenda, agendaDateKey(day)));
+  const ready = readyOn(today);
+  const start = ready.length === residents.length ? shiftAgendaDate(today, 1) : today;
+  return { today, start, residents, ready, prepared: readyOn(start) };
+}
+
+export function assertTodayAgendas(state: VillageState, now: Date) {
+  const { residents, ready } = agendaCoverage(state, now);
+  if (ready.length !== residents.length) throw conflict("Wait for today’s Agendas to finish preparing.");
 }
 
 export function shiftAgendaDate(date: Date, days: number): Date {
@@ -127,7 +166,7 @@ export function weeklyAgendaSlots(agenda: VillageAgenda, date: Date, residentId:
 }
 
 export type WeeklyAgendaSlot = ReturnType<typeof weeklyAgendaSlots>[number];
-export type WeeklyAgendaChoice = { activity: string; venueId: string; maxMinutes?: number };
+export type WeeklyAgendaChoice = { activity: string; venueId: string; maxMinutes?: number; nap?: true };
 
 export function weeklyChoiceBlock(
   choice: WeeklyAgendaChoice,
@@ -143,6 +182,7 @@ export function weeklyChoiceBlock(
       startMinute + (choice.maxMinutes ?? (choice.activity === AGENDA_NAP_ACTIVITY ? 60 : 1440)),
     ),
     flexible: true,
+    ...(choice.nap ? { restKind: "nap" as const } : {}),
   };
 }
 
@@ -180,7 +220,17 @@ export function applyWeeklyAgenda(
   now: Date,
   offered: readonly WeeklyAgendaSlot[],
   choices: readonly (WeeklyAgendaChoice | null)[],
-  { preserveThrough = "", todayAfter }: { preserveThrough?: string; todayAfter?: number } = {},
+  {
+    preserveThrough = "",
+    todayAfter,
+    onPlaced,
+    preserveDate,
+  }: {
+    preserveThrough?: string;
+    todayAfter?: number;
+    onPlaced?: (date: string) => void;
+    preserveDate?: (date: string) => boolean;
+  } = {},
 ): number {
   const agenda = resident.agenda;
   if (!agenda) return 0;
@@ -188,7 +238,12 @@ export function applyWeeklyAgenda(
   let placed = 0;
   for (const key of new Set(offered.map(({ date }) => date))) {
     const planToday = key === today && todayAfter !== undefined;
-    if (key <= preserveThrough || (!planToday && (key <= today || agenda.activeDay?.dateKey === key))) continue;
+    if (
+      key <= preserveThrough ||
+      preserveDate?.(key) ||
+      (!planToday && (key <= today || agenda.activeDay?.dateKey === key))
+    )
+      continue;
     const date = calendarAt(now, key, 720);
     const livePeriods = freeAgendaPeriods(agenda, date);
     let blocks = ordinaryAgendaBlocksFor(agenda, date);
@@ -220,6 +275,7 @@ export function applyWeeklyAgenda(
     if (placed > before) {
       (agenda.plannedDays ??= {})[key] = blocks.sort((a, b) => a.startMinute - b.startMinute);
       if (agenda.activeDay?.dateKey === key) agenda.activeDay.blocks = blocks;
+      onPlaced?.(key);
     }
   }
   return placed;

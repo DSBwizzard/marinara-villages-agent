@@ -10,6 +10,7 @@ await withBrowser(browser, async () => {
     await mockEngineLookups(page);
     let reads = 0;
     let continued = 0;
+    let agenda = null;
     let batch = {
       id: "batch",
       status: "failed",
@@ -37,7 +38,7 @@ await withBrowser(browser, async () => {
           await fulfill(route, { status: 500, json: { error: "Catch-up status is unavailable." } });
           return;
         }
-        value = { batch };
+        value = { batch, agenda };
       } else if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
@@ -59,6 +60,37 @@ await withBrowser(browser, async () => {
     await dialog.getByRole("button", { name: "Continue to Village" }).click();
     await expect(dialog).toBeHidden();
     assert.equal(continued, 1);
+    agenda = { expired: false, completed: 1, total: 2 };
+    const chip = page.getByRole("button", { name: "Preparing Agendas", exact: true });
+    await expect(chip).toBeVisible({ timeout: 8000 });
+    const mapChip = await chip.boundingBox();
+    const people = page.getByRole("button", { name: "People", exact: true });
+    if (!(await people.isVisible())) await page.getByRole("button", { name: "More", exact: true }).click();
+    await people.click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    const returnButton = page.getByRole("button", { name: /Return to village|← Village/, exact: true });
+    await expect(returnButton).toBeVisible();
+    const menuChip = await chip.boundingBox();
+    assert.equal(menuChip.x, mapChip.x);
+    assert.ok(menuChip.y < mapChip.y && mapChip.y - menuChip.y <= 18);
+    await chip.click();
+    await expect(page.getByText("1 of 2 ready", { exact: true })).toBeVisible();
+    await returnButton.click({ trial: true });
+    await page.screenshot({ path: resolve(`.build-tmp/agenda-chip-menu-${width}.png`) });
+    const menuNavigation = page.getByRole("navigation", { name: "Village navigation", exact: true });
+    await menuNavigation.getByRole("button", { name: "Projects", exact: true }).click({ trial: true });
+    await page.keyboard.press("Escape");
+    await expect(chip).toHaveAttribute("aria-expanded", "false");
+    await expect(chip).toBeFocused();
+    agenda.expired = true;
+    await expect(chip).toBeVisible();
+    await expect(dialog).toBeHidden();
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(dialog).toContainText("Preparing today’s Agendas", { timeout: 8000 });
+    await expect(dialog.getByRole("button", { name: "Back", exact: true })).toBeVisible();
+    agenda = null;
+    await expect(dialog).toBeHidden({ timeout: 8000 });
     await page.close();
   }
 });

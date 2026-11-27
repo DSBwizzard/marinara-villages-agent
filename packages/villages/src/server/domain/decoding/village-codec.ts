@@ -415,13 +415,23 @@ function coerceAgenda(value: unknown, preserveCapturedAgenda: boolean): VillageA
   const manualWeek = asRecord(raw.manualWeek);
   if (typeof raw.starterWeekThrough === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.starterWeekThrough))
     agenda.starterWeekThrough = raw.starterWeekThrough;
+  if (typeof raw.weeklyThrough === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.weeklyThrough))
+    agenda.weeklyThrough = raw.weeklyThrough;
+  if (typeof raw.weeklyFrom === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.weeklyFrom))
+    agenda.weeklyFrom = raw.weeklyFrom;
   if (
     typeof manualWeek.actionId === "string" &&
     /^[a-zA-Z0-9-]{1,100}$/.test(manualWeek.actionId) &&
     typeof manualWeek.through === "string" &&
     /^\d{4}-\d{2}-\d{2}$/.test(manualWeek.through)
   ) {
-    agenda.manualWeek = { actionId: manualWeek.actionId, through: manualWeek.through };
+    agenda.manualWeek = {
+      actionId: manualWeek.actionId,
+      through: manualWeek.through,
+      ...(typeof manualWeek.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(manualWeek.from)
+        ? { from: manualWeek.from }
+        : {}),
+    };
   }
   if (Array.isArray(raw.repairedDays)) {
     const dates = [

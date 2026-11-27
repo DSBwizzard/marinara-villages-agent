@@ -1,4 +1,4 @@
-// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo, weekly-agenda/scene-scheduling, weekly-agenda/compact-context
+// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo, weekly-agenda/scene-scheduling, weekly-agenda/compact-context, weekly-agenda/coverage, weekly-agenda/return-refresh
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mock } from "node:test";
@@ -32,6 +32,7 @@ import { acceptNarration } from "../packages/villages/src/server/domain/rules/na
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { agendaCoverage, assertTodayAgendas } from "../packages/villages/src/server/domain/rules/weekly-agenda.js";
 
 const at = "2026-11-10T08:00:00.000Z";
 const later = "2026-11-10T08:01:00.000Z";
@@ -124,6 +125,129 @@ function fixture() {
   }
   return { world, resident, publish, scene };
 }
+
+await runCase("weekly-agenda/coverage", () => {
+  const { world, resident } = fixture();
+  world.timeZone = "America/Los_Angeles";
+  resident.agenda.calendarVersion = 1;
+  resident.agenda.starterWeekThrough = "2026-11-10";
+  resident.agenda.manualWeek = { actionId: "tomorrow", from: "2026-11-12", through: "2026-11-18" };
+  const before = new Date("2026-11-11T07:59:59Z");
+  const after = new Date("2026-11-11T08:00:00Z");
+  assert.equal(agendaCoverage(world, before).ready.length, 1);
+  assert.doesNotThrow(() => assertTodayAgendas(world, before));
+  assert.throws(() => assertTodayAgendas(world, after), /today’s Agendas/);
+  resident.agenda.weeklyFrom = "2026-11-11";
+  resident.agenda.weeklyThrough = "2026-11-17";
+  const restored = coerceVillageState(world);
+  assert.doesNotThrow(() => assertTodayAgendas(restored, after));
+});
+
+await runCase("weekly-agenda/return-refresh", async () => {
+  const previousTimeZone = process.env.TZ;
+  process.env.TZ = "UTC";
+  mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-10T15:01:00Z") });
+  try {
+    const host = await packagedSceneServer({
+      configure(world) {
+        const first = world.villagers[0]!;
+        first.agenda = agendaFixture({ calendarVersion: 1, starterWeekThrough: "2026-11-09" });
+        const second = structuredClone(first);
+        second.characterId = second.cardSnapshot.id = "fenn";
+        second.incarnation = "fenn:packaged";
+        second.cardSnapshot.name = "Fenn";
+        world.villagers.push(second);
+      },
+    });
+    const requests: string[] = [];
+    host.model.chatComplete = async (messages: { content: string }[]) => {
+      const { residents } = JSON.parse(messages.at(-1)!.content);
+      assert.equal(residents.length, 1);
+      const resident = residents[0];
+      assert.equal(JSON.parse(resident.characterCard).name, resident.name);
+      requests.push(resident.name);
+      if (resident.name === "Mara" && requests.filter((name) => name === "Mara").length === 1)
+        return { content: "", finishReason: "stop" };
+      return {
+        content: JSON.stringify({
+          plans: Object.fromEntries(
+            resident.days.map(([id, date, count]: [string, string, number]) => [
+              id,
+              Array.from({ length: count }, (_, slot) => `Prepare tray ${date} ${slot}`),
+            ]),
+          ),
+        }),
+        finishReason: "stop",
+      };
+    };
+    const status = async () =>
+      (await host.app.inject("/api/villages/background/catchup")).json<{
+        agenda: import("../packages/villages/src/shared/contracts/village.js").AgendaCatchupView | null;
+      }>().agenda;
+    const eventually = async (condition: () => Promise<boolean>) => {
+      for (let attempt = 0; attempt < 80; attempt++) {
+        if (await condition()) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.fail("Agenda preparation did not settle");
+    };
+    try {
+      assert.equal((await status())?.expired, true);
+      assert.deepEqual(requests, [], "Reading progress does not start generation");
+      const refused = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: {
+          sessionId: "browser",
+          submissionId: randomUUID(),
+          mode: "chat",
+          message: "Good morning.",
+          targetId: "",
+          expectedSceneRevision: host.scene().sceneRevision,
+        },
+      });
+      assert.equal(refused.statusCode, 409);
+      assert.match(refused.body, /today’s Agendas/);
+      const enter = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/background/presence",
+        payload: {
+          sessionId: "agenda-return",
+          visible: true,
+        },
+      });
+      assert.equal(enter.statusCode, 200, enter.body);
+      await eventually(async () => (await status())?.completed === 1);
+      const before = await status();
+      assert.equal(before?.failure?.name, "Mara");
+      assert.equal(before.failure.message, "The planner returned an empty reply.");
+      assert.deepEqual([...requests].sort(), ["Fenn", "Mara"]);
+      const retry = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/background/retry",
+        payload: {
+          ...before.failure,
+          actionId: "retry-mara",
+        },
+      });
+      assert.equal(retry.statusCode, 200, retry.body);
+      await eventually(async () => (await status()) === null);
+      assert.deepEqual([...requests].sort(), ["Fenn", "Mara", "Mara"]);
+      const state = fixtureVillageState(host.records.get("villages-village").data, host.records);
+      assert.equal(state.backgroundPace, "off");
+      for (const resident of state.villagers) {
+        assert.equal(resident.agenda?.weeklyFrom, "2026-11-10");
+        assert.equal(resident.agenda?.weeklyThrough, "2026-11-16");
+      }
+    } finally {
+      await host.stop();
+    }
+  } finally {
+    mock.timers.reset();
+    if (previousTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimeZone;
+  }
+});
 
 await runCase("weekly-agenda/visibility", () => {
   const { world, publish } = fixture();

@@ -11,14 +11,20 @@ export function sleepingAgendaLabel(activity: string): boolean {
   return /\b(?:sleep(?:ing)?|asleep|hibernate|hibernating|dormant)\b/iu.test(activity);
 }
 
-export function restingAgendaBlock(block: Pick<VillageAgendaBlock, "activity"> | null): boolean {
-  return block !== null && (block.activity === AGENDA_NAP_ACTIVITY || sleepingAgendaLabel(block.activity));
+export function restingAgendaBlock(block: Pick<VillageAgendaBlock, "activity" | "restKind"> | null): boolean {
+  return (
+    block !== null &&
+    (block.restKind === "nap" || block.activity === AGENDA_NAP_ACTIVITY || sleepingAgendaLabel(block.activity))
+  );
 }
 
 export function fixedRestAgendaBlock(block: VillageAgendaBlock): boolean {
   return (
     restingAgendaBlock(block) &&
-    !(normalizeAgendaNap(block.activity) === AGENDA_NAP_ACTIVITY && flexibleAgendaBlock(block))
+    !(
+      (block.restKind === "nap" || normalizeAgendaNap(block.activity) === AGENDA_NAP_ACTIVITY) &&
+      flexibleAgendaBlock(block)
+    )
   );
 }
 

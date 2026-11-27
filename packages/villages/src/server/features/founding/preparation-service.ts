@@ -270,6 +270,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
     const prior = await backgroundJobSnapshot("weekly-agenda", FOUNDING_AGENDA_SUBJECT);
     const resumeBatch =
       prior?.seed === seed && open.some(({ id, task }) => selected(id) && task.jobId === FOUNDING_AGENDA_SLOT);
+    if (!resumeBatch) return { ids: [], connectionBlocked: false };
     const candidates = await Promise.all(
       open.map(async ({ id, task }) => {
         if (!selected(id) && !(resumeBatch && task.jobId === FOUNDING_AGENDA_SLOT)) return [];
