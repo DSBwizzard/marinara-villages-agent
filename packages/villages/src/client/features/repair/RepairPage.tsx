@@ -1250,16 +1250,22 @@ export function RepairPage({
                   </header>
                   {placeNotebook && placeSection === "details" && placeItems.length > 1 ? (
                     <label className="repair-field">
-                      Details record
+                      Edit
                       <select
-                        aria-label="Details record"
+                        aria-label="Details item"
                         disabled={c.busy}
                         value={selected.id}
                         onChange={(event) => void c.open(event.target.value)}
                       >
                         {placeItems.map((item) => (
                           <option key={item.id} value={item.id}>
-                            {item.id === mainPlaceRecord?.id ? "Details" : item.title}
+                            {item.id === mainPlaceRecord?.id
+                              ? zone
+                                ? "Zone settings"
+                                : "Details"
+                              : item.id.startsWith('["room",')
+                                ? "Room detail: " + short(item.summary || item.title)
+                                : item.title}
                           </option>
                         ))}
                       </select>
