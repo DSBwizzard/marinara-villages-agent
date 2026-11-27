@@ -195,14 +195,18 @@ const release = configureVillagesRuntime({
           calls++;
           lastOptions = options;
           const { residents } = JSON.parse(String(messages.at(-1).content)) as {
-            residents: { name: string; recent: string[]; slots: [string, string, number][] }[];
+            residents: { name: string; brief: string; recent?: string[]; days: [string, number][] }[];
           };
           assert.equal(residents.length, 1, "Regeneration supplies only the selected villager.");
-          assert.ok(residents[0]!.recent.includes("Reading"), "The upcoming activities are offered as prior plans.");
-          const plans = residents.map(({ slots }) =>
-            slots.map(([date], index) => [`${fail ? "Another" : "A dated"} pursuit ${date} ${index}`, 0]),
+          assert.equal(residents[0]!.brief, "An autonomous gardener Patient");
+          assert.equal(residents[0]!.recent, undefined, "Saved plans stay out of the regeneration request.");
+          const plans = residents.map(({ days }) =>
+            days.map(([date, count]) => {
+              const prefix = fail ? "Another" : "A dated";
+              const activities = Array.from({ length: count }, (_, index) => `${prefix} pursuit ${date} ${index}`);
+              return fail ? activities.fill(activities[0]!) : activities;
+            }),
           );
-          if (fail) plans[0]![1] = plans[0]![0]!;
           return {
             content: JSON.stringify({ plans }),
             usage: { promptTokens: 200, completionTokens: 100, totalTokens: 300 },
