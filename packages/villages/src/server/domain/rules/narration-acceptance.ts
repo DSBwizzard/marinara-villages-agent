@@ -362,6 +362,7 @@ export function acceptNarrationContinuity(
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
   const incidentalNotes = new Set<string>();
+  const quietKeepIds = new Set<string>();
   const memoryFallback = readset.optionalActorMemories;
   const onlyResidentCrossings =
     memoryFallback === 5 &&
@@ -443,6 +444,19 @@ export function acceptNarrationContinuity(
       continue;
     }
     const note = asRecord(raw);
+    if (
+      readset.quietIncidentalKeeps &&
+      !requestedMemory &&
+      !admission.protectedRoots.length &&
+      header.id !== "remember-fact" &&
+      header.independent &&
+      (Object.hasOwn(note, "for") || note.class === "experience" || note.class === "information") &&
+      note.for !== "room" &&
+      !(Array.isArray(note.for) && note.for.includes("room")) &&
+      (note.class === undefined || note.class === "experience" || note.class === "information") &&
+      Object.keys(note).every((key) => ["id", "for", "about", "class", "text", "source", "independent"].includes(key))
+    )
+      quietKeepIds.add(header.id);
     const offer = asRecord(note.offer);
     // An opening can echo the offered calendar context as a source-free offer. Keep it out of authority.
     const openingOfferEcho =
@@ -1126,9 +1140,9 @@ export function acceptNarrationContinuity(
     ...(readset.admission.room ? { room: readset.admission.room } : {}),
   };
   const warnings = expressionRejected ? [{ id: "!sprite-expression", reason: SCENE_EXPRESSION_REJECTION }] : [];
-  const rejected = [
-    ...new Map([...selection.rejected, ...discarded, ...warnings].map((row) => [row.id, row])).values(),
-  ].slice(0, MAX_SCENE_REJECTIONS);
+  const rejected = [...new Map([...selection.rejected, ...discarded, ...warnings].map((row) => [row.id, row])).values()]
+    .filter(({ id }) => !quietKeepIds.has(id) || referenced.has(id))
+    .slice(0, MAX_SCENE_REJECTIONS);
   if (rejected.length) episode.rejectedEffects = rejected;
   const episodes = appendEpisode(state.episodes, episode, state.seed);
   assertContinuityRetention(continuity, episodes);
