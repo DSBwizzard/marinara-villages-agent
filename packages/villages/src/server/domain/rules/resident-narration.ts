@@ -45,6 +45,7 @@ import { villagePresence } from "./village-projections.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { VenueLine } from "../models/scene-model.js";
 import { agendaBlocksFor } from "./agenda-week.js";
+import { assertFreshAppointmentDecision } from "./agenda-overview.js";
 import { readResidentNarrationCapture } from "../decoding/resident-narration-codec.js";
 import { narrationAccessScopes, applyNarrationAccess, assertNarrationDecision } from "./narration-access.js";
 import { narrationResidenceContext, applyNarrationResidence } from "./narration-residence.js";
@@ -703,7 +704,10 @@ function prepareResidentNarration(
     for (const id of selection.acceptedIds) {
       const keep = prepared.get(id);
       try {
-        if (keep) continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
+        if (keep) {
+          assertFreshAppointmentDecision(state, keep.write, capture.context.at);
+          continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
+        }
         const receipt = receipts[id];
         if (receipt?.kind === "access" && receipt.witnesses.length) {
           const evidence = bindNarrationReceipt(receipt, communication);
