@@ -611,6 +611,10 @@
     },
     {
       "method": "post",
+      "path": "/agendas/:characterId/appointments"
+    },
+    {
+      "method": "post",
       "path": "/agendas/:characterId/regenerate"
     },
     {

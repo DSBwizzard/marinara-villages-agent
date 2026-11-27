@@ -22,6 +22,8 @@ import {
 import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
 import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { narrationSceneNotices } from "../packages/villages/src/server/domain/rules/narration-notices.js";
+import { decodeTaggedSceneReply } from "../packages/villages/src/server/domain/rules/tagged-scene-reply.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { activityDate, reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
@@ -271,6 +273,62 @@ await runCase("narration-circumstance/room-damage", () => {
   };
   const repair = () =>
     acceptNarration(f.state, { raw, readset, responseDigest: memoryHash(raw) }, "repair-turn", repairAt);
+  const repairReadset = {
+    ...readset,
+    taggedSceneReply: true as const,
+    authoritativeSceneBeats: true as const,
+    terminalSceneRepair: true as const,
+  };
+  const beforeWork = "You set the new pane on a cloth.",
+    work = "You seat a new pane in the frame and sweep away every shard.",
+    taggedReply = [
+      "Narration: " + beforeWork,
+      "Narration!: " + work,
+      "[keep]: " + JSON.stringify({ id: "window", for: "room", replace: f.window.id, text: "An intact window." }),
+      "[keep]: " + JSON.stringify({ id: "glass", for: "room", replace: glass.id, text: null }),
+      "[command]: " +
+        JSON.stringify({
+          type: "circumstance",
+          conditions: [{ id: conditions[0].id, clear: true }],
+          requires: ["window", "glass"],
+        }),
+      "Narration: You leave the basin where it is, the warning still tacked by the stair.",
+    ];
+  for (const variant of ["reopened", "other restriction", "incomplete"] as const) {
+    const taggedState = structuredClone(f.state);
+    const { repairEntries: _repairEntries, ...otherRestriction } = conditions[0];
+    if (variant === "other restriction")
+      taggedState.narrative!.conditions.push({
+        ...otherRestriction,
+        id: "other-restriction",
+        observation: "The floorboards outside the work area need repair.",
+      });
+    const response = taggedReply.filter((_line, index) => variant !== "incomplete" || index !== 3).join("\n");
+    const taggedRepair = decodeTaggedSceneReply(response, repairReadset).value;
+    assert(taggedRepair);
+    const taggedResult = acceptNarration(
+      taggedState,
+      { raw: taggedRepair, readset: repairReadset, responseDigest: memoryHash(response) },
+      "repair-turn",
+      repairAt,
+    );
+    assert.equal(taggedResult.held, false, JSON.stringify(taggedResult.rejected));
+    const episode = readAcceptedEpisode(taggedResult.episode, taggedState.seed);
+    assert.deepEqual(
+      episode.segments.map(({ content }) => content),
+      variant === "incomplete" ? [beforeWork] : [beforeWork, work],
+    );
+    assert.equal(taggedState.narrative!.conditions[0].clearedAt, variant === "incomplete" ? null : repairAt);
+    const accessNotices = narrationSceneNotices(taggedState, episode, venue.id).filter(({ kind }) => kind === "venue");
+    assert.deepEqual(
+      accessNotices.map(({ text }) => text),
+      variant === "reopened"
+        ? ["Repair restriction lifted"]
+        : variant === "other restriction"
+          ? ["Ordinary use still restricted"]
+          : [],
+    );
+  }
   const entries = conditions[0].repairEntries!;
   conditions[0].repairEntries = [f.rug.id];
   assert.equal(

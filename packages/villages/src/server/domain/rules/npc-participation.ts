@@ -96,7 +96,6 @@ export function prepareNpcAdmission(
   } else {
     memoryRequire(request.name, "a new NPC needs a name");
     assertDistinctNpcName(state, request.name);
-    if (request.label) assertDistinctNpcName(state, request.label);
     const id = "npc:" + memoryHash([state.seed, scene.id, operationId, request.localKey]);
     memoryRequire(!state.worldPlaces.npcs[id], "replay the accepted NPC introduction");
     npc = readNpc({

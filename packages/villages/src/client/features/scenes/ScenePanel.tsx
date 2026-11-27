@@ -195,6 +195,7 @@ export function RoomPanel({
   sprites,
   onDraft,
   onSend,
+  onRemember,
   onRetryReply,
   retryPending,
   sendOnEnter,
@@ -247,6 +248,7 @@ export function RoomPanel({
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
   onSend: () => void;
+  onRemember?: (recipientId: string) => void;
   onRetryReply?: () => void;
   retryPending?: boolean;
   sendOnEnter: boolean;
@@ -611,7 +613,12 @@ export function RoomPanel({
   const canCompose = canDraft && !historyOpen && (!canReadNext || busy || !!error || !!turnRecovery);
   const canRetryReply = canCompose && !canReadNext && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
   const canSend = canCompose && !historyOpen && !busy && !contactRecovery;
-  const sendLabel = busy ? "Sending" : "Send";
+  const canRemind = canSend && !!draft.trim();
+  const retryingReminder =
+    room.operation?.input?.rememberFor &&
+    room.operation.input.message === draft &&
+    (room.operation.status !== "complete" || room.operation.error);
+  const sendLabel = busy ? "Sending" : retryingReminder ? "Send reminder" : "Send";
   const travel = room.travel;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
@@ -1403,6 +1410,35 @@ export function RoomPanel({
                 >
                   <SceneControlIcon name={busy ? "sending" : "send"} />
                 </button>
+                {onRemember && activeParticipants.length ? (
+                  <details className={`${ELEMENT_TAG}-scene-reminder`}>
+                    <summary
+                      aria-label="Whisper a reminder"
+                      aria-disabled={!canRemind}
+                      onClick={(event) => {
+                        if (!canRemind) event.preventDefault();
+                      }}
+                    >
+                      Remind
+                    </summary>
+                    {canRemind ? (
+                      <div className={`${ELEMENT_TAG}-room-actions-menu ${ELEMENT_TAG}-scene-reminder-targets`}>
+                        {activeParticipants.map(({ characterId, name }) => (
+                          <button
+                            key={characterId}
+                            type="button"
+                            onClick={(event) => {
+                              event.currentTarget.closest("details")?.removeAttribute("open");
+                              onRemember(characterId);
+                            }}
+                          >
+                            Remind {name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </details>
+                ) : null}
               </span>
               <button
                 type="button"

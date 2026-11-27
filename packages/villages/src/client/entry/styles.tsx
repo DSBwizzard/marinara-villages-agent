@@ -1952,6 +1952,10 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-room-actions-menu button { border: 0; border-radius: .4rem; padding: .55rem .65rem; background: transparent; color: var(--foreground); text-align: left; font: inherit; font-size: .8125rem; cursor: pointer; }
 .${ELEMENT_TAG}-room-actions-menu button:hover { background: color-mix(in srgb, var(--foreground) 9%, transparent); }
 .${ELEMENT_TAG}-room-actions-menu button:disabled { opacity: .45; cursor: default; }
+.${ELEMENT_TAG}-scene-reminder { flex: 0 0 auto; }
+.${ELEMENT_TAG}-scene-reminder > summary { cursor: pointer; list-style: none; white-space: nowrap; padding: .25rem; }
+.${ELEMENT_TAG}-scene-reminder > summary[aria-disabled="true"] { opacity: .45; cursor: default; }
+.${ELEMENT_TAG}-scene-reminder > .${ELEMENT_TAG}-scene-reminder-targets { top: auto; bottom: calc(100% + .4rem); max-height: min(16rem, 45dvh); overflow-y: auto; }
 .${ELEMENT_TAG}-room-notices { position: absolute; top: 3.2rem; left: .75rem; z-index: 4; }
 .${ELEMENT_TAG}-room-notices-trigger { min-width: 2.5rem; min-height: 2rem; padding: .25rem .55rem; color: #e5b13e; font-size: .75rem; cursor: pointer; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-room-stars, .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-stars { position: absolute; top: calc(100% + .35rem); left: 0; width: min(20rem, calc(100vw - 1.5rem)); max-height: 35cqh; overflow-y: auto; }

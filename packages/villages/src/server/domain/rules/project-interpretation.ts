@@ -66,27 +66,36 @@ export function projectSpeechContexts(
 ): ProjectSpeechContext[] {
   const query = message + "\n" + conversation;
   const terms = new Set(recallTerms(query));
-  return state.projects.flatMap((project) =>
-    project.lifecycle &&
-    ["planning", "paused", "working"].includes(project.status) &&
-    (project.venueId === venueId ||
-      project.lifecycle.targetVenueId === venueId ||
-      [
-        ...project.participantIds,
-        ...project.lifecycle.affectedIds,
-        project.requesterCharacterId &&
-        continuityActor(state, project.requesterCharacterId)?.incarnation === project.requesterIncarnation
-          ? project.requesterCharacterId
-          : "",
-        project.lifecycle.builderId,
-        ...project.lifecycle.candidates.map((candidate) => candidate.residentId),
-      ].some((id) => id && activeIds.includes(id)) ||
-      query.includes(project.id) ||
-      query.includes(project.title) ||
-      recallTerms(project.title + " " + projectPhysicalDesign(project)).some((term) => terms.has(term)))
-      ? [projectSpeechContext(state, project, activeIds)]
-      : [],
+  const relevant = state.projects.filter(
+    (project) =>
+      project.lifecycle &&
+      ["planning", "paused", "working"].includes(project.status) &&
+      (project.venueId === venueId ||
+        project.lifecycle.targetVenueId === venueId ||
+        [
+          ...project.participantIds,
+          ...project.lifecycle.affectedIds,
+          project.requesterCharacterId &&
+          continuityActor(state, project.requesterCharacterId)?.incarnation === project.requesterIncarnation
+            ? project.requesterCharacterId
+            : "",
+          project.lifecycle.builderId,
+          ...project.lifecycle.candidates.map((candidate) => candidate.residentId),
+        ].some((id) => id && activeIds.includes(id))),
   );
+  return relevant
+    .map((project) => ({
+      project,
+      local: Number(project.venueId === venueId || project.lifecycle?.targetVenueId === venueId),
+      matches: new Set(
+        recallTerms(project.id + " " + project.title + " " + projectPhysicalDesign(project)).filter((term) =>
+          terms.has(term),
+        ),
+      ).size,
+    }))
+    .sort((a, b) => b.matches - a.matches || b.local - a.local || a.project.id.localeCompare(b.project.id))
+    .slice(0, 3)
+    .map(({ project }) => projectSpeechContext(state, project, activeIds));
 }
 export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeechContext[]): string {
   if (!contexts.length) return "";

@@ -26,6 +26,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/narration-context.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { decodeTaggedSceneReply } from "../packages/villages/src/server/domain/rules/tagged-scene-reply.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { withMariSpriteDefaults } from "../packages/villages/src/server/domain/rules/professor-mari.js";
 import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
@@ -162,9 +163,41 @@ const tutorial = structuredClone(scene.lines);
 appendVisitorIntroductionTutorial(scene);
 assert.deepEqual(scene.lines, tutorial, "The fixed tutorial appends only once");
 const bookendReadset = { ...readset, visitorIntroductionFarewell: true as const };
+const taggedBookendReadset = {
+  ...bookendReadset,
+  taggedSceneReply: true as const,
+  authoritativeSceneBeats: true as const,
+};
+for (const change of [
+  `[command]: {"type":"depart","who":"${PROFESSOR_MARI_ID}"}`,
+  `[keep]: {"for":["${PROFESSOR_MARI_ID}"],"class":"information","text":"A new fact."}`,
+]) {
+  const { value: raw } = decodeTaggedSceneReply(
+    `[${PROFESSOR_MARI_ID}]: Welcome.\n${change}\n[${PROFESSOR_MARI_ID}]: See you around.`,
+    taggedBookendReadset,
+  );
+  assert(raw);
+  const before = memoryHash(state);
+  assert.throws(
+    () =>
+      acceptNarration(
+        state,
+        { readset: taggedBookendReadset, raw, responseDigest: memoryHash(raw) },
+        "greeting",
+        due.toISOString(),
+      ),
+    /no commands or lasting changes/,
+  );
+  assert.equal(memoryHash(state), before, "Tagged introduction effects cannot change the Village");
+}
 const bookendRaw = {
   segments: [
-    { kind: "dialogue", speakerId: PROFESSOR_MARI_ID, text: "A garden! You even remembered the outside." },
+    {
+      kind: "dialogue",
+      speakerId: PROFESSOR_MARI_ID,
+      text: "A garden! You even remembered the outside.",
+      perceive: { kind: "private", by: ["unlisted-actor"] },
+    },
     {
       kind: "dialogue",
       speakerId: PROFESSOR_MARI_ID,
@@ -210,6 +243,8 @@ const bookends = structuredClone(scene);
 bookends.lines = structuredClone(accepted.episode!.segments);
 appendVisitorIntroductionTutorial(bookends, bookends.lines.at(-1)!.id);
 assert.equal(bookends.lines[0].content, bookendRaw.segments[0].text);
+assert(bookends.lines[0].heardBy.includes("player"));
+assert(!bookends.lines[0].heardBy.includes("unlisted-actor"));
 assert.equal(bookends.lines[1].content, "Wondering why I'm here?");
 assert.equal(bookends.lines.at(-2)!.content, bookendRaw.segments[1].text);
 assert.equal(bookends.lines.length, 10, "One generated pair surrounds the seven fixed paragraphs and closing beat");
