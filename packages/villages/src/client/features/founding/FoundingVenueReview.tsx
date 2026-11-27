@@ -1,4 +1,5 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
+import { foundingVenueDraftSource } from "../../../shared/helpers/founding-venue-draft.js";
 import { DisclosureSummary } from "../../shared/DisclosureSummary.js";
 import { clearFoundingAssignments } from "./quick-start-drafts.js";
 
@@ -17,8 +18,7 @@ export function FoundingVenueReview({
   onProblem(message: string): void;
   sourceKey?: string;
 }) {
-  const withoutPins = (rows: VillageVenue[]) =>
-    JSON.stringify(rows.map((row) => ({ ...row, presentation: { ...row.presentation, x: null, y: null } })));
+  const withoutPins = (rows: VillageVenue[]) => JSON.stringify(rows.map(foundingVenueDraftSource));
   return (
     <section className="villages-forging-card villages-access-panel" aria-label="Review Venue draft">
       <h2>{review.replaceAll ? "New Venue plan" : "Review Venue draft"}</h2>
@@ -63,9 +63,10 @@ export function FoundingVenueReview({
           const selected = review.replaceAll
             ? review.venues.map(clearFoundingAssignments)
             : review.venues.map((proposal) => {
+                const previous = current.find((old) => old.id === proposal.id);
+                if (!previous) return clearFoundingAssignments(proposal);
+                if (withoutPins([previous]) === withoutPins([proposal])) return previous;
                 const row = clearFoundingAssignments(proposal);
-                const previous = current.find((old) => old.id === row.id);
-                if (!previous) return clearFoundingAssignments(row);
                 const room = <T extends NonNullable<VillageVenue["spaces"]>[number]>(zone: T): T => {
                   const old = [...(previous.spaces ?? []), ...(previous.privateSpaces ?? [])].find(
                     (old) => old.id === zone.id,

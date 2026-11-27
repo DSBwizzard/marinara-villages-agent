@@ -186,10 +186,14 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     uploadSetupImage,
   } = controller;
   const pendingSetting = setupWorkspace.suggestionRequest?.draftSetting && !setupWorkspace.suggestionRequest.failure;
-  const venueDraftFailure = setupWorkspace.suggestionRequest?.draftSetting
-    ? undefined
-    : setupWorkspace.suggestionRequest?.failure;
-  const rawSetupProblem = currentSetupProblem || (setupStep === FOUNDING_STEP.Venues ? venueDraftFailure : "") || "";
+  const failedSuggestion = setupWorkspace.suggestionRequest;
+  const retryDraft =
+    failedSuggestion?.failure &&
+    !failedSuggestion.draftSetting &&
+    (!failedSuggestion.venueId || setupVenues.some((venue) => venue.id === failedSuggestion.venueId))
+      ? failedSuggestion
+      : undefined;
+  const rawSetupProblem = currentSetupProblem || (setupStep === FOUNDING_STEP.Venues ? retryDraft?.failure : "") || "";
   const venueConnectionUnavailable =
     setupStep === FOUNDING_STEP.Venues && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
   const setupProblem = venueConnectionUnavailable
@@ -1182,10 +1186,16 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                   pending={
                     !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
                   }
-                  failed={!!venueDraftFailure}
-                  onGenerate={() =>
-                    venueDraftFailure ? void suggestSetupVenues({ plan: true }) : setDraftVenuePlan(true)
-                  }
+                  failed={!!retryDraft}
+                  onGenerate={() => {
+                    if (!retryDraft) {
+                      setDraftVenuePlan(true);
+                      return;
+                    }
+                    void suggestSetupVenues(
+                      retryDraft.venueId ? { venueId: retryDraft.venueId, fullVenue: true } : { plan: true },
+                    );
+                  }}
                 />
               )}
             </>

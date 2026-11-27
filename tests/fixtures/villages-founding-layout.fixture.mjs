@@ -222,6 +222,9 @@ export async function verifyFoundingLayout(group) {
               return send({ ...settingReceipt, status: "running", result: null });
             }
             suggestions++;
+            assert.equal(body.mode, "draft-venue");
+            assert.equal(body.targetVenueId, "founding-community");
+            assert.equal(body.venueBrief, "A covered meeting courtyard.");
             if (failVenueConnection)
               return send({
                 id: body.actionId,
@@ -231,7 +234,6 @@ export async function verifyFoundingLayout(group) {
                 error: "Language model connection not found: stale-model-id",
               });
             assert.equal(body.openingVenueId, "founding-community");
-            assert.equal(body.mode, "draft-venue");
             assert.equal(body.draftEntranceImage, false);
             assert.equal(body.context.rules, "The sun never sets.");
             const result = {
@@ -2710,21 +2712,17 @@ export async function verifyFoundingLayout(group) {
         failVenueConnection = true;
         await editVenue("founding-community");
         await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
-        await page
-          .getByRole("dialog", { name: "Redraft Venue", exact: true })
-          .getByRole("button", { name: "Draft Venue", exact: true })
-          .click();
+        const redraft = page.getByRole("dialog", { name: "Redraft Venue", exact: true });
+        await redraft.getByLabel("Venue ideas").fill("A covered meeting courtyard.");
+        await redraft.getByRole("button", { name: "Draft Venue", exact: true }).click();
         await expect(root.getByText("The System connection is unavailable.", { exact: false })).toBeVisible();
         await button("Check Model Connections").click();
         const repair = root.getByRole("dialog", { name: "Model Connections", exact: true });
         await repair.getByRole("button", { name: "Back", exact: true }).click();
         assert.equal(suggestions, 1, "Checking connections never retries generation");
         failVenueConnection = false;
-        await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
-        await page
-          .getByRole("dialog", { name: "Redraft Venue", exact: true })
-          .getByRole("button", { name: "Draft Venue", exact: true })
-          .click();
+        await closeVenue();
+        await button("Retry draft").click();
         await expect.poll(() => suggestions).toBe(2);
         await root.getByRole("button", { name: "Use changes", exact: true }).click();
         await expect
