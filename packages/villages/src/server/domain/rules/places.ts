@@ -253,6 +253,7 @@ export function capturePlaceContext(
   actors: readonly string[],
   query = "",
   excludedCandidates: readonly string[] = [],
+  recentlyWitnessedNpcIds: readonly string[] = [],
 ): PlaceRegistry {
   const registry = emptyPlaceRegistry(),
     source = placeRegistry(state);
@@ -286,7 +287,7 @@ export function capturePlaceContext(
     ...active,
     ...selectNpcCandidates(
       source,
-      { placeId, mapId: location?.presentation.mapId, query, authorityIds: [...authorityIds] },
+      { placeId, mapId: location?.presentation.mapId, query, authorityIds: [...authorityIds], recentlyWitnessedNpcIds },
       [...actors, ...excludedCandidates],
       Math.max(0, 8 - active.length),
     ),

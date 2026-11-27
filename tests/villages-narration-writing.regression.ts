@@ -1,4 +1,4 @@
-// Test cases: narration-writing/departed-speaker, narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner, narration-writing/empty-cast-npc, narration-writing/new-encounter
+// Test cases: narration-writing/departed-speaker, narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner, narration-writing/empty-cast-npc, narration-writing/new-encounter, narration-writing/ambiguous-recall-fallback
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -53,6 +53,7 @@ import {
   createSceneWriting,
   type SceneWritingPorts,
 } from "../packages/villages/src/server/features/scenes/writing-service.js";
+import { createEmbeddingRecall } from "../packages/villages/src/server/features/scenes/embedding-recall-service.js";
 import { configureSceneWriting, generate } from "../packages/villages/src/server/features/scenes/writing.js";
 import {
   encodeContinuityPages,
@@ -60,7 +61,11 @@ import {
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 
 const at = "2026-11-09T12:00:00.000Z";
-function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
+function fixture(
+  beforeRead?: () => void | Promise<void>,
+  modelId = "fixture",
+  embeddingRecall?: SceneWritingPorts["embeddingRecall"],
+) {
   const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
   const place = establishPlace(
     state,
@@ -126,6 +131,7 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
   };
   const writing = createSceneWriting({
     venueOperationId: () => operationId,
+    embeddingRecall,
     venueCheckpoint: async (stage: string, work: () => Promise<unknown>) => {
       if (!checkpoints.has(stage)) checkpoints.set(stage, structuredClone(await work()));
       return structuredClone(checkpoints.get(stage));
@@ -247,6 +253,8 @@ await runCase("narration-writing/empty-cast-npc", async () => {
       ],
     };
     if (!positions) {
+      Object.assign(f.scene, zoneEventScene(f.scene, f.venue));
+      f.scene.contactGeneration!.instruction = "Resolve this Contact.";
       raw.segments[0].id = "arrival";
       raw.segments[1].id = "greeting";
       raw.commands[0].at = raw.commands[0].source[0].segment = "arrival";
@@ -631,11 +639,11 @@ await runCase("narration-writing/single-request", async () => {
       ?.includes('"leadSpeakerId"'),
   );
   const addressed = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, what do you think?", "chat");
-  assert(
-    addressed.fitted.messages.some(
-      ({ role, content }) => role === "user" && content.includes(`"leadSpeakerId":${JSON.stringify(f.id)}`),
-    ),
-  );
+  const hasLead = (request: typeof addressed) =>
+    request.fitted.messages.some(({ content }) => content.includes('"leadSpeakerId":' + JSON.stringify(f.id)));
+  assert(!hasLead(addressed), "naming a person in prose does not bind the server target");
+  const targetedScene = zoneEventScene(f.scene, f.venue, { targetId: f.id });
+  assert(hasLead(await f.writing.prepareVenueTurnMessages(targetedScene, "What do you think?", "chat")));
   const messages = f.messages();
   const cut = messages.findIndex((row) => row.cacheBreakpoint);
   assert(cut >= 0 && cut < messages.indexOf(frame));
@@ -1655,12 +1663,13 @@ await runCase("narration-writing/long-followup", async () => {
     assert(read.readset.readOnlyKnowledge?.some((source) => source.excerpt === shared.text));
     assert(!Object.values(read.readset.source.historical).some((source) => source.excerpt === shared.text));
   }
-  const memoryEdit = await f.writing.prepareVenueTurnMessages(
-    f.scene,
-    "“Mara, please remember that weaving memory.”",
-    "chat",
+  const capturedLegacy = narrationContinuityContext(f.state, f.scene, f.venue, "old-format", "Weaving memory", at);
+  const legacyReadset = fittedNarrationReadset(
+    f.state,
+    capturedLegacy,
+    capturedLegacy.parts.flatMap(({ block }) => block.evidenceId ?? []),
   );
-  const historical = Object.entries(memoryEdit.readset.source.historical);
+  const historical = Object.entries(legacyReadset.source.historical);
   const [alias, reference] = historical.find(
     ([, source]) => source.kind === "knowledge" && source.actorId === "player",
   )!;
@@ -1671,7 +1680,7 @@ await runCase("narration-writing/long-followup", async () => {
     "Please correct what I told you about the weaving memory.",
   ]) {
     const write = await f.writing.prepareVenueTurnMessages(f.scene, change, "chat");
-    assert(write.readset.admission.supplied.some((target) => target.id === citedRoot));
+    assert(!write.readset.admission.supplied.some((target) => target.id === citedRoot));
   }
   assert(
     historical.some(
@@ -1679,7 +1688,7 @@ await runCase("narration-writing/long-followup", async () => {
     ),
   );
   const annotated = { segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", source: [alias] }] };
-  const normalized = readSceneNarrationReply(annotated, [f.id], memoryEdit.readset, f.state.continuity);
+  const normalized = readSceneNarrationReply(annotated, [f.id], legacyReadset, f.state.continuity);
   assert.equal(normalized.segments[0].text, "I remember.");
   assert(!Object.hasOwn(normalized.segments[0], "source"));
   assert.deepEqual(annotated.segments[0].source, [alias], "recovery keeps the exact purchased reply");
@@ -1752,7 +1761,7 @@ await runCase("narration-writing/long-followup", async () => {
       readSceneNarrationReply(
         { segments: [{ ...annotated.segments[0], speakerId: "bram" }] },
         [f.id, "bram"],
-        memoryEdit.readset,
+        legacyReadset,
         f.state.continuity,
       ),
     /Unrecognized key/,
@@ -1813,7 +1822,7 @@ await runCase("narration-writing/long-followup", async () => {
   f.nextOperation("astrolabe-summary");
   const fact = await f.writing.prepareVenueTurnMessages(f.scene, "Tell me about the astrolabe.", "chat");
   assert(fact.fitted.messages.some((row) => row.content.includes(summary)));
-  assert(fact.fitted.messages.every((row) => !row.content.includes('"earlierRecall":true')));
+  assert(fact.fitted.messages.some((row) => row.content.includes("The brass astrolabe belongs to the ferryman.")));
   f.nextOperation("astrolabe-exact-words");
   const quote = await f.writing.prepareVenueTurnMessages(f.scene, "Quote the astrolabe line.", "chat");
   assert(quote.fitted.messages.some((row) => row.content.includes("The brass astrolabe belongs to the ferryman.")));
@@ -1860,7 +1869,7 @@ await runCase("narration-writing/long-followup", async () => {
       .sort(),
   );
   const units = Object.values(excerpt.readset.admission.provenance ?? {}).flat();
-  assert(units.includes(episodeUnit(curtain, "input")));
+  assert(!units.includes(episodeUnit(curtain, "input")), "raw private input is outside older recall provenance");
   assert.deepEqual(
     curtain.segments.map((line) => units.includes(episodeUnit(curtain, line.id))),
     [false, true, true, false],
@@ -2104,4 +2113,29 @@ await runCase("narration-writing/required-evidence-bound", async () => {
   );
   assert.equal(f.calls.purchases, 0, "a fit that cannot retain all required provenance never reaches the provider");
   assert.equal(f.checkpoints.size, 0);
+});
+
+await runCase("narration-writing/ambiguous-recall-fallback", async () => {
+  const off = fixture();
+  const failed = createEmbeddingRecall(async () => null);
+  failed.select("connection:fixture");
+  const fallback = fixture(undefined, "fixture", failed.ranking);
+  for (const f of [off, fallback]) {
+    f.respondWith({ segments: [{ kind: "dialogue", speakerId: f.id, text: "Which promise did you mean?" }] });
+    const reply = await f.writing.generate(f.scene, '"What about that thing?"', "chat");
+    assert.equal(f.calls.purchases, 1);
+    assert.deepEqual(reply.readset.source.historical, {});
+    assert(!reply.readset.projects.length);
+    assert.match(
+      f
+        .messages()
+        .map(({ content }) => content)
+        .join("\n"),
+      /ask a short in-character question/u,
+    );
+  }
+  const normalized = (f: typeof off) =>
+    f.messages().map(({ content }) => content.replace(/"calendar":\{[^}]*\}/u, '"calendar":{}'));
+  assert.deepEqual(normalized(off), normalized(fallback));
+  failed.dispose();
 });

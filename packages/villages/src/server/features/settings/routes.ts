@@ -308,7 +308,12 @@ export function registerConnectionRoutes(engine: FastifyInstance) {
     }
   });
   app.put<{
-    Body: { systemConnectionId?: unknown; narrationConnectionId?: unknown; imageConnectionId?: unknown };
+    Body: {
+      systemConnectionId?: unknown;
+      narrationConnectionId?: unknown;
+      imageConnectionId?: unknown;
+      embedding?: unknown;
+    };
   }>("/connections", async (request, reply) => {
     try {
       return await saveVillageConnections(request.body ?? {});

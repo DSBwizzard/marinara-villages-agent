@@ -1,3 +1,4 @@
+import { configuredEmbeddingModel } from "../../../shared/helpers/embedding-connections.js";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { VillageConnectionSettings } from "../../../shared/contracts/village.js";
 import { messageFrom, request, requestHost } from "../../shared/api.js";
@@ -15,6 +16,7 @@ const jobs = [
   { key: "systemConnectionId", label: "System", purpose: "Drafts and village activity" },
   { key: "narrationConnectionId", label: "GM", purpose: "Scenes and dialogue" },
   { key: "imageConnectionId", label: "Images", purpose: "Maps and artwork" },
+  { key: "embedding", label: "Embedding", purpose: "Finds related memories" },
 ] as const;
 
 type ConnectionJob = (typeof jobs)[number];
@@ -123,8 +125,36 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
     if (enabled && viewing) refresh(true);
   }, [enabled, viewing, refresh]);
 
+  const preparingEmbedding = settings?.embeddingStatus === "preparing" ? settings.embedding : undefined;
+  useEffect(() => {
+    if (!enabled || !preparingEmbedding) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const next = await request<VillageConnectionSettings>("/connections", {
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(CONNECTION_READ_TIMEOUT_MS)]),
+        });
+        if (controller.signal.aborted) return;
+        setSettings((current) =>
+          current && current.embedding === preparingEmbedding && next.embedding === preparingEmbedding
+            ? { ...current, embeddingStatus: next.embeddingStatus }
+            : current,
+        );
+      } catch {
+        // Model preparation is optional and cannot interrupt the connection picker.
+      }
+      if (!controller.signal.aborted) timer = setTimeout(poll, 1800);
+    };
+    timer = setTimeout(poll, 1800);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [enabled, preparingEmbedding]);
+
   const choose = useCallback(
-    (choice: ConnectionChoice) => {
+    (choice: ConnectionChoice, onSaved?: () => void) => {
       if (!alive.current || saving.current || read.current || readFailed) return false;
       saving.current = true;
       const current = ++generation.current;
@@ -136,7 +166,10 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
             method: "PUT",
             body: JSON.stringify({ [choice.key]: choice.id }),
           });
-          if (alive.current && generation.current === current) setSettings(next);
+          if (alive.current && generation.current === current) {
+            setSettings(next);
+            onSaved?.();
+          }
         } catch (cause) {
           if (alive.current && generation.current === current) {
             setReadFailed(true);
@@ -209,7 +242,8 @@ export function AgentConnectionsControls({
   const { settings, options, error, readFailed, busy, pending, choose, refresh } = connections;
   const [job, setJob] = useState<ConnectionJob | null>(null);
   const [search, setSearch] = useState("");
-  const [recommendImages, setRecommendImages] = useState(false);
+  const [recommend, setRecommend] = useState<"images" | "embedding" | null>(null);
+  const [embeddingConnections, setEmbeddingConnections] = useState(false);
   const titleId = useId();
   const pendingId = useId();
   const language = options.filter((option) => option.category === "language");
@@ -218,16 +252,56 @@ export function AgentConnectionsControls({
   const founding = kind === "founding";
   const imageReady = images.some((option) => option.id === settings?.imageConnectionId && !option.needsReview);
 
+  const localEmbedding = { id: "local", name: "Engine local model", detail: "", needsReview: false };
+  const embeddingOptions = options.flatMap((option) => {
+    const detail = configuredEmbeddingModel(options, option);
+    return detail ? [{ ...option, id: "connection:" + option.id, detail }] : [];
+  });
+  const embedding = settings?.embedding ?? "off";
+  const embeddingReady =
+    embedding === "local"
+      ? settings?.embeddingStatus !== "unavailable"
+      : embeddingOptions.some((option) => option.id === embedding && !option.needsReview) &&
+        settings?.embeddingStatus !== "unavailable";
   const pickingImages = job?.key === "imageConnectionId";
-  const modelOptions = pickingImages ? images : language;
-  const currentOption = job && modelOptions.find((option) => option.id === settings?.[job.key]);
+  const pickingEmbedding = job?.key === "embedding";
+  const modelOptions = pickingEmbedding
+    ? embeddingConnections
+      ? embeddingOptions
+      : []
+    : pickingImages
+      ? images
+      : language;
+  const selectedConnection = job ? (pickingEmbedding ? embedding : settings?.[job.key]) : undefined;
+  const currentOption = (pickingEmbedding ? [localEmbedding, ...embeddingOptions] : modelOptions).find(
+    (option) => option.id === selectedConnection,
+  );
   const query = search.trim().toLowerCase();
-  const matches = modelOptions.filter((option) => `${option.name} ${option.detail}`.toLowerCase().includes(query));
+  const matches = modelOptions.filter((option) => (option.name + " " + option.detail).toLowerCase().includes(query));
   const specialChoices = [];
+  if (pickingEmbedding && !embeddingConnections)
+    specialChoices.push(
+      localEmbedding,
+      { id: "engine-connections", name: "Use an Engine connection", detail: "", needsReview: false },
+      { id: "off", name: "Play without embeddings", detail: "", needsReview: false },
+    );
   if (pickingImages)
     specialChoices.push({ id: VILLAGES_IMAGE_CONNECTION_DISABLED, name: "Disabled", detail: "", needsReview: false });
-  if (!founding || pickingImages)
+  if (!pickingEmbedding && (!founding || pickingImages))
     specialChoices.push({ id: "", name: "Use Engine default", detail: "", needsReview: false });
+
+  function openPicker(entry: ConnectionJob) {
+    setSearch("");
+    setEmbeddingConnections(false);
+    setJob(entry);
+  }
+
+  function continueAfterImages() {
+    if (embeddingReady) {
+      setRecommend(null);
+      onContinue?.();
+    } else setRecommend("embedding");
+  }
   const problem = error ? (
     <div
       className={`${P}-model-problem`}
@@ -271,25 +345,35 @@ export function AgentConnectionsControls({
             .map((entry) => {
               const artwork = entry.key === "imageConnectionId";
               const saving = pending?.key === entry.key;
-              const id = saving ? pending.id : settings[entry.key];
-              const selected = (artwork ? images : language).find((option) => option.id === id);
-              const off = artwork && id === VILLAGES_IMAGE_CONNECTION_DISABLED;
+              const semantic = entry.key === "embedding";
+              const id = saving ? pending.id : semantic ? embedding : settings[entry.key];
+              const selected = (semantic ? [localEmbedding, ...embeddingOptions] : artwork ? images : language).find(
+                (option) => option.id === id,
+              );
+              const off = semantic ? id === "off" : artwork && id === VILLAGES_IMAGE_CONNECTION_DISABLED;
               const missing = !!id && !off && !selected;
-              const needsChoice = founding && !artwork && !id;
-              const valid = !!selected && !selected.needsReview;
+              const needsChoice = founding && !artwork && !semantic && !id;
+              const valid = !!selected && !selected.needsReview && (!semantic || settings.embeddingStatus === "ready");
+              const availability = semantic && !off && !saving ? settings.embeddingStatus : undefined;
               const status = saving
                 ? "Saving…"
-                : selected?.needsReview
-                  ? "Needs review"
-                  : missing
+                : availability === "preparing"
+                  ? id === "local"
+                    ? "Preparing local model"
+                    : "Checking connection"
+                  : availability === "unavailable"
                     ? "Unavailable"
-                    : valid
-                      ? "✓ Ready"
-                      : artwork
-                        ? "Optional"
-                        : "Required";
+                    : selected?.needsReview
+                      ? "Needs review"
+                      : missing
+                        ? "Unavailable"
+                        : valid
+                          ? "✓ Ready"
+                          : artwork || semantic
+                            ? "Optional"
+                            : "Required";
               let value = "Engine default";
-              if (off) value = "Disabled";
+              if (off) value = semantic ? "No embedding model" : "Disabled";
               else if (missing) value = "Missing connection";
               else if (needsChoice) value = "Choose a model";
               else if (selected) value = selected.name;
@@ -305,8 +389,7 @@ export function AgentConnectionsControls({
                   disabled={(busy && !pending) || disabled}
                   onClick={() => {
                     if (pending) return;
-                    setSearch("");
-                    setJob(entry);
+                    openPicker(entry);
                   }}
                 >
                   <span className={`${P}-model-icon`}>
@@ -323,7 +406,10 @@ export function AgentConnectionsControls({
                     <strong>{value}</strong>
                     {selected?.detail ? <small>{selected.detail}</small> : null}
                     {selected?.needsReview ? <small data-needs-review>Needs Engine review</small> : null}
-                    {founding ? (
+                    {semantic && id === "local" && availability === "preparing" ? (
+                      <small data-embedding-preparing>May download on first use</small>
+                    ) : null}
+                    {founding || availability ? (
                       <span className={`${P}-model-readiness`} data-valid={valid || undefined}>
                         {status}
                       </span>
@@ -342,51 +428,66 @@ export function AgentConnectionsControls({
             className="villages-forging-primary"
             disabled={!!connections.setupProblem || disabled}
             onClick={() => {
-              if (imageReady) onContinue();
-              else setRecommendImages(true);
+              if (imageReady) continueAfterImages();
+              else setRecommend("images");
             }}
           >
             Next
           </button>
         </footer>
       ) : null}
-      {recommendImages && onContinue ? (
+      {recommend && onContinue ? (
         <ModalDialog
-          title="Image connection"
-          className="villages-founding-image-recommendation"
+          title={recommend === "images" ? "Image connection" : "Embedding model"}
+          className={
+            recommend === "images"
+              ? "villages-founding-image-recommendation"
+              : "villages-founding-embedding-recommendation"
+          }
           compact
-          onClose={() => setRecommendImages(false)}
+          onClose={() => setRecommend(null)}
         >
-          <p>An image connection is highly recommended for maps and artwork.</p>
+          <p>
+            {recommend === "images"
+              ? "An image connection is highly recommended for maps and artwork."
+              : "We recommend an embedding model for better memory recall."}
+          </p>
+          {recommend === "embedding" ? problem : null}
           <footer>
             <button
               type="button"
+              className={recommend === "embedding" ? "villages-forging-primary" : undefined}
               disabled={busy || disabled}
               onClick={() => {
-                setRecommendImages(false);
-                setSearch("");
-                setJob(jobs[2]);
+                openPicker(recommend === "images" ? jobs[2] : jobs[3]);
+                setRecommend(null);
               }}
             >
-              Choose image connection
+              {recommend === "images" ? "Choose image connection" : "Choose embedding model"}
             </button>
             <button
               type="button"
-              className="villages-forging-primary"
-              disabled={!!connections.setupProblem || disabled}
+              className={recommend === "images" ? "villages-forging-primary" : undefined}
+              disabled={busy || !!connections.setupProblem || disabled}
               onClick={() => {
-                setRecommendImages(false);
-                onContinue();
+                if (recommend === "images") continueAfterImages();
+                else {
+                  const continueWithout = () => {
+                    setRecommend(null);
+                    onContinue();
+                  };
+                  choose({ key: "embedding", id: "off" }, continueWithout);
+                }
               }}
             >
-              Continue without images
+              {recommend === "images" ? "Continue without images" : "Continue without embeddings"}
             </button>
           </footer>
         </ModalDialog>
       ) : null}
       {job && settings ? (
         <ModalDialog
-          title={job.label}
+          title={pickingEmbedding && embeddingConnections ? "Embedding connections" : job.label}
           onClose={() => setJob(null)}
           className={`${P}-model-picker`}
           dismissible={!kind}
@@ -396,8 +497,9 @@ export function AgentConnectionsControls({
           <div className={`${P}-model-picker-body`}>
             <p>{job.purpose}</p>
             {feedback}
-            {settings[job.key] &&
-            settings[job.key] !== VILLAGES_IMAGE_CONNECTION_DISABLED &&
+            {selectedConnection &&
+            selectedConnection !== "off" &&
+            selectedConnection !== VILLAGES_IMAGE_CONNECTION_DISABLED &&
             !currentOption &&
             !readFailed ? (
               <p className={`${P}-model-problem`} role="status">
@@ -409,25 +511,49 @@ export function AgentConnectionsControls({
                 Review this connection in Engine before using it to generate.
               </p>
             ) : null}
-            <input
-              type="search"
-              autoComplete="off"
-              aria-label={pickingImages ? "Search image models" : "Search language models"}
-              placeholder={pickingImages ? "Search image models" : "Search language models"}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+            {pickingEmbedding && embeddingConnections ? (
+              <p>This connection may send Scene text and memory excerpts to its provider. Charges may apply.</p>
+            ) : null}
+            {!pickingEmbedding || embeddingConnections ? (
+              <input
+                type="search"
+                autoComplete="off"
+                aria-label={
+                  pickingEmbedding
+                    ? "Search embedding connections"
+                    : pickingImages
+                      ? "Search image models"
+                      : "Search language models"
+                }
+                placeholder={
+                  pickingEmbedding
+                    ? "Search embedding connections"
+                    : pickingImages
+                      ? "Search image models"
+                      : "Search language models"
+                }
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            ) : null}
             <div className={`${P}-model-choices`}>
               {[...specialChoices, ...matches].map((option) => {
-                const current = option.id === settings[job.key];
+                const current = option.id === selectedConnection;
+                const opensConnections = pickingEmbedding && option.id === "engine-connections";
                 return (
                   <button
                     type="button"
                     key={option.id}
                     aria-current={current || undefined}
-                    disabled={busy || disabled}
+                    disabled={busy || disabled || (pickingEmbedding && option.needsReview)}
                     onClick={() => {
-                      if (current || choose({ key: job.key, id: option.id })) setJob(null);
+                      if (opensConnections) {
+                        setEmbeddingConnections(true);
+                        return;
+                      }
+                      const retry =
+                        pickingEmbedding && settings.embeddingStatus === "unavailable" && option.id !== "off";
+                      if ((current && !retry) || choose({ key: job.key, id: option.id })) setJob(null);
                     }}
                   >
                     <span>
@@ -435,20 +561,36 @@ export function AgentConnectionsControls({
                       {option.detail ? <small>{option.detail}</small> : null}
                       {option.needsReview ? <small data-needs-review>Needs Engine review</small> : null}
                     </span>
-                    {current ? <span aria-hidden="true">✓</span> : null}
+                    {current ? (
+                      <span aria-hidden="true">✓</span>
+                    ) : opensConnections ? (
+                      <span className={P + "-model-chevron"} aria-hidden="true" />
+                    ) : null}
                   </button>
                 );
               })}
             </div>
-            {!modelOptions.length && !busy ? <p>Add a compatible model in Engine’s Connections panel.</p> : null}
+            {(!pickingEmbedding || embeddingConnections) && !modelOptions.length && !busy ? (
+              <p>Add a compatible model in Engine’s Connections panel.</p>
+            ) : null}
             {modelOptions.length > 0 && !matches.length ? <p>No matching models.</p> : null}
-            <button type="button" disabled={busy || disabled} onClick={() => refresh()}>
-              Refresh list
-            </button>
+            {!pickingEmbedding || embeddingConnections ? (
+              <button type="button" disabled={busy || disabled} onClick={() => refresh()}>
+                Refresh list
+              </button>
+            ) : null}
           </div>
-          {kind ? (
+          {kind || embeddingConnections ? (
             <footer>
-              <button type="button" onClick={() => setJob(null)}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (embeddingConnections) {
+                    setEmbeddingConnections(false);
+                    setSearch("");
+                  } else setJob(null);
+                }}
+              >
                 Back
               </button>
             </footer>
@@ -460,7 +602,7 @@ export function AgentConnectionsControls({
 }
 
 function JobIcon({ job }: { job: ConnectionJob }) {
-  if (job.key === "systemConnectionId") return <VillageIcon name="settings" />;
+  if (job.key === "systemConnectionId" || job.key === "embedding") return <VillageIcon name="settings" />;
   return (
     <svg
       className="mari-rgb-static-icon"

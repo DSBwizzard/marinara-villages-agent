@@ -22,6 +22,7 @@ export function applyNarrationProjectStart(
   receiptId: string,
   at: string,
 ): AcceptedEpisode["commandReceipts"][number] {
+  memoryRequire(readset.sceneProjectStart !== false, "Use the Project’s Start or Resume control");
   assertNarrationPlayerIntent(context, sources);
   const project = projectFor(state, projectId),
     captured = readset.projects.find((row) => row.projectId === projectId);

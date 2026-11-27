@@ -123,7 +123,13 @@ export async function verifyFoundingLayout(group) {
         const artRequests = [];
         let modelSelection = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
         const connectionRows = [
-          { id: "talk", name: "Language model", provider: "language", defaultForAgents: true },
+          {
+            id: "talk",
+            name: "Language model",
+            provider: "language",
+            defaultForAgents: true,
+            embeddingModel: "fixture-embedding",
+          },
           { id: "alt-talk", name: "Draft model", provider: "language" },
           {
             id: "image",
@@ -345,7 +351,15 @@ export async function verifyFoundingLayout(group) {
               persona: { ...personas[0], description: "A patient observer.", identity: "A patient observer." },
             });
           if (path.endsWith("/connections")) {
-            if (method === "PUT") modelSelection = { ...modelSelection, ...route.request().postDataJSON() };
+            if (method === "PUT") {
+              modelSelection = { ...modelSelection, ...route.request().postDataJSON() };
+              modelSelection.embeddingStatus =
+                modelSelection.embedding === "local"
+                  ? "preparing"
+                  : modelSelection.embedding?.startsWith("connection:")
+                    ? "ready"
+                    : undefined;
+            }
             if (method === "GET" && holdConnectionRead) {
               connectionReadHeld = true;
               return;
@@ -902,6 +916,36 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "founding-models-" + view.width + ".png"),
           });
+        const embedding = models.getByRole("button", { name: /^Embedding / });
+        await expect(embedding).toContainText("No embedding model");
+        if (view.width === 1366 || (view.width === 390 && view.height === 844)) {
+          await embedding.click();
+          const picker = root.getByRole("dialog", { name: "Embedding", exact: true });
+          await expect(picker.getByRole("button", { name: "Engine local model" })).toBeVisible();
+          await expect(picker.getByRole("button", { name: "Play without embeddings" })).toBeVisible();
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({
+              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "embedding-picker-" + view.width + ".png"),
+            });
+          await picker.getByRole("button", { name: "Use an Engine connection" }).click();
+          const chooser = root.getByRole("dialog", { name: "Embedding connections", exact: true });
+          await expect(chooser).toContainText("Charges may apply");
+          await chooser.getByRole("button", { name: /Language model.*fixture-embedding/ }).click();
+          await expect(embedding).toContainText("Language model");
+          assert.equal(modelSelection.embedding, "connection:talk");
+          await embedding.click();
+          await picker.getByRole("button", { name: "Engine local model" }).click();
+          await expect(embedding).toContainText("May download on first use");
+          await expect(modelGate.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+          if (view.width === 390) {
+            modelSelection.embeddingStatus = "unavailable";
+            await expect(embedding).toContainText("Unavailable");
+          } else {
+            await embedding.click();
+            await picker.getByRole("button", { name: "Play without embeddings" }).click();
+            await expect(embedding).toContainText("No embedding model");
+          }
+        }
         if (view.width === 390 && view.height === 844) {
           await system.click();
           const picker = page.getByRole("dialog", { name: "System", exact: true });
@@ -968,6 +1012,15 @@ export async function verifyFoundingLayout(group) {
             });
           await recommendation.getByRole("button", { name: "Continue without images", exact: true }).click();
         } else await expect(recommendation).toHaveCount(0);
+        const embeddingWarning = root.getByRole("dialog", { name: "Embedding model", exact: true });
+        await expect(embeddingWarning).toContainText("We recommend an embedding model for better memory recall.");
+        assert.ok(await embeddingWarning.evaluate((node) => node.scrollWidth <= node.clientWidth + 1));
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "embedding-warning-" + view.width + ".png"),
+          });
+        await embeddingWarning.getByRole("button", { name: "Continue without embeddings", exact: true }).click();
+        if (view.width === 390 && view.height === 844) await expect.poll(() => modelSelection.embedding).toBe("off");
         await expect(root).toHaveCSS("background-image", titleBackdrop);
         await expect(
           root.locator(".villages-reader-counter,.villages-founding-lore,.villages-lore-chip-slot"),

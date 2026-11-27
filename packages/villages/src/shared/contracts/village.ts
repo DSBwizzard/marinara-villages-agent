@@ -857,10 +857,15 @@ export type VillageWritingView = {
   rating: "sfw" | "nsfw";
 };
 
+export type VillageEmbeddingChoice = "local" | "off" | `connection:${string}`;
+export type VillageEmbeddingStatus = "preparing" | "ready" | "unavailable";
+
 export type VillageConnectionSettings = {
   systemConnectionId: string;
   narrationConnectionId: string;
   imageConnectionId: string;
+  embedding?: VillageEmbeddingChoice;
+  embeddingStatus?: VillageEmbeddingStatus;
 };
 
 export type SetupMapRequest = {

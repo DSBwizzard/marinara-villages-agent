@@ -127,6 +127,10 @@ await withBrowser(browser, async () => {
         .getByRole("dialog", { name: "Image connection", exact: true })
         .getByRole("button", { name: "Continue without images", exact: true })
         .click();
+      await scene
+        .getByRole("dialog", { name: "Embedding model", exact: true })
+        .getByRole("button", { name: "Continue without embeddings", exact: true })
+        .click();
       await expect(scene).toHaveAttribute("data-mari-turning", "true");
       await page.clock.fastForward(500);
       await expect(scene.locator(".villages-founding-title")).toHaveCount(0);

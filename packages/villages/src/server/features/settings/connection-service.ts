@@ -1,3 +1,4 @@
+import type { VillageEmbeddingChoice, VillageEmbeddingStatus } from "../../../shared/contracts/village.js";
 import type { villageEngineJson } from "../../adapters/engine/engine-transport.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { villageConnectionCategory } from "../../../shared/helpers/connection-category.js";
@@ -10,6 +11,7 @@ import {
   VILLAGES_IMAGE_CONNECTION_DISABLED,
   defaultVillageConnectionSettings,
   coerceVillageConnectionSettings,
+  embeddingChoice,
   type VillageConnectionSettings,
   type VillageConnectionPurpose,
   type VillageImageConnectionChoice,
@@ -22,6 +24,7 @@ export type ConnectionSettingsPorts = {
   villageEngineJson: typeof villageEngineJson;
   villagesAgentConnectionId: typeof villagesAgentConnectionId;
   villagesAgentImageConnectionId: typeof villagesAgentImageConnectionId;
+  selectEmbedding?(selected: VillageEmbeddingChoice, retry?: boolean): VillageEmbeddingStatus | undefined;
 };
 
 /** Settings storage and connection selection are supplied by one application. */
@@ -33,6 +36,7 @@ export function createConnectionSettings(ports: ConnectionSettingsPorts) {
     villageEngineJson,
     villagesAgentConnectionId,
     villagesAgentImageConnectionId,
+    selectEmbedding,
   } = ports;
   const CONNECTIONS_DOC_ID = "villages-connections";
 
@@ -48,9 +52,17 @@ export function createConnectionSettings(ports: ConnectionSettingsPorts) {
     label: () => CONNECTIONS_DOC_NAME,
   };
 
+  let connectionWrites = 0;
+  function withEmbeddingStatus(settings: VillageConnectionSettings, retry = false): VillageConnectionSettings {
+    const embeddingStatus = selectEmbedding?.(settings.embedding ?? "off", retry);
+    return embeddingStatus ? { ...settings, embeddingStatus } : settings;
+  }
+
   async function readVillageConnectionSettings(): Promise<VillageConnectionSettings> {
+    const revision = connectionWrites;
     const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, CONNECTIONS_DOC_ID);
-    return coerceVillageConnectionSettings(record?.data);
+    const settings = coerceVillageConnectionSettings(record?.data);
+    return revision === connectionWrites ? withEmbeddingStatus(settings) : settings;
   }
 
   async function chosenConnectionId(purpose: VillageConnectionPurpose): Promise<string> {
@@ -72,9 +84,11 @@ export function createConnectionSettings(ports: ConnectionSettingsPorts) {
       if (patch.systemConnectionId !== undefined) state.systemConnectionId = patch.systemConnectionId;
       if (patch.narrationConnectionId !== undefined) state.narrationConnectionId = patch.narrationConnectionId;
       if (patch.imageConnectionId !== undefined) state.imageConnectionId = patch.imageConnectionId;
+      if (patch.embedding !== undefined) state.embedding = patch.embedding;
       next = state;
     });
-    return next;
+    connectionWrites++;
+    return withEmbeddingStatus(next, patch.embedding !== undefined);
   }
 
   async function validateVillageSetupConnections(settings: VillageConnectionSettings): Promise<void> {
@@ -120,6 +134,11 @@ export function createConnectionSettings(ports: ConnectionSettingsPorts) {
   async function saveVillageConnections(body: unknown): Promise<VillageConnectionSettings> {
     const patch = asRecord(body);
     const accepted: Partial<VillageConnectionSettings> = {};
+    if (patch.embedding !== undefined) {
+      const choice = embeddingChoice(patch.embedding);
+      if (!choice) throw badRequest("Choose an embedding model or play without embeddings.");
+      accepted.embedding = choice;
+    }
     for (const key of SETTING_KEYS) {
       if (patch[key] === undefined) continue;
       const id = asTrimmedString(patch[key]);

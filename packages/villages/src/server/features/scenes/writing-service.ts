@@ -71,9 +71,10 @@ import {
 } from "../../domain/rules/venue-writing.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure } from "../../domain/rules/work-failure.js";
-import { addressedSceneResidents, zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
+import { zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
 import { contactPosition } from "../../domain/rules/venue-contact.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
+import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { capturedSceneCalendar } from "../../domain/rules/scene-calendar.js";
 import { decodeTaggedSceneReply, TAGGED_SCENE_FORMAT } from "../../domain/rules/tagged-scene-reply.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -95,6 +96,7 @@ export interface SceneWritingPorts {
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
   villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
+  embeddingRecall?: ReturnType<typeof import("./embedding-recall-service.js").createEmbeddingRecall>["ranking"];
 }
 export const VENUE_REPLY_MAX_TOKENS = 4096;
 export type SceneWritingRequest = {
@@ -119,6 +121,7 @@ export function createSceneWriting({
   completeWithRoom,
   villagesConnectionIdFor,
   readVillageState,
+  embeddingRecall,
 }: SceneWritingPorts) {
   async function resolveModel(connectionId: string | null) {
     try {
@@ -218,15 +221,15 @@ export function createSceneWriting({
       !scene.visitorIntroduction &&
       !scene.contactGeneration?.instruction &&
       (mode === "greet" || (freshReply && mode === "chat"));
-    const addressed = nativeCommands
-      ? []
-      : addressedSceneResidents(input, cast, scene.sceneAttendance?.occupants ?? cast);
-    const leadSpeakerId =
-      addressed.length === 1 &&
-      (scene.contactGeneration?.localIds?.includes(addressed[0].characterId) ||
-        scene.contactGeneration?.doorwayVoiceIds?.includes(addressed[0].characterId))
-        ? addressed[0].characterId
-        : undefined;
+    const targetId = nativeCommands ? undefined : scene.contactGeneration?.targetId;
+    const leadSpeakerId = cast.find(
+      ({ characterId }) =>
+        characterId === targetId &&
+        (scene.contactGeneration?.localIds.includes(characterId) ||
+          scene.contactGeneration?.doorwayVoiceIds?.includes(characterId)),
+    )?.characterId;
+    const semantic = await embeddingRecall?.(input, villageWorldScope(authority), signal);
+    signal?.throwIfAborted();
     const context = narrationContinuityContext(
       authority,
       scene,
@@ -236,6 +239,7 @@ export function createSceneWriting({
       villageNow(authority.clock?.advanceMs ?? 0).toISOString(),
       !nativeCommands,
       tagged,
+      semantic,
     );
     let loreInspection: LoreInspection | undefined;
     let loreRequirements: number[][][] = [];
@@ -586,6 +590,9 @@ export function createSceneWriting({
       ],
       circumstances: [
         ...blocksFor([
+          !nativeCommands && !scene.visitorIntroduction
+            ? "Resolve references using the current Scene and supplied recall. Each person can use only what they witnessed or know. If the intended person, event, or Project is unclear, ask a short in-character question in this reply. Recall can explain history; use current, witnessed evidence for new decisions."
+            : "",
           nativeCommands && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
           nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
           showAccess ? narrationAccessPrompt(context.access) : "",
@@ -731,6 +738,7 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
+        sceneProjectStart: false,
         ...(scene.visitorIntroduction
           ? { visitorIntroductionFarewell: true as const }
           : { sceneFollowing: 2 as const }),

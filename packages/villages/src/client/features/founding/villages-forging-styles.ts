@@ -791,17 +791,21 @@ export const VILLAGES_FORGING_STYLES = `
   background:var(--founding-control,#514157); border-color:var(--founding-accent,#d4a9ae);
 }
 .villages-founding-connections :is(.marinara-capability-villages-model-icon,.marinara-capability-villages-model-chevron,
-  .marinara-capability-villages-model-assignment small:not([data-needs-review])) { display:none; }
+  .marinara-capability-villages-model-assignment small:not([data-needs-review],[data-embedding-preparing])) { display:none; }
 .villages-founding-connections .marinara-capability-villages-model-row small { color:var(--founding-accent,#e9bec6); font-size:.75rem; }
 .villages-founding-connections .marinara-capability-villages-model-assignment {
   display:block; margin-top:.3rem; font-size:.8rem;
 }
+.villages-forging-v2 .villages-founding-connections-dialog .villages-founding-connections-footer>.villages-forging-primary { width:100%; min-height:44px; margin:0; }
 .villages-founding-connections .marinara-capability-villages-model-assignment[data-needs-choice] { color:var(--founding-error,#ffbac5); }
 .villages-founding-connections .marinara-capability-villages-model-assignment strong { font-weight:400; }
 .villages-founding-connections .marinara-capability-villages-model-pending { position:absolute; inset:.6rem .6rem auto auto; }
 .villages-forging-v2 .marinara-capability-villages-model-readiness { align-self:start; color:var(--founding-error); font-size:.75rem; white-space:nowrap; }
 .villages-forging-v2 .marinara-capability-villages-model-readiness[data-valid] { color:var(--founding-foreground); }
 .villages-founding-connections .marinara-capability-villages-model-readiness { position:absolute; top:.6rem; right:.65rem; }
+.villages-forging-v2 .villages-founding-embedding-recommendation>footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+.villages-forging-v2 .villages-founding-embedding-recommendation[data-compact=true]>footer>button { width:100%; min-width:0; white-space:normal; overflow-wrap:anywhere; }
+@media(max-width:560px) { .villages-forging-v2 .villages-founding-embedding-recommendation>footer { grid-template-columns:minmax(0,1fr); } }
 .villages-forging-v2 .villages-founding-image-recommendation>footer { display:grid; grid-template-columns:minmax(0,1fr); gap:.5rem; }
 .villages-forging-v2 .villages-founding-image-recommendation[data-compact=true]>footer>button { width:100%; min-width:0; white-space:normal; }
 .villages-founding-appearance-options { display:grid; gap:.25rem; margin:0; padding:.6rem; border:1px solid var(--founding-line); border-radius:.6rem; }

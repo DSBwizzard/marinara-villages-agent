@@ -187,7 +187,7 @@ export const NARRATION_HOUSING_COMMANDS =
   "Housing commands: residence.request {by,venue}; residence.decide {by,person,venue,approved}. Cite the request or current decision about its exact terms.";
 
 export const NARRATION_PROJECT_COMMANDS =
-  'Project commands: project.start {project} needs explicit current Player Start or Resume. project.decide {by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"} uses deciding words.';
+  'Project decisions: project.decide {by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"} uses deciding words.';
 
 export const NARRATION_CIRCUMSTANCE_COMMANDS =
   'circumstance with a supplied grant: {severity?:"gentle|moderate|dramatic",occurrence?,situation:{id?,title,summary,status?:"active|resolved"},conditions?:[{id?,observation?,restriction?:"none|ordinary-use",remedy?,durationMinutes?,clear?}]}. Cite Player-seen narration of the occurrence. A completed repair can use conditions:[{id,clear:true}] without a grant. It requires same-reply Room keeps for every linked entry citing the same completed repair.';

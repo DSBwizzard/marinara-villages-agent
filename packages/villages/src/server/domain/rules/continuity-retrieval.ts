@@ -16,7 +16,7 @@ import {
   relationshipKey,
 } from "./continuity.js";
 import { memoryRequire } from "./memory-integrity.js";
-import { recallTerms } from "./text-recall.js";
+import { rankRecall, type RecallRanking } from "./text-recall.js";
 import { recentSharedEpisodes } from "./episodes.js";
 
 /** Current attitude is private GM context for its owner, not a source of in-world knowledge. */
@@ -55,28 +55,6 @@ export function relationshipAttitudes(
     .slice(0, 16);
 }
 
-function rank<T>(rows: T[], query: string, prose: (row: T) => string) {
-  const terms = new Set(recallTerms(query)),
-    frequencies = new Map<string, number>();
-  const documents = rows.map((row, index) => {
-    const tokens = recallTerms(prose(row)),
-      counts = new Map<string, number>();
-    for (const term of tokens) counts.set(term, (counts.get(term) ?? 0) + 1);
-    for (const term of counts.keys()) frequencies.set(term, (frequencies.get(term) ?? 0) + 1);
-    return { row, index, counts, length: tokens.length, score: 0 };
-  });
-  const average = documents.reduce((sum, row) => sum + row.length, 0) / Math.max(1, rows.length);
-  for (const row of documents)
-    for (const term of terms) {
-      const frequency = row.counts.get(term) ?? 0,
-        count = frequencies.get(term) ?? 0;
-      if (frequency)
-        row.score +=
-          (Math.log(1 + (rows.length - count + 0.5) / (count + 0.5)) * frequency * 2.2) /
-          (frequency + 1.2 * (0.25 + (0.75 * row.length) / Math.max(1, average)));
-    }
-  return documents.sort((a, b) => b.score - a.score || b.index - a.index);
-}
 function targets(views: ContinuityView[]): ContinuityTarget[] {
   const result = new Map<string, ContinuityTarget>();
   for (const view of views) {
@@ -117,10 +95,23 @@ export function selectRoomContinuity(
   episodes: EpisodeCollection,
   holder: Extract<ContinuityHolder, { kind: "room" }>,
   at: string,
-  request: { query: string; bytes: number; requiredIds: string[]; preferredIds?: string[]; wholeRoom: boolean },
+  request: {
+    query: string;
+    bytes: number;
+    requiredIds: string[];
+    preferredIds?: string[];
+    wholeRoom: boolean;
+    viewers?: ReadonlySet<string>;
+  },
 ) {
   memoryRequire(Number.isSafeInteger(request.bytes) && request.bytes > 0, "invalid room context budget");
-  const all = currentRoomViews(collection, episodes, holder, at);
+  const roomViews = currentRoomViews(collection, episodes, holder, at);
+  const all = roomViews.filter(
+    (view) =>
+      !request.viewers ||
+      view.version.room?.visibility !== "concealed" ||
+      view.roomKnownBy?.some((id) => request.viewers!.has(id)),
+  );
   const required = new Set(
     request.wholeRoom ? all.map((row) => row.id) : [...request.requiredIds, ...(all[0] ? [all[0].id] : [])],
   );
@@ -130,13 +121,13 @@ export function selectRoomContinuity(
   );
   const selected = all.filter((row) => required.has(row.id));
   const packet = () => ({
-    partial: selected.length < all.length,
+    partial: selected.length < roomViews.length,
     total: all.length,
     entries: selected.toSorted((a, b) => a.version.room!.order - b.version.room!.order).map(roomEntry),
   });
   const size = () => Buffer.byteLength(JSON.stringify(packet()));
   memoryRequire(size() <= request.bytes, "required room context does not fit before generation");
-  const ranked = rank(all, request.query, (row) => row.version.text);
+  const ranked = rankRecall(all, request.query, (row) => row.version.text);
   const preferred = new Set(request.preferredIds);
   for (const { row } of [
     ...ranked.filter((row) => row.score > 0),
@@ -204,6 +195,9 @@ export function selectActorContinuity(
     requiredIds: string[];
     identity: (id: string) => { incarnation: string } | undefined;
     includeExtraInitiative?: boolean;
+    ranking?: RecallRanking;
+    semanticHolders?: ReadonlySet<string>;
+    recentEpisodeIds?: ReadonlySet<string>;
   },
 ) {
   memoryRequire(Number.isSafeInteger(request.bytes) && request.bytes > 0, "invalid actor context budget");
@@ -314,22 +308,45 @@ export function selectActorContinuity(
     if (foreground) take(foreground);
   }
   for (const row of surplus) take(row);
-  const asksAboutWishes =
-    request.includeExtraInitiative === false &&
-    /\b(?:what (?:do|would) you (?:want|hope|wish)|your (?:goals?|wishes?))\b/iu.test(request.query);
-  const query = asksAboutWishes ? request.query + " wishes" : request.query;
-  for (const { row, score } of rank(all, query, (row) =>
-    [
-      row.version.text,
-      ...(asksAboutWishes && row.current && row.version.class === "desire" && continuityGuidesHolder(row)
-        ? ["wishes"]
-        : []),
-      ...(row.current && row.version.class === "commitment" ? ["promise promised"] : []),
-      ...row.version.about.map((subject) => subject.id),
-      ...row.version.sources.map((source) => source.excerpt),
-    ].join(" "),
-  ))
-    if (score > 0) take(row);
+  const semantic = request.ranking?.semantic;
+  const ranked = rankRecall(
+    all,
+    request.query,
+    (row) =>
+      [
+        row.version.text,
+        ...(row.version.class === "desire" ? ["wish wishes want hope"] : []),
+        ...(row.version.class === "commitment" ? ["promise promised"] : []),
+        ...row.version.about
+          .filter((subject) => request.identity(subject.id)?.incarnation === subject.incarnation)
+          .map((subject) => subject.id),
+        ...row.version.sources.map((source) => source.excerpt),
+      ].join(" "),
+    {
+      ...request.ranking,
+      semantic:
+        semantic &&
+        ((texts) =>
+          semantic(
+            texts.map((text, index) =>
+              !request.semanticHolders || request.semanticHolders.has(continuityHolderKey(all[index].holder))
+                ? text
+                : "",
+            ),
+          )),
+    },
+  );
+  // Current obligations and witnessed recent sources are relevant even after a paraphrase.
+  const contextual = all.filter(
+    (row) =>
+      row.current &&
+      !row.version.closed &&
+      (row.version.class === "commitment" ||
+        row.version.class === "open-matter" ||
+        row.version.sources.some((source) => request.recentEpisodeIds?.has(source.episodeId))),
+  );
+  for (const row of contextual.slice(-6).toReversed()) take(row);
+  for (const { row, score } of ranked) if (score > 0) take(row);
   return {
     packet: packet(),
     supplied: targets(selected),

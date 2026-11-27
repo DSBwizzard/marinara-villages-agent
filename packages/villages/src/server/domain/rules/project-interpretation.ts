@@ -1,10 +1,9 @@
-import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import type { VillageState, VillageProject } from "../models/world.js";
 import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
 import { findLocation } from "./places.js";
 import { memoryHash } from "./memory-integrity.js";
 import { continuityActor } from "./continuity-actors.js";
-import { recallTerms } from "./text-recall.js";
+import { rankRecall } from "./text-recall.js";
 export type ProjectSpeechContext = {
   projectId: string;
   revision: number;
@@ -63,30 +62,41 @@ export function projectSpeechContexts(
   conversation: string,
   message = "",
   venueId = "",
+  recentIds: ReadonlySet<string> = new Set(),
 ): ProjectSpeechContext[] {
-  const query = message + "\n" + conversation;
-  const terms = new Set(recallTerms(query));
-  return state.projects.flatMap((project) =>
-    project.lifecycle &&
-    ["planning", "paused", "working"].includes(project.status) &&
-    (project.venueId === venueId ||
-      project.lifecycle.targetVenueId === venueId ||
-      [
-        ...project.participantIds,
-        ...project.lifecycle.affectedIds,
-        project.requesterCharacterId &&
-        continuityActor(state, project.requesterCharacterId)?.incarnation === project.requesterIncarnation
-          ? project.requesterCharacterId
-          : "",
-        project.lifecycle.builderId,
-        ...project.lifecycle.candidates.map((candidate) => candidate.residentId),
-      ].some((id) => id && activeIds.includes(id)) ||
-      query.includes(project.id) ||
-      query.includes(project.title) ||
-      recallTerms(project.title + " " + projectPhysicalDesign(project)).some((term) => terms.has(term)))
-      ? [projectSpeechContext(state, project, activeIds)]
-      : [],
+  const eligible = state.projects.filter(
+    (project) =>
+      project.lifecycle &&
+      ["planning", "paused", "working"].includes(project.status) &&
+      (project.venueId === venueId ||
+        project.lifecycle.targetVenueId === venueId ||
+        recentIds.has(project.id) ||
+        [
+          ...project.participantIds,
+          ...project.lifecycle.affectedIds,
+          project.requesterCharacterId &&
+          continuityActor(state, project.requesterCharacterId)?.incarnation === project.requesterIncarnation
+            ? project.requesterCharacterId
+            : "",
+          project.lifecycle.builderId,
+          ...project.lifecycle.candidates.map((candidate) => candidate.residentId),
+        ].some((id) => id && activeIds.includes(id))),
   );
+  const ranked = rankRecall(
+    eligible,
+    message,
+    (row) => [row.title, findLocation(state, row.lifecycle?.targetVenueId || row.venueId)?.name ?? ""].join(" "),
+    { recent: conversation },
+  ).sort(
+    (a, b) =>
+      Number(recentIds.has(b.row.id)) - Number(recentIds.has(a.row.id)) ||
+      Number(b.score > 0) - Number(a.score > 0) ||
+      Number(b.row.venueId === venueId) - Number(a.row.venueId === venueId) ||
+      b.score - a.score ||
+      b.row.updatedAt.localeCompare(a.row.updatedAt) ||
+      a.row.id.localeCompare(b.row.id),
+  );
+  return ranked.slice(0, 3).map(({ row }) => projectSpeechContext(state, row, activeIds));
 }
 export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeechContext[]): string {
   if (!contexts.length) return "";

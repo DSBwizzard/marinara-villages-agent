@@ -1,3 +1,5 @@
+import { villageEmbeddingHost } from "../adapters/engine/embedding-connections.js";
+import { createEmbeddingRecall } from "../features/scenes/embedding-recall-service.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import { randomUUID } from "node:crypto";
 import { prepareIntroductionVisitor } from "../features/world/visitor-introduction.js";
@@ -386,6 +388,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       bindCallback: (callback) => (completionOwner ? completionOwner.bind(callback) : callback),
     }),
   );
+  const embeddingRecall = createEmbeddingRecall(villageEmbeddingHost(next));
   const releaseConnections = configureConnectionSettings(
     createConnectionSettings({
       VILLAGES_PACKAGE_ID,
@@ -394,6 +397,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villageEngineJson,
       villagesAgentConnectionId,
       villagesAgentImageConnectionId,
+      selectEmbedding: embeddingRecall.select,
     }),
   );
   const releaseImageGeneration = configureImageGeneration(
@@ -530,6 +534,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       completeWithRoom,
       villagesConnectionIdFor,
       readVillageState: readVillageMemoryState,
+      embeddingRecall: embeddingRecall.ranking,
     }),
   );
   const sceneRetry = createSceneRetry({
@@ -1048,6 +1053,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseFoundingDrafts();
     releaseMapImages();
     releaseImageGeneration();
+    embeddingRecall.dispose();
     releaseConnections();
     releaseCompletions();
     releaseDebug();

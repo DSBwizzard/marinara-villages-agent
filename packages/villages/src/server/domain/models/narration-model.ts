@@ -36,6 +36,8 @@ export type NarrationReadset = {
   sceneSpeechActions?: SceneSpeechAction[];
   strictSceneReply?: true;
   taggedSceneReply?: true;
+  /** Fresh requests use the native Projects control for player Start and Resume. */
+  sceneProjectStart?: false;
   npcSpeakerNames?: Record<string, string>;
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;

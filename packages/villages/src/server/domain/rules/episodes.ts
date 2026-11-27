@@ -9,13 +9,7 @@ import {
 } from "./continuity.js";
 import { episodeSpeechEvidence, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import {
-  asksForPastExchange,
-  asksForRecallQuote,
-  recallTerms,
-  sceneQuoteScore,
-  sceneQuoteTerms,
-} from "./text-recall.js";
+import { asksForRecallQuote, rankRecall, sceneQuoteScore, sceneQuoteTerms, type RecallRanking } from "./text-recall.js";
 import { assertMailHistory, episodeMailEvidence } from "./mail-evidence.js";
 
 export const emptyEpisodes = (): EpisodeCollection => ({ format: 1, revision: 0, records: [] });
@@ -369,6 +363,7 @@ export function selectEpisodeHistory(
   query: string,
   bytes: number,
   sceneId?: string,
+  scope: { placeId?: string; ranking?: RecallRanking; projectedOnly?: boolean } = {},
 ) {
   memoryRequire(Number.isSafeInteger(bytes) && bytes >= 0, "invalid episode context budget");
   const holderKeys = new Set(holders.map(continuityHolderKey));
@@ -376,12 +371,6 @@ export function selectEpisodeHistory(
     episode.actors.some((actor) => holderKeys.has(continuityHolderKey({ kind: "actor", ...actor })))
       ? [{ episode, index }]
       : [],
-  );
-  const terms = new Set(
-    query
-      .normalize("NFKC")
-      .toLocaleLowerCase("en-US")
-      .match(/[\p{L}\p{N}]+/gu) ?? [],
   );
   const protections = gmProtections(
     collection,
@@ -411,112 +400,166 @@ export function selectEpisodeHistory(
       ),
     );
     if (!view) return [];
-    const text = !sceneId || episode.sceneId === sceneId ? JSON.stringify(view) : "";
-    const words = sceneId
-      ? new Set<string>()
-      : new Set(
-          text
-            .normalize("NFKC")
-            .toLocaleLowerCase("en-US")
-            .match(/[\p{L}\p{N}]+/gu) ?? [],
-        );
+    const currentScene = sceneId !== undefined && episode.sceneId === sceneId;
+    const witnessed: typeof view = {
+      ...view,
+      gmPrivateInput: { withheld: true as const },
+      segments: view.segments.flatMap((line): typeof view.segments => {
+        if (!("gmOnlyText" in line)) return [line];
+        const { gmOnlyText: _narration, ...segment } = line;
+        return segment.projections.length ? [segment] : [];
+      }),
+    };
+    const { groundedInput, segments, letters } = witnessed;
+    const named = (id: string) => episode.segments.find((line) => line.id === id)?.name;
+    const prose = [
+      ...new Set(
+        groundedInput.filter((row) => row.channel === "words" || row.channel === "sight").map((row) => row.text),
+      ),
+      ...segments.flatMap((line) => [
+        ...("text" in line && line.text ? [named(line.id) ?? "", line.text] : []),
+        ...line.projections.filter(({ channel }) => channel === "words" || channel === "sight").map(({ text }) => text),
+      ]),
+      ...(letters ?? []).map((letter) => letter.text),
+    ].join(" ");
+    const shared = (ids: readonly string[]) => ids.includes("player") && ids.some((id) => id !== "player");
+    const sharedWords = [
+      ...groundedInput
+        .filter(
+          (row) =>
+            row.for === "player" &&
+            row.channel === "words" &&
+            groundedInput.some(
+              (other) =>
+                other.for !== "player" && other.id === row.id && other.channel === "words" && other.text === row.text,
+            ),
+        )
+        .map((row) => row.text),
+      ...segments.flatMap((line) =>
+        "text" in line &&
+        line.text &&
+        shared(Object.keys(line.perceivedBy).filter((id) => line.perceivedBy[id] === "words"))
+          ? [line.text]
+          : [],
+      ),
+      ...(letters ?? []).filter((letter) => shared(letter.knownBy)).map((letter) => letter.text),
+    ];
+    const requireWitnessed = !currentScene && (sceneId !== undefined || scope.projectedOnly);
+    if (requireWitnessed && !prose.trim()) return [];
+    const projected = requireWitnessed ? witnessed : view;
     return [
       {
         index,
         episode,
-        view,
-        bytes: Buffer.byteLength(text),
-        score: [...terms].filter((term) => words.has(term)).length,
+        view: projected,
+        witnessed,
+        prose,
+        sharedWords,
+        bytes: !sceneId || currentScene ? Buffer.byteLength(JSON.stringify(projected)) : 0,
       },
     ];
   });
+  const rank = (pool: typeof candidates, recent?: string) =>
+    rankRecall(pool, query, (row) => row.prose, { ...scope.ranking, recent });
   if (sceneId) {
     const current = candidates.filter((row) => row.episode.sceneId === sceneId);
     const sceneWindow = appendHistoryWithin(current, bytes, (row) => row.bytes);
     const sceneIds = new Set(sceneWindow.map((row) => row.view.id));
-    const cue =
-      /(?:^\s*about\b|\b(?:remember|earlier|before|yesterday|last time|previously|promis(?:e|ed)|(?:you|we) (?:said|talked|agreed)|told me)\b)/giu;
-    const quote = asksForRecallQuote(query);
-    const explicit = quote || asksForPastExchange(query) || new RegExp(cue.source, "iu").test(query);
-    const queryTerms = quote
-      ? sceneQuoteTerms(query)
-      : [...new Set(recallTerms(query.replace(cue, " ")))].filter((term) => term.length >= 3);
-    // shortcut: match eligible prose locally; add semantic recall only if players miss specific callbacks.
-    const recalled = candidates
-      .map((row) => {
-        const { gmPrivateInput, groundedInput, segments, letters } = row.view;
-        if (quote)
-          return {
-            row,
-            matches: Math.max(
-              0,
-              ...groundedInput.flatMap((row) =>
-                row.channel === "words" ? [sceneQuoteScore(queryTerms, "player", row.text)] : [],
-              ),
-              ...segments.flatMap((line) => {
-                if (!("text" in line) || line.perceivedBy.player !== "words") return [];
-                const speaker = row.episode.segments.find((saved) => saved.id === line.id)?.name ?? line.speakerId;
-                return [sceneQuoteScore(queryTerms, speaker, line.text)];
-              }),
-            ),
-          };
-        const prose = [
-          "text" in gmPrivateInput ? gmPrivateInput.text : "",
-          ...groundedInput.map((source) => source.text),
-          ...segments.flatMap((segment) => [
-            "text" in segment ? segment.text : "gmOnlyText" in segment ? segment.gmOnlyText : "",
-            ...segment.projections.map((projection) => projection.text),
-          ]),
-          ...(letters ?? []).map((letter) => letter.text),
-        ].join(" ");
-        const words = new Set(recallTerms(prose));
-        return { row, matches: queryTerms.filter((term) => words.has(term)).length };
-      })
-      .filter(({ matches }) => matches >= (explicit ? 1 : 3))
-      .sort((a, b) => b.matches - a.matches || b.row.index - a.row.index)
-      .map(({ row }) => row);
-    // On arrival, offer the latest eligible shared exchange even before anyone asks for a callback.
-    const arrivalRecall = sceneWindow.length
-      ? []
-      : candidates
-          .toReversed()
+    const earlier = candidates.map((row) => ({ ...row, view: row.witnessed }));
+    const contextual = earlier.filter(
+      (row) =>
+        row.sharedWords.length &&
+        (row.episode.sceneId === sceneId || (row.episode.room?.placeId === scope.placeId && !!scope.placeId)),
+    );
+    const recent = current
+      .slice(-2)
+      .flatMap(({ view }) => [
+        ...view.groundedInput
           .filter(
-            ({ view }) =>
-              view.segments.some(
-                ({ perceivedBy }) =>
-                  perceivedBy.player === "words" &&
-                  Object.entries(perceivedBy).some(([id, channel]) => id !== "player" && channel === "words"),
-              ) ||
-              view.letters?.some(
-                ({ knownBy }) => knownBy.includes("player") && knownBy.some((id) => id !== "player"),
-              ) ||
-              view.groundedInput.some(
-                (row) =>
-                  row.for !== "player" &&
-                  row.channel === "words" &&
-                  view.groundedInput.some(
-                    (other) => other.for === "player" && other.id === row.id && other.channel === "words",
-                  ),
+            (row) =>
+              row.for === "player" &&
+              row.channel === "words" &&
+              holders.every(({ id }) =>
+                view.groundedInput.some(
+                  (other) =>
+                    other.for === id && other.channel === "words" && other.id === row.id && other.text === row.text,
+                ),
               ),
-          );
+          )
+          .map((row) => row.text),
+        ...view.segments.flatMap((line) =>
+          "text" in line && line.text && holders.every(({ id }) => line.perceivedBy[id] === "words") ? [line.text] : [],
+        ),
+      ])
+      .join("\n")
+      .slice(-2400);
+    const ranked = rank(earlier, recent);
+    const quote = asksForRecallQuote(query);
+    const quoteTerms = quote ? sceneQuoteTerms(query) : [];
+    const quoteMatches = quote
+      ? earlier
+          .map((row) => ({
+            row,
+            score: Math.max(
+              0,
+              ...row.view.groundedInput.flatMap((line) =>
+                line.for === "player" && line.channel === "words"
+                  ? [sceneQuoteScore(quoteTerms, "player", line.text)]
+                  : [],
+              ),
+              ...row.view.segments.flatMap((line) =>
+                "text" in line && line.text && line.perceivedBy.player === "words"
+                  ? [
+                      sceneQuoteScore(
+                        quoteTerms,
+                        row.episode.segments.find((saved) => saved.id === line.id)?.name ?? line.speakerId,
+                        line.text,
+                      ),
+                    ]
+                  : [],
+              ),
+            ),
+          }))
+          .filter(({ score }) => score > 0)
+          .sort((a, b) => b.score - a.score || b.row.index - a.row.index)
+          .map(({ row }) => row)
+      : [];
+    const arrival = sceneWindow.length
+      ? []
+      : earlier
+          .filter((row) => row.sharedWords.length)
+          .slice(-2)
+          .reverse();
+    const recallCandidates = [
+      ...new Set([
+        ...quoteMatches,
+        ...ranked.filter(({ score }) => score > 0).map(({ row }) => row),
+        ...contextual
+          .filter((row) => !sceneIds.has(row.view.id))
+          .slice(-2)
+          .reverse(),
+        ...arrival,
+      ]),
+    ];
     return {
       partial: sceneWindow.length < candidates.length,
       omitted: candidates.length - sceneWindow.length,
       bytes: sceneWindow.reduce((total, row) => total + row.bytes, 0),
       sceneWindow: sceneIds,
       episodes: sceneWindow.map((row) => row.view),
-      recallCandidates: [...new Set([...recalled, ...arrivalRecall])].map((row) => row.view),
+      recallCandidates: recallCandidates.map((row) => row.view),
+      directRecallIds: new Set(ranked.filter(({ matchedQuery }) => matchedQuery).map(({ row }) => row.view.id)),
+      linkedEpisodes: new Map(earlier.map((row) => [row.view.id, row.view])),
     };
   }
   const shared = recentSharedEpisodes(collection, holders)
     .map((episode) => candidates.find((row) => row.episode.id === episode.id))
-    .filter((row) => row !== undefined)
+    .filter((row) => row !== undefined && row.sharedWords.length > 0)
     .sort((a, b) => b.index - a.index);
   const recent = candidates.slice(-2),
-    rest = candidates
-      .slice(0, -2)
-      .filter((row) => row.score > 0)
-      .sort((a, b) => b.score - a.score || b.index - a.index);
+    rest = rank(candidates.slice(0, -2))
+      .filter(({ score }) => score > 0)
+      .map(({ row }) => row);
   const selected: typeof candidates = [];
   let used = 0;
   for (const row of [...shared, ...recent.toReversed(), ...rest]) {
