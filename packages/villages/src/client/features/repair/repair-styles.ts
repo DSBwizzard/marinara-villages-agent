@@ -58,27 +58,35 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-search input{border:0;padding:9px 0;background:none}
 .villages-repair .${P}-storybook-search-icon{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .villages-repair .${P}-directory-grid{display:grid;grid-template-columns:repeat(2,166px);grid-template-rows:none;grid-auto-rows:auto;height:auto;max-height:none;padding:0;flex:none;gap:18px}
-.villages-repair .repair-locations>select{max-width:280px}
-.villages-repair .repair-location-filters{display:flex;flex-direction:column;gap:16px}
-.villages-repair .repair-location-filters>select{max-width:280px}
 .villages-repair .repair-directory:has([aria-label="People categories"]) .repair-search{max-width:460px}
-.villages-repair .repair-locations .repair-search{max-width:none}
-.villages-repair .repair-locations .repair-sections{gap:0}
-.villages-repair .repair-locations .repair-sections button{flex:1;text-align:center}
-.villages-repair .repair-locations .repair-sections button[aria-current=page]{background:#39342f}
-.villages-repair .repair-list-heading{display:flex;align-items:center;justify-content:space-between;margin:6px 0 12px}
-.villages-repair .repair-list-heading h2{font-size:17px}
+.villages-repair .repair-locations-title .repair-target-icon{border-radius:8px}
+.villages-repair .repair-locations.repair-card{width:100%;max-width:780px;padding:16px 18px;gap:12px}
+.villages-repair .repair-location-toolbar{display:flex;align-items:center;gap:8px}
+.villages-repair .repair-location-toolbar>.repair-search{flex:2;min-width:0;max-width:390px}
+.villages-repair .repair-location-toolbar>select{flex:1;min-width:0;max-width:220px;font-size:14px}
+.villages-repair .repair-location-group h2{font-size:15px;line-height:20px;margin:0 0 8px;color:var(--repair-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.villages-repair .repair-location-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}
+.villages-repair .repair-location-grid button{width:100%;height:56px;display:flex;align-items:center;gap:11px;padding:6px 10px;border-color:var(--repair-line);text-align:left}
+.villages-repair .repair-location-grid button:is(:hover,:focus-visible){background:#39342f;border-color:#84613f;color:var(--repair-primary)}
+.villages-repair .repair-location-grid button>svg{width:30px;height:30px;padding:6px;border-radius:5px;background:#38443f;color:#c6d5cc}
+.villages-repair .repair-location-grid button:is(:hover,:focus-visible)>svg{background:#514539;color:var(--repair-primary)}
+.villages-repair .repair-location-grid .${P}-location-caption{flex:1;min-width:0}
+.villages-repair .repair-location-grid strong{font-weight:500;line-height:1.2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.villages-repair .repair-location-grid .${P}-location-chevron{font-size:18px;flex:none}
+.villages-repair .repair-locations>p{margin:0;color:var(--repair-muted)}
+.villages-repair .repair-locations[data-compact=true]{padding:10px;gap:10px}
+.villages-repair .repair-locations[data-compact=true] .repair-location-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.villages-repair .repair-locations[data-compact=true] .repair-location-toolbar>.repair-search{grid-column:1/-1;max-width:none}
+.villages-repair .repair-locations[data-compact=true] .repair-location-toolbar>select{max-width:none}
+.villages-repair .repair-locations[data-compact=true] .repair-location-grid{grid-template-columns:minmax(0,1fr);gap:5px}
+.villages-repair .repair-locations[data-compact=true] .repair-location-grid button{height:46px;padding:4px 8px;font-size:15px}
+.villages-repair .repair-locations[data-compact=true] .repair-location-grid button>svg{width:27px;height:27px;padding:5px}
 .villages-repair button.${P}-directory-card{display:flex;align-items:center;flex-direction:column;gap:11px;padding:12px 13px 13px;border:1px solid #58645f;border-radius:8px;background:#2d3531;min-height:166px;width:166px;text-align:center}
 .villages-repair .${P}-avatar{display:flex;align-items:center;justify-content:center;width:52px;height:52px;position:relative;overflow:hidden;border-radius:6px;background:#43514c;flex:none}
 .villages-repair .${P}-avatar img{display:block;width:100%;height:100%;max-width:none;object-fit:cover}
 .villages-repair .${P}-directory-card .${P}-avatar{width:132px;height:132px}
 .villages-repair .${P}-directory-text{font-size:16px;line-height:1.3}
 .villages-repair .${P}-directory-text strong{font-weight:500}
-.villages-repair .${P}-locations-group ul{list-style:none;padding:0;margin:0}
-.villages-repair .${P}-locations-group li>button{width:100%;display:flex;align-items:center;gap:18px;border:0;border-bottom:1px solid var(--repair-line);border-radius:0;text-align:left;min-height:67px}
-.villages-repair .${P}-location-caption{display:flex;align-items:baseline;gap:22px;flex:1;min-width:0}
-.villages-repair .${P}-location-caption strong{font-weight:500}
-.villages-repair .${P}-venue-badge{font-size:12px;border:1px solid #737c75;background:#35433a;border-radius:20px;padding:3px 12px;white-space:nowrap}
 .villages-repair .${P}-venue-zones{display:flex;flex-direction:column;background:transparent;border:0;padding:0;gap:0;overflow:visible}
 .villages-repair .${P}-venue-zones>button{display:flex;align-items:center;gap:15px;border:0;border-bottom:1px solid var(--repair-line);border-radius:0;min-height:68px;text-align:left}
 .villages-repair .${P}-venue-zone-thumb{display:flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;background:#34413c;border-radius:5px}
@@ -231,15 +239,11 @@ export const REPAIR_STYLES = `
 .villages-repair .${P}-directory-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .villages-repair button.${P}-directory-card{width:100%;min-height:145px;padding:10px}
 .villages-repair .${P}-directory-card .${P}-avatar{width:96px;height:96px}
-.villages-repair .${P}-location-caption{display:block}
-.villages-repair .${P}-location-caption small{display:block;margin-top:4px}
-.villages-repair .${P}-locations-group li>button{gap:12px;padding:8px 0}
-.villages-repair .${P}-venue-badge{padding:3px 8px}
 .villages-repair .repair-record-list>button{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;min-height:72px;padding:6px 4px}
 .villages-repair .repair-record-list>button>strong{grid-area:1/1;font-size:15px;line-height:1.3;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .villages-repair .repair-record-list>button>small{grid-area:2/1;max-width:none}
 .villages-repair .repair-record-list>button>span:last-child{grid-area:1/2/3/3;margin:0}
-.villages-repair :is(.${P}-location-caption strong,.${P}-location-caption small,.${P}-venue-zone-caption,.${P}-directory-text strong){display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.villages-repair :is(.${P}-venue-zone-caption,.${P}-directory-text strong){display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .villages-repair button.${P}-directory-card>.${P}-directory-text{min-width:0;max-width:100%}
 .villages-repair .repair-snapshot-create{gap:6px}
 .villages-repair .repair-snapshot-create input{min-width:0}
@@ -302,7 +306,6 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-notebook-nav{gap:3px}
 .villages-repair .repair-notebook-nav button{min-height:44px;padding-block:7px;font-size:14px}
 .villages-repair .repair-score-axis{display:none}
-.villages-repair .repair-location-filters{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px}
 .villages-repair .repair-content{padding-top:10px;padding-bottom:10px}
 .villages-repair .repair-target{margin-bottom:8px}
 .villages-repair .repair-sections{margin-bottom:10px}

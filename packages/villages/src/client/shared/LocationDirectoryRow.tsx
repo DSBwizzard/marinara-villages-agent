@@ -6,6 +6,7 @@ export function LocationDirectoryRow({
   name,
   mapName,
   venue,
+  compact,
   report,
   visited,
   disabled,
@@ -15,6 +16,7 @@ export function LocationDirectoryRow({
   name: string;
   mapName?: string;
   venue: boolean;
+  compact?: boolean;
   report?: boolean;
   visited?: boolean;
   disabled?: boolean;
@@ -27,21 +29,24 @@ export function LocationDirectoryRow({
       onClick={onOpen}
       disabled={disabled}
       aria-label={name + (venue ? ", Venue" : "")}
+      title={compact ? name : undefined}
     >
       <VillageIcon name={venue ? "places" : "compass"} />
       <span className={`${P}-location-caption`}>
         <strong>{name}</strong>
-        <small>{mapName}</small>
+        {!compact ? <small>{mapName}</small> : null}
       </span>
-      <span className={`${P}-location-status`}>
-        {venue ? (
-          <span className={`${P}-venue-badge`}>Venue</span>
-        ) : report ? (
-          <small>Reported</small>
-        ) : visited === false ? (
-          <small>Unvisited</small>
-        ) : null}
-      </span>
+      {!compact ? (
+        <span className={`${P}-location-status`}>
+          {venue ? (
+            <span className={`${P}-venue-badge`}>Venue</span>
+          ) : report ? (
+            <small>Reported</small>
+          ) : visited === false ? (
+            <small>Unvisited</small>
+          ) : null}
+        </span>
+      ) : null}
       <span aria-hidden="true" className={`${P}-location-chevron`}>
         ›
       </span>

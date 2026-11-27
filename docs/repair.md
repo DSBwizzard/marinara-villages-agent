@@ -1,6 +1,6 @@
 # REPAIR
 
-REPAIR selects targets with the familiar People portraits, Location rows and Zone controls, using charcoal surfaces and a warm accent. People uses a 2×2 grid with nearby pagination. Every page has ← Return to village. There is no Main menu button or top-right target selector.
+REPAIR selects targets with the familiar People portraits, Location buttons and Zone controls, using charcoal surfaces and a warm accent. People uses a 2×2 grid with nearby pagination. Locations groups results by map in two columns on desktop and one on phones. Map and type filters appear when they offer a choice, and pagination appears when results need more room. ← Locations restores the chooser’s search, filters, and results page. Every page has ← Return to village.
 
 REPAIR content aligns with the left edge of the shell, including wide windows. The doctor’s bag icon sits immediately before the REPAIR title with a transparent background. The shared layout keeps the same small outer gutter across directories and editors.
 

@@ -54,6 +54,72 @@ const recoverySections: [string, string][] = [
 ];
 const short = (text: string) => (text.length > 90 ? text.slice(0, 87) + "…" : text);
 
+type LocationGroup = { id: string; name: string; places: RepairBrowseItem[] };
+
+function locationChooserPages(groups: LocationGroup[], compact: boolean, height: number, filters: boolean) {
+  const columns = compact ? 1 : 2;
+  const rowHeight = compact ? 46 : 56;
+  const rowGap = compact ? 5 : 8;
+  const heading = 28;
+  const groupGap = 12;
+  const toolbar = compact ? 78 + (filters ? 52 : 0) : 96;
+  const total = groups.reduce((sum, { places }) => sum + places.length, 0);
+  const fit = groups.reduce((sum, { places }, index) => {
+    const rows = Math.ceil(places.length / columns);
+    return sum + (index ? groupGap : 0) + heading + rows * rowHeight + (rows - 1) * rowGap;
+  }, 0);
+  if (fit + toolbar <= height) return [{ start: 0, end: total, groups }];
+
+  const budget = height - toolbar - 60;
+  const pages: { start: number; end: number; groups: LocationGroup[] }[] = [{ start: 0, end: 0, groups: [] }];
+  let page = pages[0]!;
+  let used = 0;
+  for (const group of groups) {
+    for (let index = 0; index < group.places.length; index += columns) {
+      const row = group.places.slice(index, index + columns);
+      let current = page.groups.at(-1);
+      const cost = current?.id === group.id ? rowGap : heading + (current ? groupGap : 0);
+      if (current && used + cost + rowHeight > budget) {
+        page = { start: page.end, end: page.end, groups: [] };
+        pages.push(page);
+        used = 0;
+        current = undefined;
+      }
+      used += rowHeight + (current?.id === group.id ? rowGap : heading + (current ? groupGap : 0));
+      if (current?.id === group.id) current.places.push(...row);
+      else page.groups.push({ id: group.id, name: group.name, places: row });
+      page.end += row.length;
+    }
+  }
+  return pages;
+}
+
+function PageControls({
+  start,
+  end,
+  total,
+  previous,
+  next,
+}: {
+  start: number;
+  end: number;
+  total: number;
+  previous?: () => void;
+  next?: () => void;
+}) {
+  return (
+    <nav className="repair-pages" aria-label="Pages">
+      <span role="status">{total ? `${start + 1}–${end} of ${total}` : "0 results"}</span>
+      <button type="button" disabled={!previous} onClick={previous}>
+        Previous
+      </button>
+      <button type="button" disabled={!next} onClick={next}>
+        Next →
+      </button>
+    </nav>
+  );
+}
+
 function Pages({
   page,
   size,
@@ -73,23 +139,19 @@ function Pages({
   const current = Math.min(page, last);
   const start = offset ?? current * size;
   return (
-    <nav className="repair-pages" aria-label="Pages">
-      <span role="status">{total ? `${start + 1}–${Math.min(start + size, total)} of ${total}` : "0 results"}</span>
-      <button
-        type="button"
-        disabled={disabled || start === 0}
-        onClick={() => onPage(offset === undefined ? current - 1 : Math.max(0, start - size))}
-      >
-        Previous
-      </button>
-      <button
-        type="button"
-        disabled={disabled || start + size >= total}
-        onClick={() => onPage(offset === undefined ? current + 1 : start + size)}
-      >
-        Next →
-      </button>
-    </nav>
+    <PageControls
+      start={start}
+      end={Math.min(start + size, total)}
+      total={total}
+      previous={
+        disabled || start === 0
+          ? undefined
+          : () => onPage(offset === undefined ? current - 1 : Math.max(0, start - size))
+      }
+      next={
+        disabled || start + size >= total ? undefined : () => onPage(offset === undefined ? current + 1 : start + size)
+      }
+    />
   );
 }
 function Sections({
@@ -241,17 +303,15 @@ export function RepairPage({
     ? small
       ? 174 + (c.index?.sceneOpen ? 34 : 0) + (deleteSnapshot ? 44 : 0)
       : 140
-    : c.topic === "places" && !c.placePath.length
-      ? 240
-      : personCollection
-        ? c.section === "memories"
-          ? small
-            ? 195
-            : 275
-          : 185
-        : c.topic === "progress"
-          ? 150
-          : 130;
+    : personCollection
+      ? c.section === "memories"
+        ? small
+          ? 195
+          : 275
+        : 185
+      : c.topic === "progress"
+        ? 150
+        : 130;
   const rowHeight = small ? (isSnapshots || c.topic === "progress" ? 100 : 80) : 72;
   const rowSize = Math.max(1, Math.floor((space.height / space.scale - listBudget) / rowHeight));
   const peopleSize = 4;
@@ -299,23 +359,48 @@ export function RepairPage({
   const placeNodes = c.placeDirectory
     .filter((node) => node.id === "venues" || node.id === "places")
     .flatMap((node) => node.children ?? []);
-  const maps = [
-    ...new Map(placeNodes.filter((node) => node.mapId).map((node) => [node.mapId!, node.mapName ?? "Map"])).entries(),
-  ];
-  const locations = placeNodes
-    .filter(
-      (node) =>
-        (!placeMap || node.mapId === placeMap) &&
-        (placeKind === "all" || (placeKind === "venues") === (node.icon === "venue")) &&
-        node.title.toLocaleLowerCase().includes(placeQuery.toLocaleLowerCase()),
-    )
-    .sort((a, b) => a.title.localeCompare(b.title));
+  const placesByMap = new Map<string, LocationGroup>();
+  for (const node of placeNodes) {
+    const id = node.mapId ? `map:${node.mapId}` : "unmapped";
+    const group = placesByMap.get(id);
+    if (group) group.places.push(node);
+    else placesByMap.set(id, { id, name: node.mapName ?? (node.mapId ? "Map" : "Unmapped locations"), places: [node] });
+  }
+  const maps = [...placesByMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const filterMaps = maps.length > 1;
+  const filterKinds =
+    placeNodes.some((node) => node.icon === "venue") && placeNodes.some((node) => node.icon !== "venue");
+  const activeMap = filterMaps && placesByMap.has(placeMap) ? placeMap : "";
+  const activeKind = filterKinds ? placeKind : "all";
+  const search = placeQuery.trim().toLocaleLowerCase();
+  const locationGroups = maps
+    .filter((group) => !activeMap || group.id === activeMap)
+    .map((group) => ({
+      ...group,
+      places: group.places
+        .filter(
+          (node) =>
+            (activeKind === "all" || (activeKind === "venues") === (node.icon === "venue")) &&
+            node.title.toLocaleLowerCase().includes(search),
+        )
+        .sort((a, b) => a.title.localeCompare(b.title)),
+    }))
+    .filter((group) => group.places.length);
+  const locationPages = locationChooserPages(
+    locationGroups,
+    small,
+    space.height / space.scale,
+    filterMaps || filterKinds,
+  );
+  const currentPlacePage = Math.min(placePage, locationPages.length - 1);
+  const visiblePlacePage = locationPages[currentPlacePage]!;
   const location =
     c.topic === "places" && c.collection === "list"
       ? placeNodes.find((node) => c.placePath.includes(node.id))
       : undefined;
   const zone = location?.children?.find((node) => node.icon === "zone" && c.placePath.includes(node.id));
   const targetPlace = zone ?? location;
+  const placeChooser = c.topic === "places" && !targetPlace;
   const placeSections: [string, string, VillageIconName][] = zone
     ? [
         ["details", "Details", "details"],
@@ -926,6 +1011,13 @@ export function RepairPage({
               </small>
             </div>
           </header>
+        ) : placeChooser ? (
+          <header className="repair-target repair-locations-title">
+            <span className="repair-target-icon">
+              <VillageIcon name="places" />
+            </span>
+            <h1>Locations</h1>
+          </header>
         ) : (
           <h1 className="repair-context-title">
             {isHistory
@@ -1102,31 +1194,16 @@ export function RepairPage({
                 </div>
                 <Pages page={currentPeoplePage} size={peopleSize} total={people.length} onPage={setPeoplePage} />
               </section>
-            ) : c.topic === "places" && !targetPlace ? (
-              <section className="repair-directory repair-locations">
-                <div className="repair-location-filters">
-                  <select
-                    aria-label="Filter by map"
-                    value={placeMap}
-                    onChange={(event) => {
-                      setPlaceMap(event.target.value);
-                      setPlacePage(0);
-                    }}
-                  >
-                    <option value="">All maps</option>
-                    {maps.map(([id, name]) => (
-                      <option key={id} value={id}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+            ) : placeChooser ? (
+              <section className="repair-card repair-locations" aria-label="Known locations" data-compact={small}>
+                <div className="repair-location-toolbar">
                   <label className="repair-search">
                     <StorybookSearchIcon />
                     <input
                       autoComplete="off"
                       type="search"
-                      aria-label="Search known locations"
-                      placeholder="Search known locations"
+                      aria-label="Find a location"
+                      placeholder="Find a location"
                       value={placeQuery}
                       onChange={(event) => {
                         setPlaceQuery(event.target.value);
@@ -1134,45 +1211,70 @@ export function RepairPage({
                       }}
                     />
                   </label>
+                  {filterMaps ? (
+                    <select
+                      aria-label="Filter by map"
+                      value={activeMap}
+                      onChange={(event) => {
+                        setPlaceMap(event.target.value);
+                        setPlacePage(0);
+                      }}
+                    >
+                      <option value="">All maps</option>
+                      {maps.map(({ id, name }) => (
+                        <option key={id} value={id}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                  {filterKinds ? (
+                    <select
+                      aria-label="Filter by location type"
+                      value={activeKind}
+                      onChange={(event) => {
+                        setPlaceKind(event.target.value);
+                        setPlacePage(0);
+                      }}
+                    >
+                      <option value="all">All types</option>
+                      <option value="venues">Venues</option>
+                      <option value="other">Other locations</option>
+                    </select>
+                  ) : null}
                 </div>
-                <Sections
-                  name="Location categories"
-                  entries={[
-                    ["all", "All"],
-                    ["venues", `Venues ${placeNodes.filter((node) => node.icon === "venue").length}`],
-                    ["other", `Other locations ${placeNodes.filter((node) => node.icon !== "venue").length}`],
-                  ]}
-                  value={placeKind}
-                  onChange={(kind) => {
-                    setPlaceKind(kind);
-                    setPlacePage(0);
-                  }}
-                />
-                <div className={`${P}-locations-group`}>
-                  <header className="repair-list-heading">
-                    <h2>Known locations</h2>
-                    <small>A–Z</small>
-                  </header>
-                  <ul>
-                    {locations
-                      .slice(
-                        Math.min(placePage, Math.max(0, Math.ceil(locations.length / rowSize) - 1)) * rowSize,
-                        (Math.min(placePage, Math.max(0, Math.ceil(locations.length / rowSize) - 1)) + 1) * rowSize,
-                      )
-                      .map((node) => (
+                {visiblePlacePage.groups.map((group) => (
+                  <section className="repair-location-group" key={group.id}>
+                    <h2>{group.name}</h2>
+                    <ul className="repair-location-grid">
+                      {group.places.map((node) => (
                         <li key={node.id}>
                           <LocationDirectoryRow
                             id={node.id}
                             name={node.title}
-                            mapName={node.mapName}
                             venue={node.icon === "venue"}
+                            compact
                             onOpen={() => openPlace(node)}
                           />
                         </li>
                       ))}
-                  </ul>
-                </div>
-                <Pages page={placePage} size={rowSize} total={locations.length} onPage={setPlacePage} />
+                    </ul>
+                  </section>
+                ))}
+                {!visiblePlacePage.end ? (
+                  <p>{placeNodes.length ? "No matching locations." : "No known locations."}</p>
+                ) : null}
+                {locationPages.length > 1 ? (
+                  <PageControls
+                    start={visiblePlacePage.start}
+                    end={visiblePlacePage.end}
+                    total={locationPages.at(-1)!.end}
+                    previous={currentPlacePage > 0 ? () => setPlacePage(currentPlacePage - 1) : undefined}
+                    next={
+                      currentPlacePage + 1 < locationPages.length ? () => setPlacePage(currentPlacePage + 1) : undefined
+                    }
+                  />
+                ) : null}
               </section>
             ) : isHistory ? (
               historyRow ? (
