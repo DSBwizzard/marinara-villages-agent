@@ -1,7 +1,7 @@
 import { calendarAt, calendarDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { Job } from "../models/background-model.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
-import { fixedRestAgendaBlock, flexibleAgendaBlock } from "./agenda-flexibility.js";
+import { AGENDA_NAP_ACTIVITY, fixedRestAgendaBlock, flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { agendaDateKey, ordinaryAgendaBlocksFor } from "./agenda-week.js";
 import { validateRoutineDay } from "./owned-routine.js";
 import { routineVenues } from "./prompt-preset.js";
@@ -138,7 +138,10 @@ export function weeklyChoiceBlock(
     activity: choice.activity,
     venueId: choice.venueId,
     startMinute,
-    endMinute: Math.min(endMinute, startMinute + (choice.maxMinutes ?? 1440)),
+    endMinute: Math.min(
+      endMinute,
+      startMinute + (choice.maxMinutes ?? (choice.activity === AGENDA_NAP_ACTIVITY ? 60 : 1440)),
+    ),
     flexible: true,
   };
 }
@@ -211,7 +214,7 @@ export function applyWeeklyAgenda(
         );
         blocks.push(plan);
         placed++;
-        if (choice.maxMinutes !== undefined) break;
+        if (choice.maxMinutes !== undefined || choice.activity === AGENDA_NAP_ACTIVITY) break;
       }
     }
     if (placed > before) {

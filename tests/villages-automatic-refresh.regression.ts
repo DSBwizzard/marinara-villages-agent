@@ -583,10 +583,27 @@ async function main() {
             calendarVersion: 1,
             generatedAt: date(1).toISOString(),
             day: [
-              { startMinute: 0, endMinute: 480, venueId: "", activity: "Sleeping", essential: true },
+              {
+                startMinute: 0,
+                endMinute: 480,
+                venueId: "",
+                activity: name === "Ari" ? "Resting at home" : "Sleeping",
+                essential: true,
+              },
               { startMinute: 480, endMinute: 1320, venueId: "", activity: "Reading", flexible: true },
-              { startMinute: 1320, endMinute: 1440, venueId: "", activity: "Sleeping", essential: true },
+              {
+                startMinute: 1320,
+                endMinute: 1440,
+                venueId: "",
+                activity: name === "Ari" ? "Resting at home" : "Sleeping",
+                essential: true,
+              },
             ],
+            plannedDays: {
+              [agendaDateKey(date(8))]: [
+                { startMinute: 0, endMinute: 1440, venueId: "", activity: "Sorting papers", flexible: true },
+              ],
+            },
           }),
         }));
         Object.assign(state, defaultVillageState(), {
@@ -615,15 +632,10 @@ async function main() {
     const firstWeek = await readVillageState();
     const restBlocks = [8, 9, 10, 11].map((day) =>
       agendaBlocksFor(firstWeek.villagers[0]!.agenda!, date(day))
-        .filter(({ activity }) => ["Sleeping (nap)", "Quiet pause off-duty"].includes(activity))
+        .filter(({ activity }) => ["Napping", "Quiet pause off-duty"].includes(activity))
         .map(({ activity, startMinute, endMinute }) => [activity, endMinute - startMinute]),
     );
-    assert.deepEqual(restBlocks, [
-      [["Sleeping (nap)", 30]],
-      [["Quiet pause off-duty", 45]],
-      [["Sleeping (nap)", 60]],
-      [],
-    ]);
+    assert.deepEqual(restBlocks, [[["Napping", 30]], [["Quiet pause off-duty", 45]], [["Napping", 60]], []]);
     for (const resident of firstWeek.villagers) {
       const agenda = resident.agenda!;
       assert.equal(agenda.activeDay?.dateKey, agendaDateKey(date(7)));
@@ -729,11 +741,29 @@ async function main() {
     setToday(28);
     incompleteWeek = false;
     minimumWeeklyReplyTokens = 4_500;
+    await mutateVillageState((state) => {
+      const agenda = state.villagers.find(({ characterId }) => characterId === "Ari")!.agenda!;
+      agenda.plannedDays![agendaDateKey(date(29))] = [
+        { startMinute: 0, endMinute: 1440, venueId: "", activity: "Sorting papers", flexible: true },
+      ];
+    });
     await clearVillagerAgenda("Ari", "personal-week");
     await settleBackgroundWork();
     assert.equal(weeklyResponses, 4);
     const personal = (await readVillageState()).villagers.find((row) => row.characterId === "Ari")?.agenda;
     assert.deepEqual(personal?.manualWeek, { actionId: "personal-week", through: agendaDateKey(date(35)) });
+    for (let day = 29; day <= 35; day++) {
+      assert.deepEqual(
+        agendaBlocksFor(personal!, date(day))
+          .filter(({ activity }) => activity === "Sleeping")
+          .map(({ startMinute, endMinute }) => [startMinute, endMinute]),
+        [
+          [0, 480],
+          [1320, 1440],
+        ],
+        "Manual regeneration preserves the restored overnight window on every date",
+      );
+    }
 
     await reconcileVillage({ now: date(28) });
     await settleBackgroundWork();

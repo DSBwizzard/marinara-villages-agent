@@ -11,7 +11,11 @@ import {
   ordinaryAgendaBlocksFor,
   workingAgendaWeek,
 } from "../../domain/rules/agenda-week.js";
-import { AGENDA_NAP_ACTIVITY, flexibleAgendaBlock, restingAgendaBlock } from "../../domain/rules/agenda-flexibility.js";
+import {
+  AGENDA_NAP_ACTIVITY,
+  flexibleAgendaBlock,
+  sleepingAgendaLabel,
+} from "../../domain/rules/agenda-flexibility.js";
 import { calendarReplay } from "../../domain/rules/clock-state.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { continuityPreparationContext } from "../../domain/rules/continuity-library.js";
@@ -184,7 +188,7 @@ function agendaChoice(
     activity.length > 80 ||
     !clean(activity) ||
     /[\r\n\u0000-\u001f]/u.test(activity) ||
-    restingAgendaBlock({ activity }) ||
+    sleepingAgendaLabel(activity) ||
     !Number.isInteger(place) ||
     place < 0 ||
     place > places.length
@@ -241,7 +245,7 @@ function parseWeek(
           if (!choice) continue;
           usableToday++;
           const key = clean(choice.activity);
-          if (choice.activity === AGENDA_NAP_ACTIVITY) {
+          if (choice.activity === AGENDA_NAP_ACTIVITY && choice.maxMinutes !== undefined) {
             if (napPlanned) continue;
             napPlanned = true;
           } else {

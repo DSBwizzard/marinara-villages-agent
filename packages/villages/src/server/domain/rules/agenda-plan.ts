@@ -2,12 +2,7 @@ import type { VillageAgenda, VillageAgendaBlock } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
 import { routineProfileFromWeek } from "./owned-routine.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
-import { flexibleAgendaBlock } from "./agenda-flexibility.js";
-
-export const scheduledAgendaActivity = (block: VillageAgendaBlock) =>
-  !(!block.venueId && flexibleAgendaBlock(block) && block.activity === "Taking care of their own affairs");
-
-export { restingAgendaBlock } from "./agenda-flexibility.js";
+export { restingAgendaBlock, scheduledAgendaActivity } from "./agenda-flexibility.js";
 
 export function generatedAgendaActivityLabel(activity: string): string {
   const label = activity.replace(/^right now,?\s+you(?:\s+are|['’]re)[\s,:-]+(?=\p{L})/iu, "");

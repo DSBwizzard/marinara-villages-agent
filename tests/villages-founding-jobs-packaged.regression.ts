@@ -234,7 +234,7 @@ try {
   assert.deepEqual(
     planned.map(([, blocks]) =>
       blocks
-        .filter(({ activity }) => activity === "Sleeping (nap)")
+        .filter(({ activity }) => activity === "Napping")
         .map(({ startMinute, endMinute }) => endMinute - startMinute),
     ),
     [[], [45], [], [], [], [], []],

@@ -7,10 +7,12 @@ export const MAX_AGENDA_CHANGES = 6;
 type AgendaSource = Pick<
   VillageAgenda,
   | "calendarVersion"
+  | "restLabelFormat"
   | "week"
   | "day"
   | "activeDay"
   | "plannedDays"
+  | "repairedDays"
   | "reservations"
   | "routineProfile"
   | "routineSummary"
@@ -18,6 +20,7 @@ type AgendaSource = Pick<
 >;
 const source = (agenda: AgendaSource): AgendaSource => ({
   calendarVersion: agenda.calendarVersion,
+  restLabelFormat: agenda.restLabelFormat,
   routineProfile: agenda.routineProfile,
   routineSummary: agenda.routineSummary,
   generatedAt: agenda.generatedAt,
@@ -25,6 +28,7 @@ const source = (agenda: AgendaSource): AgendaSource => ({
   week: agenda.week,
   activeDay: agenda.activeDay,
   plannedDays: agenda.plannedDays,
+  repairedDays: agenda.repairedDays,
   reservations: agenda.reservations,
 });
 

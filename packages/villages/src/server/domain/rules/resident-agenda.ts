@@ -1,7 +1,7 @@
 import { refreshWorkReservations } from "./venue-work.js";
 import { calendarDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageAgenda, VillageState, VillageVillager } from "../models/world.js";
-import { agendaDateKey, ordinaryAgendaBlocksFor } from "./agenda-week.js";
+import { activeAgendaSleep, agendaDateKey, ordinaryAgendaBlocksFor } from "./agenda-week.js";
 import { influenceSettings, routineDay, validateRoutineDay } from "./owned-routine.js";
 import { routineVenues } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -17,11 +17,14 @@ export function planRoutineDays(state: VillageState, now: Date): void {
       const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12),
         key = agendaDateKey(date);
       if (agenda.activeDay?.dateKey === key) {
+        const sleep = activeAgendaSleep(agenda, now);
+        if (sleep) agenda.activeDay.blocks = sleep;
         agenda.plannedDays[key] = agenda.activeDay.blocks;
         continue;
       }
       if (agenda.plannedDays[key]) {
-        if (offset > 0) agenda.plannedDays[key] = validateRoutineDay(agenda.plannedDays[key]!, resident, state, date);
+        if (offset > 0)
+          agenda.plannedDays[key] = validateRoutineDay(ordinaryAgendaBlocksFor(agenda, date), resident, state, date);
         continue;
       }
       const blocks = validateRoutineDay(
@@ -54,13 +57,13 @@ export function planRoutineDays(state: VillageState, now: Date): void {
 export function activateVillagerDay(villager: VillageVillager, now: Date, state: VillageState): void {
   const agenda = villager.agenda;
   if (!agenda) return;
+  const key = agendaDateKey(now);
   const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
+  const blocks = ordinaryAgendaBlocksFor(agenda, now, true);
   agenda.activeDay = {
-    dateKey: agendaDateKey(now),
+    dateKey: key,
     weekday,
-    blocks:
-      agenda.plannedDays?.[agendaDateKey(now)] ??
-      validateRoutineDay(ordinaryAgendaBlocksFor(agenda, now), villager, state, now),
+    blocks: agenda.plannedDays?.[key] ? blocks : validateRoutineDay(blocks, villager, state, now),
     scheduleInformed: false,
   };
 }

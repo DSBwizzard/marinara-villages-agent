@@ -198,7 +198,7 @@ const release = configureVillagesRuntime({
             residents: { name: string; brief: string; recent?: string[]; days: [string, string, number][] }[];
           };
           assert.equal(residents.length, 1, "Regeneration supplies only the selected villager.");
-          assert.equal(residents[0]!.brief, "An autonomous gardener Patient");
+          assert.equal(residents[0]!.brief, "An autonomous gardener Patient Grows herbs");
           assert.equal(residents[0]!.recent, undefined, "Saved plans stay out of the regeneration request.");
           const plans = Object.fromEntries(
             residents[0]!.days.map(([id, date, count]) => {
@@ -563,9 +563,11 @@ async function main() {
       1,
       "one generation request, no translation afterwards: " + JSON.stringify(await backgroundWorkSummaries()),
     );
+    const agendaJobs = (await backgroundWorkSummaries()).filter((job) => job.kind === "agenda");
     assert.ok(
-      (await backgroundWorkSummaries()).some((job) => job.kind === "agenda" && job.status === "completed"),
-      "the valid response completes weekly Agenda generation",
+      agendaJobs.some((job) => job.status === "completed"),
+      "the valid response completes weekly Agenda generation: " +
+        JSON.stringify(agendaJobs.map(({ status, error }) => ({ status, error }))),
     );
     assert.ok(lastOptions.maxTokens <= 4000);
     assert.deepEqual(lastOptions.responseFormat, { type: "json_object" });

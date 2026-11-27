@@ -12,7 +12,7 @@ import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domai
 import { scheduledAgendaActivity, unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
-import { agendaDateKey, bookedAgendaDays } from "../../domain/rules/agenda-week.js";
+import { activeAgendaSleep, agendaDateKey, bookedAgendaDays } from "../../domain/rules/agenda-week.js";
 import type {
   CompactFoundingResult,
   parseCompactFoundingCompletion,
@@ -76,7 +76,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const village = known ?? (await readVillageState());
     if (
       village.villagers.every(
-        (villager) => !villager.agenda || villager.agenda.activeDay?.dateKey === agendaDateKey(now),
+        ({ agenda }) =>
+          !agenda || (agenda.activeDay?.dateKey === agendaDateKey(now) && !activeAgendaSleep(agenda, now)),
       )
     )
       return false;

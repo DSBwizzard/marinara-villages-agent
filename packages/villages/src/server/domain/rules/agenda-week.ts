@@ -1,5 +1,11 @@
 import type { VillageAgenda, VillageAgendaBlock, VillageVenue } from "../models/world.js";
 import { composeAgenda } from "./agenda-composition.js";
+import {
+  fixedRestAgendaBlock,
+  flexibleAgendaBlock,
+  normalizeAgendaNap,
+  scheduledAgendaActivity,
+} from "./agenda-flexibility.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 import { routineDay } from "./owned-routine.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -66,7 +72,7 @@ export function completeAgendaWeek(
               : "";
           return [
             {
-              ...block(start as number, end as number, venueId, activity),
+              ...block(start as number, end as number, venueId, normalizeAgendaNap(activity)),
               zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
               ...(row.essential === true ? { essential: true } : {}),
               ...(typeof row.commitmentId === "string" ? { commitmentId: row.commitmentId } : {}),
@@ -99,13 +105,108 @@ function fillFromFallback(fallback: VillageAgendaBlock[], start: number, end: nu
   });
 }
 
-export function ordinaryAgendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaBlock[] {
+const intersects = (a: VillageAgendaBlock, b: Pick<VillageAgendaBlock, "startMinute" | "endMinute">) =>
+  a.startMinute < b.endMinute && b.startMinute < a.endMinute;
+
+/** Older Founding replies stored untitled overnight rest as "Resting at home". */
+function recurringSleep(blocks: readonly VillageAgendaBlock[], legacyLabels: boolean) {
+  const legacy = legacyLabels
+    ? blocks.filter(
+        (block) =>
+          block.activity === "Resting at home" &&
+          block.essential &&
+          !block.flexible &&
+          !block.commitmentId &&
+          !block.venueId,
+      )
+    : [];
+  const morning = legacy.find(({ startMinute, endMinute }) => startMinute <= 300 && endMinute <= 660);
+  const evening = legacy.find(({ startMinute, endMinute }) => startMinute >= 1080 && endMinute === 1440);
+  const joined = morning?.startMinute === 0 && evening;
+  const sleepMinutes = morning
+    ? morning.endMinute - morning.startMinute + (joined ? 1440 - evening.startMinute : 0)
+    : 0;
+  return blocks.flatMap((block) => {
+    if (block.activity === "Sleeping" && !flexibleAgendaBlock(block)) return [block];
+    if (sleepMinutes >= 180 && (block === morning || (joined && block === evening)))
+      return [{ ...block, activity: "Sleeping" }];
+    return [];
+  });
+}
+
+function withRecurringSleep(
+  agenda: VillageAgenda,
+  key: string,
+  base: readonly VillageAgendaBlock[],
+  blocks: VillageAgendaBlock[],
+  restoreAfter?: number,
+) {
+  const sleep = recurringSleep(base, agenda.restLabelFormat === undefined);
+  if (!sleep.length || agenda.repairedDays?.includes(key)) return blocks;
+  const legacyLabels = agenda.restLabelFormat === undefined;
+  const isLegacySleep = (block: VillageAgendaBlock) =>
+    legacyLabels &&
+    block.activity === "Resting at home" &&
+    block.essential &&
+    !block.flexible &&
+    !block.commitmentId &&
+    !block.venueId &&
+    sleep.some((window) => block.startMinute === window.startMinute && block.endMinute === window.endMinute);
+  let result = blocks.some(isLegacySleep)
+    ? blocks.map((block) => (isLegacySleep(block) ? { ...block, activity: "Sleeping" } : block))
+    : blocks;
+  if (restoreAfter === undefined) return result;
+  // Existing commitments keep their times when applying the recurring window to an older dated plan.
+  const commitments = (agenda.reservations ?? []).filter((entry) => entry.dateKey === key && entry.source !== "work");
+  const protectedBlocks = result.filter((block) => !flexibleAgendaBlock(block) || fixedRestAgendaBlock(block));
+  for (const window of sleep) {
+    if (window.endMinute <= restoreAfter) continue;
+    let pieces = [{ ...window, startMinute: Math.max(window.startMinute, restoreAfter) }];
+    for (const occupied of [...protectedBlocks, ...commitments])
+      pieces = pieces.flatMap((part) => withoutInterval(part, occupied));
+    for (const piece of pieces) {
+      result = result.flatMap((block) => withoutInterval(block, piece));
+      result.push(piece);
+    }
+  }
+  return result === blocks ? blocks : result.sort((a, b) => a.startMinute - b.startMinute);
+}
+
+export function activeAgendaSleep(agenda: VillageAgenda | null, now: Date) {
+  const day = agenda?.activeDay;
+  if (!agenda?.calendarVersion || !day || day.dateKey !== agendaDateKey(now)) return;
+  const minute = now.getHours() * 60 + now.getMinutes();
+  const activeBlocks = composeAgenda(
+    day.blocks,
+    (agenda.reservations ?? []).filter((reservation) => reservation.dateKey === day.dateKey),
+  );
+  const current = activeBlocks.find(({ startMinute, endMinute }) => minute >= startMinute && minute < endMinute);
+  const blocks = withRecurringSleep(
+    agenda,
+    day.dateKey,
+    agenda.week?.[day.weekday] ?? [],
+    day.blocks,
+    current && scheduledAgendaActivity(current) ? current.endMinute : minute,
+  );
+  if (blocks !== day.blocks) return blocks;
+}
+
+function withoutInterval(block: VillageAgendaBlock, interval: Pick<VillageAgendaBlock, "startMinute" | "endMinute">) {
+  if (!intersects(block, interval)) return [block];
+  return [
+    ...(block.startMinute < interval.startMinute ? [{ ...block, endMinute: interval.startMinute }] : []),
+    ...(block.endMinute > interval.endMinute ? [{ ...block, startMinute: interval.endMinute }] : []),
+  ];
+}
+
+export function ordinaryAgendaBlocksFor(agenda: VillageAgenda, at: Date, activating = false): VillageAgendaBlock[] {
   const key = agendaDateKey(at);
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
   const influence = !agenda.calendarVersion ? agenda.scheduleInfluenceSnapshot : undefined;
-  return agenda.activeDay?.dateKey === key
-    ? agenda.activeDay.blocks
-    : (agenda.plannedDays?.[key] ??
+  const blocks =
+    agenda.activeDay?.dateKey === key
+      ? agenda.activeDay.blocks
+      : (agenda.plannedDays?.[key] ??
         (agenda.calendarVersion && agenda.routineProfile?.baseWeek ? agenda.week?.[weekday] : undefined) ??
         (agenda.routineProfile
           ? routineDay(agenda.routineProfile, agenda.generatedAt || agenda.routineSummary, at, influence, {
@@ -125,6 +226,13 @@ export function ordinaryAgendaBlocksFor(agenda: VillageAgenda, at: Date): Villag
           ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
           zoneId: entry.zoneId,
         })));
+  return withRecurringSleep(
+    agenda,
+    key,
+    agenda.week?.[weekday] ?? [],
+    blocks,
+    agenda.calendarVersion === 1 && (agenda.activeDay ? key > agenda.activeDay.dateKey : activating) ? 0 : undefined,
+  );
 }
 
 export function bookedAgendaDays(agenda: VillageAgenda, now: Date) {

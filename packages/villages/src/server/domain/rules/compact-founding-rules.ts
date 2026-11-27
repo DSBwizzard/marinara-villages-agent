@@ -11,7 +11,7 @@ import { asRecord } from "./coerce.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { generatedAgendaActivityLabel } from "./agenda-plan.js";
 import { completeAgendaWeek, workingAgendaWeek, agendaDateKey } from "./agenda-week.js";
-import { AGENDA_NAP_ACTIVITY, restingAgendaBlock } from "./agenda-flexibility.js";
+import { AGENDA_NAP_ACTIVITY, sleepingAgendaLabel } from "./agenda-flexibility.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import {
   AGENDA_WEEK_DAYS,
@@ -303,6 +303,7 @@ export function starterAgendaBase(payload: Record<string, unknown>, start: strin
   );
   const agenda: VillageAgenda = {
     calendarVersion: 1,
+    restLabelFormat: restFormat,
     routineProfile: routineProfileFromWeek(week),
     routineSummary: boundText(payload.routine, MAX_ROUTINE_SUMMARY_LENGTH),
     day: week[VILLAGE_WEEKDAYS[(first.getDay() + 6) % 7]!]!,
@@ -340,7 +341,7 @@ function parseStarterWeek(
       if (!Number.isInteger(place) || place < 0 || place > context.venues.length)
         return invalid("A starter Agenda activity has an unavailable place.");
       const activity = starterActivityTitle(label);
-      if (restingAgendaBlock({ activity })) {
+      if (sleepingAgendaLabel(activity)) {
         if (!restBlocks.length) return invalid("Put recurring rest in the starter Agenda rest windows.");
         return [];
       }

@@ -21,7 +21,7 @@ import {
   agendaChangeSources,
   recordAgendaChanges,
 } from "../packages/villages/src/server/domain/rules/agenda-changes.js";
-import { agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { activeAgendaSleep, agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -127,6 +127,62 @@ function fixture() {
 
 await runCase("weekly-agenda/visibility", () => {
   const { world, publish } = fixture();
+  const legacy = agendaFixture({
+    calendarVersion: 1,
+    day: [
+      { startMinute: 0, endMinute: 360, venueId: "", activity: "Resting at home", essential: true },
+      { startMinute: 1290, endMinute: 1440, venueId: "", activity: "Resting at home", essential: true },
+    ],
+    activeDay: { dateKey: "2026-11-10", weekday: "Tuesday", blocks: [], scheduleInformed: false },
+    plannedDays: {
+      [tomorrow]: [{ startMinute: 0, endMinute: 1440, venueId: "", activity: "Sorting papers", flexible: true }],
+    },
+    reservations: [
+      {
+        source: "appointment",
+        id: "early-appointment",
+        dateKey: tomorrow,
+        startMinute: 300,
+        endMinute: 420,
+        venueId: "",
+        activity: "Early appointment",
+        replaces: "flexible",
+      },
+    ],
+  });
+  const next = new Date(tomorrow + "T12:00:00.000Z");
+  assert.deepEqual(
+    agendaBlocksFor(legacy, next).map(({ activity, startMinute, endMinute }) => [activity, startMinute, endMinute]),
+    [
+      ["Sleeping", 0, 300],
+      ["Early appointment", 300, 420],
+      ["Sorting papers", 420, 1290],
+      ["Sleeping", 1290, 1440],
+    ],
+  );
+  assert.ok(
+    !agendaBlocksFor({ ...legacy, repairedDays: [tomorrow] }, next).some(({ activity }) => activity === "Sleeping"),
+  );
+  assert.ok(!agendaBlocksFor({ ...legacy, restLabelFormat: 1 }, next).some(({ activity }) => activity === "Sleeping"));
+  legacy.activeDay!.blocks = [
+    { startMinute: 0, endMinute: 600, venueId: "", activity: "Sorting papers", flexible: true },
+    { startMinute: 600, endMinute: 1440, venueId: "", activity: "Sketching", flexible: true },
+  ];
+  const restored = activeAgendaSleep(legacy, when)!;
+  assert.deepEqual(
+    restored.map(({ activity, startMinute, endMinute }) => [activity, startMinute, endMinute]),
+    [
+      ["Sorting papers", 0, 600],
+      ["Sketching", 600, 1290],
+      ["Sleeping", 1290, 1440],
+    ],
+  );
+  legacy.activeDay!.blocks = restored;
+  assert.equal(activeAgendaSleep(legacy, when), undefined, "Reconciliation does not rewrite an already restored day");
+  legacy.activeDay!.blocks = [
+    { startMinute: 0, endMinute: 1440, venueId: "", activity: "Taking care of their own affairs", flexible: true },
+  ];
+  assert.equal(activeAgendaSleep(legacy, when)?.at(-1)?.activity, "Sleeping");
   const view = (inspect = false) => agendaWeek(world, "mara", when, inspect);
   assert.equal(view().days.length, 7);
   assert.deepEqual(
