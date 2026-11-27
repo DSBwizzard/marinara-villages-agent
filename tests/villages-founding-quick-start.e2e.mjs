@@ -46,6 +46,7 @@ function Harness(){
  const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,presentation:{...row.presentation,image}}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,image}:zone)});};
  window.quickState={venues,workspace,authored,suggestionsKey:key,problem,moving};
  window.replaceQuickVenues=setVenues;
+ window.addManualVenue=()=>setVenues(rows=>[...rows,newSetupVenue('manual-venue',0.2,0.2)]);
  window.changeReviewSource=()=>setSource('changed-source');
  window.manualAssignments=()=>setVenues(rows=>{
   const next=assignFoundingHome(rows,rows[0].id,'player',true);const venue=next[0];
@@ -192,7 +193,10 @@ await withBrowser(browser, async () => {
       );
       await page.evaluate(() => window.manualAssignments());
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].occupancy.playerHome)).toBe(true);
+      await page.evaluate(() => window.addManualVenue());
+      await expect.poll(() => page.evaluate(() => window.quickState.venues.length)).toBe(4);
       const manual = await page.evaluate(() => structuredClone(window.quickState.venues));
+      assert.equal(manual.at(-1).spaces[0].connectedTo, undefined, "A new Venue uses its default Entrance passage");
       await page.evaluate(() => window.redraftSelected());
       await expect
         .poll(() =>
@@ -203,10 +207,15 @@ await withBrowser(browser, async () => {
       assert.deepEqual(await page.evaluate(() => window.quickState.venues[0].destinations), manual[0].destinations);
       assert.deepEqual(await page.evaluate(() => window.quickState.venues[0].access.work), manual[0].access.work);
       assert.equal(await page.evaluate(() => window.quickState.venues[0].occupancy.playerHome), true);
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues.slice(1)),
+        manual.slice(1),
+        "Applying a single Venue redraft leaves other Venues and their default passages intact",
+      );
       await page.evaluate(() => window.legacyReview());
       await button("Use changes").click();
       await expect.poll(() => page.evaluate(() => window.quickState.problem)).toContain("Discard this older draft");
-      assert.equal(await page.evaluate(() => window.quickState.venues.length), 3);
+      assert.equal(await page.evaluate(() => window.quickState.venues.length), 4);
       await button("Discard").click();
       await button("Draft Venues").click();
       await button("Discard").click();
