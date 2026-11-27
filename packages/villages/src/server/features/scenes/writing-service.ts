@@ -476,14 +476,14 @@ export function createSceneWriting({
           ? 'Entry needs a spoken invitation and "visit":{"option":1,"segment":2,"escort":false}. Use the speaker’s option and dialogue position. A group invite counts if it includes the player. Omit tentative or unmet terms. afterHours means admission despite the schedule. Escort only if offered. Leave movement to the player.'
           : "",
         sceneSpeechActions.length
-          ? "For each settled invitation or following decision, copy its listed number and write [action N]: their exact words to the player. One action per line, even when the same person says both. The game supplies the speaker and records the outcome. Keep tentative offers in ordinary dialogue. Leave movement to the player." +
+          ? "For each settled invitation or following decision, copy its listed number and write [action N]: with nothing after the colon. One decision per line. The game supplies the speaker and their words. Keep tentative offers in ordinary dialogue. Leave movement to the player." +
             (canInviteForVisit
-              ? " Use [action N escort]: text only when the speaker offers to accompany the player. A group invitation must include the player."
+              ? " Use [action N escort]: only when the speaker offers to accompany the player. A group invitation must include the player."
               : "")
           : "",
         residentMovesInReply && (!tagged || !context.codeRequestedMemory)
           ? tagged
-            ? 'An observed resident crossing uses Narration!: text followed by [command]: {"type":"move","who":"resident-id","to":"zone-id"}. Use supplied routes; trespass:true needs an eligible unauthorized route. For leaving, use type:"depart" and who. Place movement before later speech. Stay with the player.'
+            ? 'An observed resident crossing uses an empty Narration!: line followed by [command]: {"type":"move","who":"resident-id","to":"zone-id"}. Use supplied routes; trespass:true needs an eligible unauthorized route. For leaving, use type:"depart" and who. The game supplies the outcome. Put this before any dialogue at the new position. Stay with the player.'
             : 'Visible move: {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {"kind":"departure","who":"resident-id","text":"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
           : "",
         !npcIntroduction
@@ -503,7 +503,7 @@ export function createSceneWriting({
           : "",
         npcIntroduction
           ? tagged
-            ? "When an NPC tells the player their own name, tag that dialogue [speaker-id] [introduce]: and add any remaining words on the same line. The game supplies the name at the start of that speech. Leave the name out of the remaining words. Use the NPC’s ID for other dialogue."
+            ? "When an NPC tells the player their own name, write [speaker-id] [introduce]: with nothing after the colon. The game supplies the introduction. Put any follow-up speech on its own [speaker-id]: line and continue without repeating the introduction."
             : 'For an unnamed NPC, use a distinct public role label like "Pastry seller" at admission. When their name becomes public, put speakerLabel:"Name" on their dialogue line heard by the player. Copy their exact saved name. Leave speakerLabel out while their name stays private.'
           : "",
       ]),
@@ -712,7 +712,7 @@ export function createSceneWriting({
         attendanceDirection +
         (tagged
           ? "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. Put each lasting change on its own tag line." +
-            (sceneSpeechActions.length ? " Put invitation and following words on their numbered [action N] lines." : "")
+            (sceneSpeechActions.length ? " Use only the numbered [action N] lines for settled invitations and following." : "")
           : 'Return "segments" and any "keep" or "commands" in one JSON object.'),
     );
     if (loreInspection) {
@@ -762,6 +762,7 @@ export function createSceneWriting({
         ...(tagged
           ? {
               taggedSceneReply: true as const,
+              authoritativeSceneBeats: true as const,
               npcSpeakerNames,
               explicitNpcIntroduction: true as const,
               compactSceneDecisions: true as const,

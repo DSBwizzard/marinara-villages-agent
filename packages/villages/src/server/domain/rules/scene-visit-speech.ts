@@ -7,6 +7,14 @@ import { withinVisitorHours } from "./venue-access.js";
 import { badGateway } from "./errors.js";
 import type { VillageVenue } from "../models/world.js";
 
+export function isPlayerVisitInvitation(value: unknown) {
+  const { visitor, outcome } = asRecord(value);
+  return (
+    visitor === "player" &&
+    (outcome === "invite-now" || outcome === "invite-later" || outcome === "invite-outside-hours")
+  );
+}
+
 export function sceneVisitOptions(
   access: NarrationReadset["access"],
   placeId: string,

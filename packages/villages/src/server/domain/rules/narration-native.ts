@@ -46,6 +46,7 @@ import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
 import { asRecord } from "./coerce.js";
 import { pruneTaggedSceneReply } from "./tagged-scene-reply.js";
+import { isPlayerVisitInvitation } from "./scene-visit-speech.js";
 
 class TaggedNpcAdmissionFailure extends Error {
   constructor(
@@ -311,6 +312,21 @@ export function prepareNarrationNative(
       );
     if (effect.id === reply.visitCommandId)
       memoryRequire(narrationWitnesses(sources).includes("player"), "the Player must hear the visit invitation");
+    if (
+      readset.authoritativeSceneBeats &&
+      command.type === "access.decide" &&
+      isPlayerVisitInvitation(command.decision)
+    )
+      memoryRequire(
+        sources.some(
+          (source) =>
+            source.kind === "speech" &&
+            source.unitId === context.lines[row.segment].id &&
+            source.actorId === command.by &&
+            source.perceptions.some((person) => person.actorId === "player" && person.channel === "words"),
+        ),
+        "the Player must hear the visit invitation from its actual speaker",
+      );
     memoryRequire(
       sources.every(
         (source) =>
@@ -688,7 +704,11 @@ export function acceptNarration(
       admissionFailure = error;
       rejected = [{ id: error.effectId, reason: error.message }];
     }
-    const reduced = pruneTaggedSceneReply(raw, new Set(rejected.map(({ id }) => id)));
+    const reduced = pruneTaggedSceneReply(
+      raw,
+      new Set(rejected.map(({ id }) => id)),
+      publication.readset.authoritativeSceneBeats,
+    );
     if (!reduced) {
       if (admissionFailure) throw admissionFailure.cause;
       return selected!.result;

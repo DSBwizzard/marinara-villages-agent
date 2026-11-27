@@ -343,6 +343,28 @@ await runCase("npc-admission/tagged-turn", () => {
     (pruned.segments as { text: string }[]).map((line) => line.text),
     ["Before crossing."],
   );
+  const crossing = decodeTaggedSceneReply(
+    [
+      "Narration!:",
+      '[command]: {"id":"first","type":"move","who":"seller-id","to":"somewhere"}',
+      '[command]: {"id":"second","type":"move","who":"other-id","to":"somewhere"}',
+      '[keep]: {"id":"cites-crossing","source":["beat-1"]}',
+      '[keep]: {"id":"cites-position","source":[{"input":"I watch.","ground":{"at":{"after":"beat-1"}}}]}',
+      "[other-id] [work]: {}",
+    ].join("\n"),
+    { ...withPeople(people), authoritativeSceneBeats: true, explicitSceneEvidence: true },
+  ).value!;
+  assert.equal(
+    (crossing.segments as { text: string }[])[0].text,
+    "Visible Seller steps away. Another Seller steps away.",
+  );
+  const blocked = pruneTaggedSceneReply(crossing, new Set(["first"]), true)!;
+  assert.deepEqual(
+    blocked.segments.map(({ id, text }) => [id, text]),
+    [["outcome-beat-1", "The crossing didn't go through."]],
+  );
+  assert.deepEqual(blocked.commands, []);
+  assert.deepEqual(blocked.keep, []);
 });
 await runCase("npc-admission/native", () => {
   const f = fixture(),
@@ -938,7 +960,7 @@ await runCase("npc-admission/name", () => {
   npc.name = "Rasha Dunmore";
   const arrival = acceptNarration(meeting.state, meeting.publication(rawArrival(npc.id)), "meeting", at).episode!;
   applyAcceptedSceneDelta(meeting.scene, arrival);
-  const reply = (content: string, id: string, tagged = true, explicit = false) => {
+  const reply = (content: string, id: string, tagged = true, explicit = false, authoritative = false) => {
     const publication = meeting.publication({}, '"What should I call you?"', id);
     const readset = tagged
       ? {
@@ -946,6 +968,7 @@ await runCase("npc-admission/name", () => {
           taggedSceneReply: true as const,
           npcSpeakerNames: { [npc.id]: npc.name },
           ...(explicit ? { explicitNpcIntroduction: true as const, relaxedNarrationProse: true as const } : {}),
+          ...(authoritative ? { authoritativeSceneBeats: true as const } : {}),
         }
       : publication.readset;
     const raw = tagged
@@ -994,10 +1017,28 @@ await runCase("npc-admission/name", () => {
     decodeTaggedSceneReply(`[${npc.id}] [introduce]: I'm here most mornings.\n[${npc.id}]: Take a seat.`, nameReadset)
       .value,
   );
-  const spoken = reply(nested, "named", true, true);
-  assert.equal(spoken.segments[0].content, "My name is Rasha Dunmore. I'm here most mornings.");
+  const spoken = reply(
+    [
+      "Narration: A placard reads “Welcome.”",
+      `[${npc.id}] [introduce]: I'm Rasha Dunmore.`,
+      `[command]: ${JSON.stringify({ type: "move.decide", who: npc.id, agrees: true })}`,
+      `[${npc.id}]: Take a seat.`,
+    ].join("\n"),
+    "named",
+    true,
+    true,
+    true,
+  );
+  assert.equal(spoken.segments[0].kind, "narration");
+  assert.equal(spoken.segments[0].content, "A placard reads “Welcome.”");
+  assert.equal(spoken.segments[1].content, "My name is Rasha Dunmore.");
+  assert.equal(spoken.segments[2].content, "Take a seat.");
   assert.deepEqual(
-    spoken.segments.map(({ speakerId, name }) => [speakerId, name]),
+    spoken.commandReceipts.map(({ kind }) => kind),
+    ["npc-introduction"],
+  );
+  assert.deepEqual(
+    spoken.segments.slice(1).map(({ speakerId, name }) => [speakerId, name]),
     [
       [npc.id, npc.name],
       [npc.id, npc.name],

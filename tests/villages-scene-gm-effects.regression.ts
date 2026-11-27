@@ -295,7 +295,7 @@ for (const scenario of scenarios)
   await runCase("gm-effects/" + scenario, async () => {
     const project = scenario.startsWith("project-"),
       leave = scenario.endsWith("-leave"),
-      held = ["capacity", "past-appointment", "halt"].includes(scenario);
+      held = ["past-appointment", "halt"].includes(scenario);
     const host = await packagedSceneServer({
       configure(world, now) {
         if (scenario === "npc")
@@ -596,16 +596,7 @@ for (const scenario of scenarios)
           "failed assertions never become displayed fiction",
         );
         assert.equal(world.episodes.records.filter((episode) => episode.sceneId === "browser").length, 0);
-        if (scenario === "capacity") {
-          assert.equal(response.statusCode, 502);
-          assert.match(turn.progressError ?? "", /overcrowd/, "the actual capacity rule holds this reply");
-          for (const id of ["mara", "bryn"])
-            assert.equal(
-              scene.accompanying!.find((row) => row.characterId === id)!.zoneId,
-              "common",
-              "over-capacity movement applies no partial result",
-            );
-        } else if (scenario === "past-appointment") {
+        if (scenario === "past-appointment") {
           assert.equal(response.statusCode, 502);
           assert.match(turn.progressError ?? "", /past|nonexistent/);
         } else {
@@ -633,6 +624,16 @@ for (const scenario of scenarios)
         const episode = world.episodes.records.find((row) => row.id === turn.episodeId)!;
         assert(episode, "the public reply has its canonical accepted Episode");
         if (scenario !== "project-greet") assert.equal(episode.privateInput, payload.message);
+        if (scenario === "capacity") {
+          assert.deepEqual(
+            episode.segments.map(({ content }) => content),
+            ["The crossing didn't go through."],
+          );
+          assert.equal(episode.commandReceipts.length, 0);
+          assert(episode.rejectedEffects?.some(({ reason }) => /overcrowd/u.test(reason)));
+          for (const id of ["mara", "bryn"])
+            assert.equal(scene.accompanying!.find((row) => row.characterId === id)!.zoneId, "common");
+        }
         if (leave) {
           assert.equal(scene.status, "closed");
           const selected = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
