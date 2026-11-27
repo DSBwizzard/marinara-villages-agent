@@ -89,7 +89,14 @@ export async function requestFoundingSuggestions(
   const failed = (message: string, code?: string) =>
     setSetupWorkspace((state) =>
       state.suggestionRequest?.id === pending.id
-        ? { ...state, suggestionRequest: { ...pending, failure: message, ...(code ? { failureCode: code } : {}) } }
+        ? {
+            ...state,
+            suggestionRequest: {
+              ...pending,
+              failure: message,
+              ...(code === MODEL_CONNECTION_UNAVAILABLE ? { failureCode: code } : {}),
+            },
+          }
         : state,
     );
   if (!existing) {
