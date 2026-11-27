@@ -51,7 +51,22 @@ await withBrowser(browser, async () => {
         "aria-valuenow",
         "42",
       );
+      if (width >= 390) {
+        const slider = page.getByRole("slider", { name: "Adjust Warmth", exact: true });
+        const score = page.getByRole("spinbutton", { name: "Warmth", exact: true });
+        const sliderBox = await slider.boundingBox();
+        const scoreBox = await score.boundingBox();
+        expect(scoreBox.x).toBeGreaterThan(sliderBox.x + sliderBox.width);
+        expect(Math.abs(scoreBox.y - sliderBox.y)).toBeLessThan(2);
+        await expect(page.getByRole("slider", { name: "Adjust Romantic interest", exact: true })).toBeInViewport({
+          ratio: 1,
+        });
+      }
       await capture("relationships");
+      if (name === "phone")
+        await page
+          .locator(".villages-repair")
+          .screenshot({ path: ".build-tmp/repair-captures/390-mobile-relationship-scores.png" });
       await page.getByRole("spinbutton", { name: "Warmth", exact: true }).fill("-42");
       await expect(page.getByRole("meter", { name: "Warmth toward the selected person" })).toHaveAttribute(
         "aria-valuenow",

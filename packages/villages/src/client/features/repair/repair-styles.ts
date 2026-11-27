@@ -36,7 +36,7 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-notebook-nav button[aria-current=page]{background:#39342f;color:var(--repair-primary)}
 .villages-repair .repair-workspace[data-notebook=true] .repair-editor{display:flex;padding:0;min-width:0}
 .villages-repair .repair-workspace[data-notebook=true] .repair-steps{display:none}
-.villages-repair .repair-workspace[data-notebook=true] .repair-card{flex:1;border:0;border-radius:0;background:transparent;padding:0;min-height:0}
+.villages-repair .repair-workspace[data-notebook=true] .repair-card{flex:1;max-width:815px}
 .villages-repair .repair-workspace[data-notebook=true] .repair-fields[data-columns=true]>.repair-field:last-child:nth-child(odd){grid-column:1/-1}
 .villages-repair .repair-weekdays{display:flex;flex-wrap:wrap;gap:6px 14px}
 .villages-repair .repair-weekdays label{display:flex;align-items:center;gap:6px;min-height:44px;font-size:14px}
@@ -91,20 +91,29 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-people-directory[data-compact=true]{gap:8px}
 .villages-repair .repair-people-directory[data-compact=true] button.${P}-directory-card{flex-direction:row;padding:6px;gap:6px;min-height:64px}
 .villages-repair .repair-people-directory[data-compact=true] .${P}-directory-text{font-size:13px}
-.villages-repair .repair-editor{display:grid;grid-template-columns:245px minmax(0,815px);gap:37px;min-height:0;padding:6px 10px 0;flex:1;align-items:start}
+.villages-repair .repair-editor{display:grid;grid-template-columns:minmax(0,815px);gap:30px;min-height:0;flex:1;align-items:start}
+.villages-repair .repair-editor:has(>.repair-steps){grid-template-columns:245px minmax(0,815px)}
+.villages-repair .repair-editor[data-collection=true]{grid-template-columns:minmax(260px,300px) minmax(0,815px)}
 .villages-repair .repair-steps{display:flex;flex-direction:column;gap:8px;align-items:stretch}
 .villages-repair .repair-steps>button{display:flex;align-items:center;gap:12px;border:0;min-height:53px;padding:10px 14px;font-size:14px;text-align:left;color:var(--repair-muted)}
 .villages-repair .repair-steps>button>span{display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border:1px solid #626f76;border-radius:50%;font-size:12px}
 .villages-repair .repair-steps>button[aria-current=step]>span{background:var(--repair-primary);border-color:var(--repair-primary);color:var(--repair-onprimary)}
 .villages-repair .repair-card{border:1px solid var(--repair-line);border-radius:9px;padding:25px 30px;background:#262b2e;min-width:0;display:flex;flex-direction:column;gap:20px}
 .villages-repair .repair-card-title{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:5px}
+.villages-repair .repair-card-title>h2{margin-right:auto}
 .villages-repair .repair-card-title>small{font-size:12px;white-space:nowrap}
+.villages-repair .repair-card-title>button{flex:none}
 .villages-repair .repair-field{display:flex;flex-direction:column;gap:8px;min-width:0}
 .villages-repair .repair-field>label{font-size:14px;color:var(--repair-muted)}
 .villages-repair .repair-fields{display:grid;gap:22px}
 .villages-repair .repair-fields[data-columns=true]{grid-template-columns:repeat(2,minmax(0,1fr))}
 .villages-repair .repair-fields[data-columns=true]>.repair-field:has(.repair-weekdays){grid-column:1/-1}
 .villages-repair button.repair-close{padding:0;min-width:44px;border:0;font-size:24px}
+.villages-repair .repair-editor:has(.repair-field[data-score]) .repair-fields{gap:16px}
+.villages-repair .repair-field[data-score]{display:grid;grid-template-columns:minmax(0,1fr) 76px;align-items:center;gap:6px 14px}
+.villages-repair .repair-field[data-score]>:not(input){grid-column:1/-1}
+.villages-repair .repair-field[data-score]>input[type=range]{appearance:auto;accent-color:var(--repair-primary);min-width:0;border:0;background:transparent;padding:0;cursor:pointer}
+.villages-repair .repair-field[data-score]>input[type=number]{text-align:center;padding-inline:6px}
 .villages-repair .repair-prose{min-width:0}
 .villages-repair .repair-prose textarea{display:block}
 .villages-repair .repair-text-pages{display:flex;align-items:center;justify-content:flex-end;gap:10px;font-size:12px;margin-top:4px}
@@ -116,9 +125,22 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-record-list>button>strong{font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .villages-repair .repair-record-list>button>small{max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .villages-repair .repair-record-list>button>span:last-child{margin-left:auto;flex:none}
-.villages-repair .repair-memory-editor{grid-template-columns:300px minmax(0,1fr)}
-.villages-repair .repair-memory-list{display:flex;flex-direction:column;gap:16px;align-self:stretch;min-height:0}
-.villages-repair .repair-memory-list .repair-pages{flex-wrap:wrap}
+.villages-repair .repair-collection{width:100%;max-width:815px;gap:12px}
+.villages-repair .repair-collection>header{margin:0;flex-wrap:wrap;gap:8px}
+.villages-repair .repair-collection-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.villages-repair .repair-collection-tools nav{gap:6px}
+.villages-repair .repair-collection-tools button{font-size:13px;padding:6px 8px}
+.villages-repair .repair-collection>.repair-search{min-width:0;max-width:380px}
+.villages-repair .repair-collection p{margin:0;color:var(--repair-muted)}
+.villages-repair .repair-collection .repair-record-list>button{min-height:60px;padding:6px 10px}
+.villages-repair .repair-collection .repair-record-list>button[aria-current=page]{background:#39342f;color:var(--repair-primary)}
+.villages-repair .repair-editor[data-collection=true]>.repair-collection{padding:16px}
+.villages-repair .repair-editor[data-collection=true] .repair-record-list>button{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px}
+.villages-repair .repair-editor[data-collection=true] .repair-record-list>button>small{grid-column:1;max-width:none}
+.villages-repair .repair-editor[data-collection=true] .repair-record-list>button>span{grid-area:1/2/3/3}
+.villages-repair .repair-editor[data-collection=true] .repair-pages{gap:6px}
+.villages-repair .repair-editor[data-collection=true] .repair-pages button{padding-inline:8px}
+.villages-repair .repair-editor>.repair-card>header>button[data-collection]{font-size:13px;border:1px solid var(--repair-control);padding-inline:10px}
 .villages-repair .repair-evidence{border-top:1px solid var(--repair-line);padding-top:12px}
 .villages-repair .repair-evidence textarea{background:transparent;border:0;padding:8px 0}
 .villages-repair .repair-history{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px}
@@ -166,7 +188,6 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-notebook-body>:is(.repair-directory,.repair-editor,.repair-review,.repair-card){flex-shrink:0}
 .villages-repair .repair-workspace[data-notebook=true]{flex-direction:column;gap:0}
 .villages-repair .repair-notebook-nav{display:none}
-.villages-repair .repair-workspace[data-notebook=true] .repair-card{padding:0}
 .villages-repair .repair-chrome{min-height:54px;padding:5px 14px;gap:12px}
 .villages-repair .repair-chrome>span,.villages-repair .repair-chrome form{display:none}
 .villages-repair .repair-chrome>strong{border:0;padding:0;font-size:17px;gap:7px}
@@ -224,6 +245,10 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-card{padding:16px;width:100%;gap:16px}
 .villages-repair .repair-card-title{gap:10px;margin-bottom:0}
 .villages-repair .repair-card-title>h2{font-size:18px}
+.villages-repair .repair-collection>header>h2,.villages-repair .repair-collection>header:not(:has(button)){display:none}
+.villages-repair .repair-collection>.repair-search{max-width:none}
+.villages-repair .repair-collection .repair-record-list>button{min-height:68px;padding-inline:4px}
+.villages-repair .repair-collection .repair-pages button{padding-inline:9px}
 .villages-repair .repair-actions{gap:6px}
 .villages-repair .repair-actions button{padding:5px 10px}
 .villages-repair .repair-field{gap:6px}
@@ -275,6 +300,7 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-chrome>strong>img{width:24px;height:24px}
 .villages-repair .repair-chrome>button{padding-inline:5px}
 .villages-repair .repair-card{padding:8px;gap:8px}
+.villages-repair .repair-editor:has(.repair-field[data-score]) .repair-fields{gap:10px}
 .villages-repair .repair-editor{gap:8px}
 }
 `;
