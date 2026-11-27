@@ -94,9 +94,10 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
         if (width === 1366 && animatedAccent) {
           await page.addStyleTag({
             content:
-              'input[type="range"]::-webkit-slider-thumb{width:15px;height:15px;background:#f5f5f7;border-radius:9999px}',
+              'input[type="range"]::-webkit-slider-thumb{width:15px;height:15px;background:#f5f5f7;border-radius:9999px;opacity:0}',
           });
           await slider.fill("45");
+          await slider.evaluate((input) => input.blur());
           const { data, info } = await sharp(await slider.screenshot())
             .removeAlpha()
             .raw()

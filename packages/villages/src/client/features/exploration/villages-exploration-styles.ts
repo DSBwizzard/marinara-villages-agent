@@ -99,12 +99,12 @@ export const EXPLORATION_STYLES = `
 .${P}-map-zoom-slider:disabled { opacity:.5; cursor:default; }
 .${P}-map-zoom-slider::-webkit-slider-runnable-track { width:2px; }
 .${P}-stage .${P}-map-zoom-slider::-webkit-slider-thumb {
-  appearance:none; box-sizing:border-box; width:25px; height:8px; margin-left:-11.5px;
+  appearance:none; box-sizing:border-box; width:25px; height:8px; margin-left:-11.5px; opacity:1;
   border:1px solid #e8ddff; border-radius:1px; background:var(--zoom-accent);
 }
 .${P}-map-zoom-slider::-moz-range-track { width:2px; background:transparent; }
 .${P}-stage .${P}-map-zoom-slider::-moz-range-thumb {
-  box-sizing:border-box; width:25px; height:8px;
+  box-sizing:border-box; width:25px; height:8px; opacity:1;
   border:1px solid #e8ddff; border-radius:1px; background:var(--zoom-accent);
 }
 .${P}-home-full button:disabled { opacity:.5; cursor:default; }
