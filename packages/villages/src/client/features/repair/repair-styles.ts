@@ -28,6 +28,15 @@ export const REPAIR_STYLES = `
 .villages-repair :is(.repair-area-tabs,.repair-actions) button:is([aria-current=page],[aria-pressed=true]),.villages-repair .repair-steps button[aria-current=step]{background:#39342f;color:var(--repair-primary)}
 .villages-repair .repair-content{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;padding:20px 36px 18px;max-width:1490px;width:100%;align-self:center}
 .villages-repair .repair-workspace{flex:1;min-height:0;min-width:0;position:relative;display:flex;flex-direction:column;container:village-desk/inline-size}
+.villages-repair .repair-notebook-body{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
+.villages-repair .repair-workspace[data-notebook=true]{flex-direction:row;gap:32px}
+.villages-repair .repair-notebook-nav{width:224px;flex:none;display:flex;flex-direction:column;gap:7px;padding-right:22px;border-right:1px solid var(--repair-line)}
+.villages-repair .repair-notebook-nav button{display:flex;align-items:center;gap:12px;border:0;min-height:53px;padding:10px 14px;font-size:15px;text-align:left;color:var(--repair-muted)}
+.villages-repair .repair-notebook-nav button[aria-current=page]{background:#39342f;color:var(--repair-primary)}
+.villages-repair .repair-workspace[data-notebook=true] .repair-editor{display:flex;padding:0;min-width:0}
+.villages-repair .repair-workspace[data-notebook=true] .repair-steps{display:none}
+.villages-repair .repair-workspace[data-notebook=true] .repair-card{flex:1;border:0;border-radius:0;background:transparent;padding:0;min-height:0}
+.villages-repair .repair-workspace[data-notebook=true] .repair-fields[data-columns=true]>.repair-field:last-child:nth-child(odd){grid-column:1/-1}
 .villages-repair .repair-weekdays{display:flex;flex-wrap:wrap;gap:6px 14px}
 .villages-repair .repair-weekdays label{display:flex;align-items:center;gap:6px;min-height:44px;font-size:14px}
 .villages-repair .repair-clock>label{display:flex;align-items:center;gap:8px;min-height:36px;font-size:13px}
@@ -66,7 +75,7 @@ export const REPAIR_STYLES = `
 .villages-repair .${P}-location-caption{display:flex;align-items:baseline;gap:22px;flex:1;min-width:0}
 .villages-repair .${P}-location-caption strong{font-weight:500}
 .villages-repair .${P}-venue-badge{font-size:12px;border:1px solid #737c75;background:#35433a;border-radius:20px;padding:3px 12px;white-space:nowrap}
-.villages-repair .${P}-venue-zones{display:flex;flex-direction:column}
+.villages-repair .${P}-venue-zones{display:flex;flex-direction:column;background:transparent;border:0;padding:0;gap:0;overflow:visible}
 .villages-repair .${P}-venue-zones>button{display:flex;align-items:center;gap:15px;border:0;border-bottom:1px solid var(--repair-line);border-radius:0;min-height:68px;text-align:left}
 .villages-repair .${P}-venue-zone-thumb{display:flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;background:#34413c;border-radius:5px}
 .villages-repair .${P}-venue-zone-caption{flex:1}
@@ -150,6 +159,9 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-review-sides{display:flex;gap:8px}
 .villages-repair .repair-review-sides [aria-pressed=true]{color:var(--repair-primary);background:#39342f}
 @media(max-width:700px){
+.villages-repair .repair-workspace[data-notebook=true]{flex-direction:column;gap:0}
+.villages-repair .repair-notebook-nav{display:none}
+.villages-repair .repair-workspace[data-notebook=true] .repair-card{padding:0}
 .villages-repair .repair-chrome{min-height:54px;padding:5px 14px;gap:12px}
 .villages-repair .repair-chrome>span,.villages-repair .repair-chrome form{display:none}
 .villages-repair .repair-chrome>strong{border:0;padding:0;font-size:17px}
@@ -203,6 +215,8 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-agenda-blocks button>span{font-size:12px}
 }
 @media(max-height:650px){
+.villages-repair .repair-notebook-nav{gap:3px}
+.villages-repair .repair-notebook-nav button{min-height:44px;padding-block:7px;font-size:14px}
 .villages-repair .repair-location-filters{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px}
 .villages-repair .repair-content{padding-top:10px;padding-bottom:10px}
 .villages-repair .repair-target{margin-bottom:8px}

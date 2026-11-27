@@ -180,7 +180,7 @@ export function RepairPage({
     [placeMap, setPlaceMap] = useState(""),
     [placeQuery, setPlaceQuery] = useState(""),
     [placePage, setPlacePage] = useState(0);
-  const [placeSection, setPlaceSection] = useState("zones"),
+  const [placeSection, setPlaceSection] = useState("details"),
     [listPage, setListPage] = useState(0),
     [step, setStep] = useState(0);
   const [memoryFilter, setMemoryFilter] = useState("remembered"),
@@ -281,15 +281,41 @@ export function RepairPage({
       : undefined;
   const zone = location?.children?.find((node) => node.icon === "zone" && c.placePath.includes(node.id));
   const targetPlace = zone ?? location;
+  const placeSections: [string, string, VillageIconName][] = zone
+    ? [
+        ["details", "Details", "details"],
+        ["access", "Access & hours", "access"],
+        ["connections", "Connections", "compass"],
+        ["artwork", "Artwork", "artwork"],
+        ["conditions", "Conditions", "projects"],
+      ]
+    : [
+        ["details", "Details", "details"],
+        ...(location?.icon === "venue" ? ([["people", "People & roles", "people"]] as typeof placeSections) : []),
+        ["zones", "Zones", "zone"],
+        ["access", "Access & hours", "access"],
+        ["conditions", "Conditions", "projects"],
+        ["artwork", "Artwork", "artwork"],
+      ];
+  const placeNotebook = !!targetPlace && c.view !== "review";
+  const mainPlaceRecord = targetPlace?.children?.find((item) =>
+    item.id.startsWith(zone ? '["zone-details",' : location?.icon === "venue" ? '["venue",' : '["place",'),
+  );
+  const choosePlaceSection = (part: string) => {
+    c.setPlacePath(c.placePath.slice(0, c.placePath.indexOf(targetPlace!.id) + 1));
+    setPlaceSection(part);
+    setListPage(0);
+    void c.load("places");
+  };
   const openPlace = (node: RepairBrowseItem) => {
     c.setPlacePath([node.icon === "venue" ? "venues" : "places", node.id]);
-    setPlaceSection("zones");
+    setPlaceSection("details");
     setListPage(0);
     void c.load("places");
   };
   const backPlace = () => {
     c.setPlacePath(zone && location ? c.placePath.slice(0, c.placePath.indexOf(zone.id)) : []);
-    setPlaceSection("zones");
+    setPlaceSection("details");
     setListPage(0);
     void c.load("places");
   };
@@ -302,6 +328,7 @@ export function RepairPage({
     }
   }, [c]);
   const editing = !!selected && !!c.draft && (c.view === "edit" || (c.view === "list" && !!selected.agendaDay));
+  const mainPlaceDetails = !!targetPlace && !!selected && selected.id === mainPlaceRecord?.id;
   const isMemory = selected?.topic === "memories";
   const readOnlyMemory = isMemory && ["forget", "remember"].includes(c.draft?.action ?? "");
   const venueField = c.editorFields.find((field) => field.key.startsWith("venue:"));
@@ -333,7 +360,14 @@ export function RepairPage({
             },
           ]
         : [];
-    if (!selected?.agendaDay) return [field];
+    if (!selected?.agendaDay)
+      return [
+        mainPlaceDetails && field.key === "form"
+          ? { ...field, label: "Building", multiline: false }
+          : mainPlaceDetails && field.key === "description"
+            ? { ...field, label: "Description" }
+            : field,
+      ];
     if (field === venueField)
       return [
         {
@@ -357,6 +391,11 @@ export function RepairPage({
     ];
   });
   const fieldGroups = useMemo(() => {
+    if (mainPlaceDetails && !small && !compact && space.height / space.scale >= 430) {
+      const first = fields.filter((field) => ["name", "form", "description"].includes(field.key));
+      const remaining = fields.filter((field) => !first.includes(field));
+      if (first.length === 3) return [first, ...remaining.map((field) => [field])];
+    }
     if (!compact && selected?.id.startsWith('["work",'))
       return [
         fields.filter((field) => ["venueId", "zoneId", "activity", "inviteGuests"].includes(field.key)),
@@ -404,7 +443,7 @@ export function RepairPage({
         { key: "__evidence", label: "Original conversation", type: "text", value: selected.source.join("\n\n") },
       ]);
     return groups;
-  }, [fields, compact, isMemory, selected, space.height, space.scale]);
+  }, [fields, compact, isMemory, selected, space.height, space.scale, mainPlaceDetails, small]);
   const currentStep = Math.min(step, Math.max(0, fieldGroups.length - 1));
   const groupCount = fieldGroups.length;
   useEffect(() => {
@@ -500,27 +539,32 @@ export function RepairPage({
               : placeSection === "connections"
                 ? node.id.startsWith('["zone-connections",')
                 : placeSection === "artwork"
-                  ? node.id.startsWith('["zone-artwork",')
+                  ? node.id.startsWith('["zone-artwork",') || node.id.startsWith('["location-artwork",')
                   : placeSection === "access"
                     ? node.icon === "access"
-                    : placeSection === "management"
-                      ? node.title === "Runs this Venue"
-                      : placeSection === "residents"
-                        ? node.title === "Residents"
-                        : placeSection === "workers"
-                          ? node.title === "Workers"
-                          : node.icon !== "zone" &&
-                            !["Conditions", "Runs this Venue", "Residents", "Workers"].includes(node.title) &&
-                            node.icon !== "access",
+                    : placeSection === "people"
+                      ? ["Runs this Venue", "Residents", "Workers"].includes(node.title)
+                      : node.icon !== "zone" &&
+                        !["Conditions", "Runs this Venue", "Residents", "Workers"].includes(node.title) &&
+                        node.icon !== "access" &&
+                        !node.id.startsWith('["location-artwork",') &&
+                        !node.id.startsWith('["zone-artwork",') &&
+                        !node.id.startsWith('["zone-connections",') &&
+                        !node.id.startsWith('["new-zone",'),
     )
     .flatMap((node) =>
       ["conditions", "residents", "workers"].includes(placeSection) ? (node.children ?? [node]) : [node],
     );
   useEffect(() => {
-    if (c.busy || c.view !== "list" || c.selected) return;
+    if (c.busy || c.view !== "list") return;
+    if (placeNotebook && placeSection === "details" && !nestedFolder && mainPlaceRecord) {
+      void c.open(mainPlaceRecord.id);
+      return;
+    }
+    if (c.selected) return;
     if (c.person && c.section === "home" && c.records.length)
       void c.open((c.records.find((record) => record.id.startsWith('["home",')) ?? c.records[0]!).id);
-  }, [c]);
+  }, [c, placeNotebook, placeSection, nestedFolder, mainPlaceRecord]);
   const editorTitle = selected?.agendaDay
     ? "Edit activity"
     : isMemory
@@ -678,41 +722,22 @@ export function RepairPage({
               void c.chooseSection(part as RepairPersonSection);
             }}
           />
-        ) : targetPlace && c.view !== "review" ? (
-          <Sections
-            name="Location repairs"
-            entries={
-              zone
-                ? [
-                    ["details", "Details"],
-                    ["access", "Access"],
-                    ["hours", "Hours"],
-                    ["connections", "Connections"],
-                    ["artwork", "Artwork"],
-                    ["conditions", "Conditions"],
-                  ]
-                : [
-                    ["details", "Details"],
-                    ...(location?.icon === "venue"
-                      ? ([
-                          ["management", "Runs this Venue"],
-                          ["residents", "Residents"],
-                          ["workers", "Workers"],
-                        ] as [string, string][])
-                      : []),
-                    ["zones", "Zones"],
-                    ["conditions", "Conditions"],
-                  ]
-            }
-            value={placeSection}
-            disabled={c.saving}
-            onChange={(part) => {
-              c.setPlacePath(c.placePath.slice(0, c.placePath.indexOf(targetPlace.id) + 1));
-              setPlaceSection(part);
-              setListPage(0);
-              void c.load("places");
-            }}
-          />
+        ) : placeNotebook ? (
+          <label className="repair-mobile-section">
+            <span className="repair-sr">Location repairs</span>
+            <select
+              aria-label="Location repairs"
+              value={placeSection}
+              disabled={c.busy}
+              onChange={(event) => choosePlaceSection(event.target.value)}
+            >
+              {placeSections.map(([id, title]) => (
+                <option key={id} value={id}>
+                  {title}
+                </option>
+              ))}
+            </select>
+          </label>
         ) : null}
         {c.error || problem || (selected?.artwork && artwork?.problem) ? (
           <p className="repair-error" role="alert">
@@ -720,876 +745,931 @@ export function RepairPage({
           </p>
         ) : null}
         {!c.index ? <p role="status">Opening REPAIR…</p> : null}
-        <div className="repair-workspace" ref={space.ref}>
-          {c.view === "review" && c.review ? (
-            <section className="repair-review">
-              <h2>Review changes</h2>
-              {!small ? <p>{short(c.review.title)}</p> : null}
-              {reviewPages.slice(reviewStep * reviewPageSize, (reviewStep + 1) * reviewPageSize).map((change, index) =>
-                change.label === "Linked effects" ? (
-                  <section key={index}>
-                    <h3>Linked effects</h3>
-                    <PagedText label="Linked effects" value={change.after} readOnly rows={proseRows} />
-                  </section>
-                ) : (
-                  <div className="repair-comparison" data-mobile={small} key={index}>
-                    <h3>{change.label}</h3>
-                    {small ? (
-                      <>
-                        <nav className="repair-review-sides" aria-label="Compare change">
-                          {(["before", "after"] as const).map((side) => (
-                            <button
-                              type="button"
-                              key={side}
-                              aria-pressed={reviewSide === side}
-                              onClick={() => setReviewSide(side)}
-                            >
-                              {side === "before" ? "Before" : "After"}
-                            </button>
-                          ))}
-                        </nav>
-                        <PagedText
-                          label={change.label + " " + reviewSide}
-                          value={change[reviewSide] || "None"}
-                          readOnly
-                          rows={proseRows}
-                        />
-                      </>
+        <div className="repair-workspace" data-notebook={placeNotebook} ref={space.ref}>
+          {placeNotebook ? (
+            <nav className="repair-notebook-nav" aria-label="Location repairs">
+              {placeSections.map(([id, title, icon]) => (
+                <button
+                  type="button"
+                  key={id}
+                  aria-current={placeSection === id ? "page" : undefined}
+                  disabled={c.busy}
+                  onClick={() => choosePlaceSection(id)}
+                >
+                  <VillageIcon name={icon} />
+                  {title}
+                </button>
+              ))}
+            </nav>
+          ) : null}
+          <div className="repair-notebook-body">
+            {c.view === "review" && c.review ? (
+              <section className="repair-review">
+                <h2>Review changes</h2>
+                {!small ? <p>{short(c.review.title)}</p> : null}
+                {reviewPages
+                  .slice(reviewStep * reviewPageSize, (reviewStep + 1) * reviewPageSize)
+                  .map((change, index) =>
+                    change.label === "Linked effects" ? (
+                      <section key={index}>
+                        <h3>Linked effects</h3>
+                        <PagedText label="Linked effects" value={change.after} readOnly rows={proseRows} />
+                      </section>
                     ) : (
-                      <>
-                        <div>
-                          <span>Before</span>
-                          <PagedText
-                            label={`${change.label} before`}
-                            value={change.before || "None"}
-                            readOnly
-                            rows={compact ? 2 : 3}
-                          />
-                        </div>
-                        <div>
-                          <span>After</span>
-                          <PagedText
-                            label={`${change.label} after`}
-                            value={change.after || "None"}
-                            readOnly
-                            rows={compact ? 2 : 3}
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ),
-              )}
-              {c.review.kind === "restore" ? (
-                <label>
-                  <input
-                    autoComplete="off"
-                    type="checkbox"
-                    checked={c.restoreAcknowledged}
-                    onChange={(event) => c.setRestoreAcknowledged(event.target.checked)}
-                  />{" "}
-                  Replace Village progress with this snapshot
-                </label>
-              ) : null}
-              <Pages page={reviewStep} size={reviewPageSize} total={reviewPages.length} onPage={setStep} />
-            </section>
-          ) : c.view === "done" ? (
-            <section className="repair-card">
-              <h2>{c.review?.kind === "restore" ? "Village restored" : "Changes saved"}</h2>
-              {c.preservedDraft ? (
-                <PagedText label={c.preservedDraft.title} value={c.preservedDraft.text} readOnly />
-              ) : null}
-              <button type="button" onClick={() => void c.load()}>
-                Continue repairing
-              </button>
-            </section>
-          ) : directory ? (
-            <section
-              className="repair-directory repair-people-directory"
-              data-compact={space.height / space.scale < 420}
-              style={{ "--repair-portrait-size": `${portraitSize}px` } as CSSProperties}
-            >
-              <Sections
-                name="People categories"
-                entries={["Villagers", "Visitors", "NPCs"].map((title) => [title, title])}
-                value={peopleTab}
-                onChange={(tab) => {
-                  setPeopleTab(tab);
-                  setPeoplePage(0);
-                }}
-              />
-              <label className="repair-search">
-                <StorybookSearchIcon />
-                <input
-                  autoComplete="off"
-                  type="search"
-                  aria-label="Find a person"
-                  placeholder="Find a person"
-                  value={peopleQuery}
-                  onChange={(event) => {
-                    setPeopleQuery(event.target.value);
+                      <div className="repair-comparison" data-mobile={small} key={index}>
+                        <h3>{change.label}</h3>
+                        {small ? (
+                          <>
+                            <nav className="repair-review-sides" aria-label="Compare change">
+                              {(["before", "after"] as const).map((side) => (
+                                <button
+                                  type="button"
+                                  key={side}
+                                  aria-pressed={reviewSide === side}
+                                  onClick={() => setReviewSide(side)}
+                                >
+                                  {side === "before" ? "Before" : "After"}
+                                </button>
+                              ))}
+                            </nav>
+                            <PagedText
+                              label={change.label + " " + reviewSide}
+                              value={change[reviewSide] || "None"}
+                              readOnly
+                              rows={proseRows}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <span>Before</span>
+                              <PagedText
+                                label={`${change.label} before`}
+                                value={change.before || "None"}
+                                readOnly
+                                rows={compact ? 2 : 3}
+                              />
+                            </div>
+                            <div>
+                              <span>After</span>
+                              <PagedText
+                                label={`${change.label} after`}
+                                value={change.after || "None"}
+                                readOnly
+                                rows={compact ? 2 : 3}
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ),
+                  )}
+                {c.review.kind === "restore" ? (
+                  <label>
+                    <input
+                      autoComplete="off"
+                      type="checkbox"
+                      checked={c.restoreAcknowledged}
+                      onChange={(event) => c.setRestoreAcknowledged(event.target.checked)}
+                    />{" "}
+                    Replace Village progress with this snapshot
+                  </label>
+                ) : null}
+                <Pages page={reviewStep} size={reviewPageSize} total={reviewPages.length} onPage={setStep} />
+              </section>
+            ) : c.view === "done" ? (
+              <section className="repair-card">
+                <h2>{c.review?.kind === "restore" ? "Village restored" : "Changes saved"}</h2>
+                {c.preservedDraft ? (
+                  <PagedText label={c.preservedDraft.title} value={c.preservedDraft.text} readOnly />
+                ) : null}
+                <button type="button" onClick={() => void c.load()}>
+                  Continue repairing
+                </button>
+              </section>
+            ) : directory ? (
+              <section
+                className="repair-directory repair-people-directory"
+                data-compact={space.height / space.scale < 420}
+                style={{ "--repair-portrait-size": `${portraitSize}px` } as CSSProperties}
+              >
+                <Sections
+                  name="People categories"
+                  entries={["Villagers", "Visitors", "NPCs"].map((title) => [title, title])}
+                  value={peopleTab}
+                  onChange={(tab) => {
+                    setPeopleTab(tab);
                     setPeoplePage(0);
                   }}
                 />
-              </label>
-              <div className={`${P}-directory-grid`}>
-                {visiblePeople.map((person) => (
-                  <PersonDirectoryCard
-                    key={person.id}
-                    name={person.name}
-                    portrait={portraits[person.id]}
-                    disabled={c.busy}
-                    label={`Repair ${person.name}`}
-                    onOpen={() => {
-                      setRecordQuery("");
-                      void c.choosePerson(person, "memories");
-                    }}
-                  />
-                ))}
-              </div>
-              <Pages page={currentPeoplePage} size={peopleSize} total={people.length} onPage={setPeoplePage} />
-            </section>
-          ) : c.topic === "places" && !targetPlace ? (
-            <section className="repair-directory repair-locations">
-              <div className="repair-location-filters">
-                <select
-                  aria-label="Filter by map"
-                  value={placeMap}
-                  onChange={(event) => {
-                    setPlaceMap(event.target.value);
-                    setPlacePage(0);
-                  }}
-                >
-                  <option value="">All maps</option>
-                  {maps.map(([id, name]) => (
-                    <option key={id} value={id}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
                 <label className="repair-search">
                   <StorybookSearchIcon />
                   <input
                     autoComplete="off"
                     type="search"
-                    aria-label="Search known locations"
-                    placeholder="Search known locations"
-                    value={placeQuery}
+                    aria-label="Find a person"
+                    placeholder="Find a person"
+                    value={peopleQuery}
                     onChange={(event) => {
-                      setPlaceQuery(event.target.value);
-                      setPlacePage(0);
+                      setPeopleQuery(event.target.value);
+                      setPeoplePage(0);
                     }}
                   />
                 </label>
-              </div>
-              <Sections
-                name="Location categories"
-                entries={[
-                  ["all", "All"],
-                  ["venues", `Venues ${placeNodes.filter((node) => node.icon === "venue").length}`],
-                  ["other", `Other locations ${placeNodes.filter((node) => node.icon !== "venue").length}`],
-                ]}
-                value={placeKind}
-                onChange={(kind) => {
-                  setPlaceKind(kind);
-                  setPlacePage(0);
-                }}
-              />
-              <div className={`${P}-locations-group`}>
-                <header className="repair-list-heading">
-                  <h2>Known locations</h2>
-                  <small>A–Z</small>
-                </header>
-                <ul>
-                  {locations
-                    .slice(
-                      Math.min(placePage, Math.max(0, Math.ceil(locations.length / rowSize) - 1)) * rowSize,
-                      (Math.min(placePage, Math.max(0, Math.ceil(locations.length / rowSize) - 1)) + 1) * rowSize,
-                    )
-                    .map((node) => (
-                      <li key={node.id}>
-                        <LocationDirectoryRow
-                          id={node.id}
-                          name={node.title}
-                          mapName={node.mapName}
-                          venue={node.icon === "venue"}
-                          onOpen={() => openPlace(node)}
-                        />
-                      </li>
-                    ))}
-                </ul>
-              </div>
-              <Pages page={placePage} size={rowSize} total={locations.length} onPage={setPlacePage} />
-            </section>
-          ) : isHistory ? (
-            historyRow ? (
-              <section className="repair-card">
-                <button type="button" onClick={() => setHistoryDetail(undefined)}>
-                  ← Repair history
-                </button>
-                <h2>{short(historyRow.title)}</h2>
-                <PagedText
-                  label="Repair details"
-                  readOnly
-                  value={historyRow.changes
-                    .map((change) => `${change.label}\n${change.before || "None"} → ${change.after || "None"}`)
-                    .join("\n\n")}
-                  rows={compact ? 3 : 8}
-                />
-              </section>
-            ) : (
-              <section className="repair-directory">
-                <table className="repair-history">
-                  <thead>
-                    <tr>
-                      <th>When</th>
-                      <th>Action</th>
-                      <th>Target</th>
-                      <th>Change</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.slice(0, historySize).map((entry) => (
-                      <tr key={entry.id}>
-                        <td>
-                          {new Date(entry.at).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </td>
-                        <td>{entry.action ?? "Updated"}</td>
-                        <td>
-                          <button type="button" onClick={() => setHistoryDetail(entry.id)}>
-                            {short(entry.title)}
-                          </button>
-                        </td>
-                        <td>
-                          {short(
-                            entry.changes
-                              .map(
-                                (change) => `${change.label}: ${change.before || "None"} → ${change.after || "None"}`,
-                              )
-                              .join(", "),
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!history.length ? <p>No repairs yet.</p> : null}
-                <Pages
-                  page={0}
-                  offset={c.index?.historyOffset ?? 0}
-                  size={historySize}
-                  total={c.index?.historyTotal ?? 0}
-                  onPage={(offset) => void c.historyPage(offset)}
-                />
-              </section>
-            )
-          ) : isSnapshots ? (
-            <section className="repair-directory">
-              <button
-                type="button"
-                disabled={c.busy}
-                onClick={async () => {
-                  await c.chooseTopic("world");
-                  void c.open('["snapshot-schedule"]');
-                }}
-              >
-                Snapshot schedule →
-              </button>
-              <form
-                autoComplete="off"
-                className="repair-snapshot-create"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void c.saveCheckpoint();
-                }}
-              >
-                <input
-                  autoComplete="off"
-                  aria-label="Snapshot name"
-                  placeholder="Snapshot name"
-                  maxLength={120}
-                  value={c.checkpointTitle}
-                  onChange={(event) => c.setCheckpointTitle(event.target.value)}
-                />
-                <button type="submit" disabled={c.busy}>
-                  Save snapshot
-                </button>
-              </form>
-              <div className="repair-record-list">
-                {c.index?.checkpoints.slice(0, rowSize).map((snapshot) => (
-                  <div className="repair-snapshot-row" key={snapshot.id}>
-                    <button
-                      type="button"
-                      disabled={c.busy || c.index?.sceneOpen}
-                      onClick={() => {
-                        setStep(0);
-                        void c.restore(snapshot.id);
-                      }}
-                    >
-                      <strong>{snapshot.title}</strong>
-                      <small>{new Date(snapshot.at).toLocaleString()}</small>
-                      <small>
-                        {snapshot.mode === "scheduled"
-                          ? "Scheduled"
-                          : snapshot.mode === "manual"
-                            ? "Manual"
-                            : snapshot.title === "Before checkpoint restoration"
-                              ? "Before restore"
-                              : "Before repair"}
-                        {snapshot.villageAt ? `, Village time ${new Date(snapshot.villageAt).toLocaleString()}` : ""}
-                      </small>
-                      <span>Review restore →</span>
-                    </button>
-                    {deleteSnapshot === snapshot.id ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={c.busy}
-                          onClick={() => {
-                            void c.deleteCheckpoint(snapshot.id, snapshot.token);
-                            setDeleteSnapshot(undefined);
-                          }}
-                        >
-                          Delete snapshot
-                        </button>
-                        <button type="button" onClick={() => setDeleteSnapshot(undefined)}>
-                          Keep snapshot
-                        </button>
-                      </>
-                    ) : snapshot.mode !== "automatic" ? (
-                      <button
-                        type="button"
-                        aria-label={"Delete " + snapshot.title}
-                        disabled={c.busy}
-                        onClick={() => setDeleteSnapshot(snapshot.id)}
-                      >
-                        Delete
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-              <Pages
-                page={0}
-                offset={c.index?.checkpointOffset ?? 0}
-                size={rowSize}
-                total={c.index?.checkpointTotal ?? 0}
-                onPage={(offset) => void c.checkpointPage(offset)}
-              />
-              {c.index?.sceneOpen ? <p>Conclude the Scene to restore.</p> : null}
-            </section>
-          ) : editing && selected.people && !c.person ? (
-            <section className="repair-directory">
-              <h2>Whose memory?</h2>
-              <div className={P + "-directory-grid"}>
-                {selected.people.slice(accountPage * peopleSize, (accountPage + 1) * peopleSize).map((account) => {
-                  const person = c.index?.people.find((entry) => entry.id === account.id);
-                  return person ? (
+                <div className={`${P}-directory-grid`}>
+                  {visiblePeople.map((person) => (
                     <PersonDirectoryCard
                       key={person.id}
                       name={person.name}
                       portrait={portraits[person.id]}
-                      label={"Repair " + person.name}
+                      disabled={c.busy}
+                      label={`Repair ${person.name}`}
                       onOpen={() => {
-                        pendingMemory.current = { id: selected.id, personId: person.id };
+                        setRecordQuery("");
                         void c.choosePerson(person, "memories");
                       }}
                     />
-                  ) : null;
-                })}
-              </div>
-              <Pages page={accountPage} size={peopleSize} total={selected.people.length} onPage={setAccountPage} />
-            </section>
-          ) : editing ? (
-            <div className={`repair-editor ${browseMemory ? "repair-memory-editor" : ""}`}>
-              {c.person && c.section === "home" ? (
-                <label className="repair-mobile-record">
-                  <span className="repair-sr">Home and work section</span>
+                  ))}
+                </div>
+                <Pages page={currentPeoplePage} size={peopleSize} total={people.length} onPage={setPeoplePage} />
+              </section>
+            ) : c.topic === "places" && !targetPlace ? (
+              <section className="repair-directory repair-locations">
+                <div className="repair-location-filters">
                   <select
-                    aria-label="Home and work section"
-                    value={selected.id}
-                    onChange={(event) => void c.open(event.target.value)}
+                    aria-label="Filter by map"
+                    value={placeMap}
+                    onChange={(event) => {
+                      setPlaceMap(event.target.value);
+                      setPlacePage(0);
+                    }}
                   >
-                    {c.records.map((record) => (
-                      <option key={record.id} value={record.id}>
-                        {record.id.startsWith('["home",') ? "Home" : record.title}
+                    <option value="">All maps</option>
+                    {maps.map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
                       </option>
                     ))}
                   </select>
-                </label>
-              ) : null}
-              {browseMemory && !small ? (
-                <aside className="repair-memory-list">
+                  <label className="repair-search">
+                    <StorybookSearchIcon />
+                    <input
+                      autoComplete="off"
+                      type="search"
+                      aria-label="Search known locations"
+                      placeholder="Search known locations"
+                      value={placeQuery}
+                      onChange={(event) => {
+                        setPlaceQuery(event.target.value);
+                        setPlacePage(0);
+                      }}
+                    />
+                  </label>
+                </div>
+                <Sections
+                  name="Location categories"
+                  entries={[
+                    ["all", "All"],
+                    ["venues", `Venues ${placeNodes.filter((node) => node.icon === "venue").length}`],
+                    ["other", `Other locations ${placeNodes.filter((node) => node.icon !== "venue").length}`],
+                  ]}
+                  value={placeKind}
+                  onChange={(kind) => {
+                    setPlaceKind(kind);
+                    setPlacePage(0);
+                  }}
+                />
+                <div className={`${P}-locations-group`}>
+                  <header className="repair-list-heading">
+                    <h2>Known locations</h2>
+                    <small>A–Z</small>
+                  </header>
+                  <ul>
+                    {locations
+                      .slice(
+                        Math.min(placePage, Math.max(0, Math.ceil(locations.length / rowSize) - 1)) * rowSize,
+                        (Math.min(placePage, Math.max(0, Math.ceil(locations.length / rowSize) - 1)) + 1) * rowSize,
+                      )
+                      .map((node) => (
+                        <li key={node.id}>
+                          <LocationDirectoryRow
+                            id={node.id}
+                            name={node.title}
+                            mapName={node.mapName}
+                            venue={node.icon === "venue"}
+                            onOpen={() => openPlace(node)}
+                          />
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+                <Pages page={placePage} size={rowSize} total={locations.length} onPage={setPlacePage} />
+              </section>
+            ) : isHistory ? (
+              historyRow ? (
+                <section className="repair-card">
+                  <button type="button" onClick={() => setHistoryDetail(undefined)}>
+                    ← Repair history
+                  </button>
+                  <h2>{short(historyRow.title)}</h2>
+                  <PagedText
+                    label="Repair details"
+                    readOnly
+                    value={historyRow.changes
+                      .map((change) => `${change.label}\n${change.before || "None"} → ${change.after || "None"}`)
+                      .join("\n\n")}
+                    rows={compact ? 3 : 8}
+                  />
+                </section>
+              ) : (
+                <section className="repair-directory">
+                  <table className="repair-history">
+                    <thead>
+                      <tr>
+                        <th>When</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Change</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.slice(0, historySize).map((entry) => (
+                        <tr key={entry.id}>
+                          <td>
+                            {new Date(entry.at).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </td>
+                          <td>{entry.action ?? "Updated"}</td>
+                          <td>
+                            <button type="button" onClick={() => setHistoryDetail(entry.id)}>
+                              {short(entry.title)}
+                            </button>
+                          </td>
+                          <td>
+                            {short(
+                              entry.changes
+                                .map(
+                                  (change) => `${change.label}: ${change.before || "None"} → ${change.after || "None"}`,
+                                )
+                                .join(", "),
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!history.length ? <p>No repairs yet.</p> : null}
+                  <Pages
+                    page={0}
+                    offset={c.index?.historyOffset ?? 0}
+                    size={historySize}
+                    total={c.index?.historyTotal ?? 0}
+                    onPage={(offset) => void c.historyPage(offset)}
+                  />
+                </section>
+              )
+            ) : isSnapshots ? (
+              <section className="repair-directory">
+                <button
+                  type="button"
+                  disabled={c.busy}
+                  onClick={async () => {
+                    await c.chooseTopic("world");
+                    void c.open('["snapshot-schedule"]');
+                  }}
+                >
+                  Snapshot schedule →
+                </button>
+                <form
+                  autoComplete="off"
+                  className="repair-snapshot-create"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void c.saveCheckpoint();
+                  }}
+                >
                   <input
                     autoComplete="off"
-                    type="search"
-                    aria-label={collectionSearch}
-                    placeholder={collectionSearch}
-                    value={recordQuery}
-                    onChange={(event) => {
-                      setRecordQuery(event.target.value);
-                      void c.searchRecords(event.target.value);
-                      setListPage(0);
-                    }}
+                    aria-label="Snapshot name"
+                    placeholder="Snapshot name"
+                    maxLength={120}
+                    value={c.checkpointTitle}
+                    onChange={(event) => c.setCheckpointTitle(event.target.value)}
                   />
-                  <div className="repair-record-list">
-                    {filteredRecords.slice(0, Math.max(1, rowSize - 1)).map((record) => (
+                  <button type="submit" disabled={c.busy}>
+                    Save snapshot
+                  </button>
+                </form>
+                <div className="repair-record-list">
+                  {c.index?.checkpoints.slice(0, rowSize).map((snapshot) => (
+                    <div className="repair-snapshot-row" key={snapshot.id}>
                       <button
                         type="button"
-                        aria-label={record.title}
-                        aria-current={selected.id === record.id ? "page" : undefined}
-                        key={record.id}
-                        onClick={() => void c.open(record.id)}
+                        disabled={c.busy || c.index?.sceneOpen}
+                        onClick={() => {
+                          setStep(0);
+                          void c.restore(snapshot.id);
+                        }}
                       >
-                        {short(record.title)}
+                        <strong>{snapshot.title}</strong>
+                        <small>{new Date(snapshot.at).toLocaleString()}</small>
+                        <small>
+                          {snapshot.mode === "scheduled"
+                            ? "Scheduled"
+                            : snapshot.mode === "manual"
+                              ? "Manual"
+                              : snapshot.title === "Before checkpoint restoration"
+                                ? "Before restore"
+                                : "Before repair"}
+                          {snapshot.villageAt ? `, Village time ${new Date(snapshot.villageAt).toLocaleString()}` : ""}
+                        </small>
+                        <span>Review restore →</span>
                       </button>
-                    ))}
-                  </div>
+                      {deleteSnapshot === snapshot.id ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={c.busy}
+                            onClick={() => {
+                              void c.deleteCheckpoint(snapshot.id, snapshot.token);
+                              setDeleteSnapshot(undefined);
+                            }}
+                          >
+                            Delete snapshot
+                          </button>
+                          <button type="button" onClick={() => setDeleteSnapshot(undefined)}>
+                            Keep snapshot
+                          </button>
+                        </>
+                      ) : snapshot.mode !== "automatic" ? (
+                        <button
+                          type="button"
+                          aria-label={"Delete " + snapshot.title}
+                          disabled={c.busy}
+                          onClick={() => setDeleteSnapshot(snapshot.id)}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+                <Pages
+                  page={0}
+                  offset={c.index?.checkpointOffset ?? 0}
+                  size={rowSize}
+                  total={c.index?.checkpointTotal ?? 0}
+                  onPage={(offset) => void c.checkpointPage(offset)}
+                />
+                {c.index?.sceneOpen ? <p>Conclude the Scene to restore.</p> : null}
+              </section>
+            ) : editing && selected.people && !c.person ? (
+              <section className="repair-directory">
+                <h2>Whose memory?</h2>
+                <div className={P + "-directory-grid"}>
+                  {selected.people.slice(accountPage * peopleSize, (accountPage + 1) * peopleSize).map((account) => {
+                    const person = c.index?.people.find((entry) => entry.id === account.id);
+                    return person ? (
+                      <PersonDirectoryCard
+                        key={person.id}
+                        name={person.name}
+                        portrait={portraits[person.id]}
+                        label={"Repair " + person.name}
+                        onOpen={() => {
+                          pendingMemory.current = { id: selected.id, personId: person.id };
+                          void c.choosePerson(person, "memories");
+                        }}
+                      />
+                    ) : null;
+                  })}
+                </div>
+                <Pages page={accountPage} size={peopleSize} total={selected.people.length} onPage={setAccountPage} />
+              </section>
+            ) : editing ? (
+              <div className={`repair-editor ${browseMemory ? "repair-memory-editor" : ""}`}>
+                {c.person && c.section === "home" ? (
+                  <label className="repair-mobile-record">
+                    <span className="repair-sr">Home and work section</span>
+                    <select
+                      aria-label="Home and work section"
+                      value={selected.id}
+                      onChange={(event) => void c.open(event.target.value)}
+                    >
+                      {c.records.map((record) => (
+                        <option key={record.id} value={record.id}>
+                          {record.id.startsWith('["home",') ? "Home" : record.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                {browseMemory && !small ? (
+                  <aside className="repair-memory-list">
+                    <input
+                      autoComplete="off"
+                      type="search"
+                      aria-label={collectionSearch}
+                      placeholder={collectionSearch}
+                      value={recordQuery}
+                      onChange={(event) => {
+                        setRecordQuery(event.target.value);
+                        void c.searchRecords(event.target.value);
+                        setListPage(0);
+                      }}
+                    />
+                    <div className="repair-record-list">
+                      {filteredRecords.slice(0, Math.max(1, rowSize - 1)).map((record) => (
+                        <button
+                          type="button"
+                          aria-label={record.title}
+                          aria-current={selected.id === record.id ? "page" : undefined}
+                          key={record.id}
+                          onClick={() => void c.open(record.id)}
+                        >
+                          {short(record.title)}
+                        </button>
+                      ))}
+                    </div>
+                    <Pages
+                      page={0}
+                      offset={c.offset}
+                      size={Math.max(1, rowSize - 1)}
+                      total={c.total}
+                      onPage={(offset) => void c.searchRecords(recordQuery, offset)}
+                    />
+                  </aside>
+                ) : (
+                  <aside className="repair-steps">
+                    {arrangementSteps.length
+                      ? arrangementSteps
+                          .map((item, index) => ({ ...item, ordinal: index }))
+                          .slice(Math.floor(arrangementStep / 4) * 4, Math.floor(arrangementStep / 4) * 4 + 4)
+                          .map(({ record, label, index, ordinal }) => (
+                            <button
+                              type="button"
+                              key={record.id + index}
+                              disabled={c.busy}
+                              aria-current={record.id === selected.id && currentStep === index ? "step" : undefined}
+                              onClick={() => openPage(record.id, index)}
+                            >
+                              <span>{ordinal + 1}</span>
+                              {label}
+                            </button>
+                          ))
+                      : fieldGroups
+                          .map((group, index) => ({ group, index }))
+                          .slice(Math.floor(currentStep / 4) * 4, Math.floor(currentStep / 4) * 4 + 4)
+                          .map(({ group, index }) => (
+                            <button
+                              type="button"
+                              key={index}
+                              aria-current={currentStep === index ? "step" : undefined}
+                              onClick={() => setStep(index)}
+                            >
+                              <span>{index + 1}</span>
+                              {stepTitle(group)}
+                            </button>
+                          ))}
+                  </aside>
+                )}
+                <section className="repair-card">
+                  <header className="repair-card-title">
+                    <h2>
+                      {mainPlaceDetails
+                        ? "Details"
+                        : selected.id.startsWith('["relationship",')
+                          ? selected.title
+                          : isMemory
+                            ? editorTitle
+                            : fieldGroups[currentStep]
+                              ? stepTitle(fieldGroups[currentStep]!)
+                              : editorTitle}
+                    </h2>
+                    <small>
+                      {arrangementSteps.length ? arrangementStep + 1 : currentStep + 1} of{" "}
+                      {arrangementSteps.length || Math.max(1, fieldGroups.length)}
+                    </small>
+                    {!(c.person && c.section === "home") && !mainPlaceDetails ? (
+                      <button
+                        type="button"
+                        className="repair-close"
+                        aria-label={`Back to ${c.person ? personSections.find(([id]) => id === c.section)?.[1] : targetPlace ? placeSection : "records"}`}
+                        disabled={c.busy}
+                        onClick={() => void c.load(c.topic, c.offset, recordQuery)}
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </header>
+                  {placeNotebook && placeSection === "details" && placeItems.length > 1 ? (
+                    <label className="repair-field">
+                      Details record
+                      <select
+                        aria-label="Details record"
+                        disabled={c.busy}
+                        value={selected.id}
+                        onChange={(event) => void c.open(event.target.value)}
+                      >
+                        {placeItems.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.id === mainPlaceRecord?.id ? "Details" : item.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  {selected.actions.length > 3 ? (
+                    <label className="repair-field">
+                      Action
+                      <select
+                        aria-label="Repair action"
+                        disabled={c.busy}
+                        value={c.draft.action}
+                        onChange={(event) =>
+                          c.update({
+                            action: event.target.value,
+                            ...(event.target.value === "teach" ? { knowers: [] } : {}),
+                          })
+                        }
+                      >
+                        {selected.actions.map((action) => (
+                          <option key={action.id} value={action.id}>
+                            {action.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : selected.actions.length > 1 ? (
+                    <div className="repair-actions">
+                      {selected.actions.map((action) => (
+                        <button
+                          type="button"
+                          key={action.id}
+                          aria-pressed={c.draft!.action === action.id}
+                          disabled={c.busy}
+                          onClick={() =>
+                            c.update({ action: action.id, ...(action.id === "teach" ? { knowers: [] } : {}) })
+                          }
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {c.draft.action === "teach" ? (
+                    <label className="repair-field">
+                      Add person
+                      <select
+                        aria-label="Add person"
+                        value={c.draft.knowers[0] ?? ""}
+                        onChange={(event) => c.update({ knowers: event.target.value ? [event.target.value] : [] })}
+                      >
+                        <option value="">Choose a person</option>
+                        {selected.recipients?.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : fieldGroups[currentStep]?.[0]?.key === "__evidence" ? (
+                    <PagedText
+                      label="Original conversation"
+                      value={selected.source.join("\n\n")}
+                      readOnly
+                      rows={proseRows}
+                    />
+                  ) : fieldGroups[currentStep]?.[0]?.key === "__tools" && onCharacterTools ? (
+                    <button
+                      type="button"
+                      disabled={c.busy || c.canReview}
+                      onClick={() => onCharacterTools(JSON.parse(selected.id)[1])}
+                    >
+                      Character tools →
+                    </button>
+                  ) : selected.artwork && fieldGroups[currentStep]?.[0]?.key === "image" && artwork ? (
+                    <ZoneImageControls
+                      name={selected.title}
+                      imageUrl={selected.artwork.imageUrl}
+                      canGenerate={selected.artwork.canGenerate}
+                      disabled={c.busy || !!artwork.placeBusyId || c.canReview}
+                      onGenerate={() =>
+                        void artwork
+                          .drawPlaceImage(selected.artwork!.locationId, selected.artwork!.zoneId)
+                          .then(() => c.refreshSelected())
+                      }
+                      onUpload={(file) =>
+                        void artwork
+                          .keepPlaceImage(selected.artwork!.locationId, selected.artwork!.zoneId, file)
+                          .then(() => c.refreshSelected())
+                      }
+                      onRemove={() =>
+                        void artwork
+                          .dropPlaceImage(selected.artwork!.locationId, selected.artwork!.zoneId)
+                          .then(() => c.refreshSelected())
+                      }
+                    />
+                  ) : readOnlyMemory ? (
+                    <PagedText
+                      label="Memory"
+                      value={String(selected.fields[0]?.value ?? "")}
+                      readOnly
+                      rows={proseRows}
+                    />
+                  ) : (
+                    <div
+                      className="repair-fields"
+                      data-columns={
+                        (selected.id.startsWith('["work",') && !compact) ||
+                        (mainPlaceDetails && fieldGroups[currentStep]?.length === 3)
+                      }
+                    >
+                      {fieldGroups[currentStep]?.map((field) => (
+                        <RepairFieldControl
+                          key={`${c.person?.id ?? selected.account?.personId ?? ""}:${selected.id}:${c.draft.action}:${field.key}`}
+                          field={field}
+                          value={c.draft!.values[field.key] ?? field.value}
+                          disabled={c.busy}
+                          error={c.errorField === field.key ? c.error : undefined}
+                          onChange={(value) => changeValue(field, value)}
+                          rows={proseRows}
+                          hideLabel={
+                            !placeNotebook &&
+                            !selected.id.startsWith('["relationship",') &&
+                            fieldGroups[currentStep]?.length === 1 &&
+                            (isMemory || stepTitle(fieldGroups[currentStep]!) === field.label)
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {fields.some((field) => field.key === "letterFontId") ? (
+                    <p style={{ fontFamily: letterFontFamily(font) }}>
+                      Dear friend, I hope this letter finds you well.
+                    </p>
+                  ) : null}
+                  {isMemory && selected.source.length && space.height >= 520 ? (
+                    <section className="repair-evidence">
+                      <h3>Original conversation</h3>
+                      <PagedText label="Original conversation" readOnly value={selected.source.join("\n\n")} rows={3} />
+                    </section>
+                  ) : null}
+                  {!fields.length && selected.source.length ? (
+                    <PagedText
+                      label="Current state"
+                      readOnly
+                      value={selected.source.join("\n\n")}
+                      rows={compact ? 3 : 6}
+                    />
+                  ) : null}
+                </section>
+              </div>
+            ) : c.topic === "places" && targetPlace ? (
+              <section className="repair-directory">
+                <h2>{placeSections.find(([id]) => id === placeSection)?.[1] ?? "Details"}</h2>
+                {nestedFolder ? (
+                  <button type="button" onClick={() => c.setPlacePath(c.placePath.slice(0, -1))}>
+                    ← {placeSection === "access" ? "Access" : "Back"}
+                  </button>
+                ) : null}
+                <div className={placeSection === "zones" ? `${P}-venue-zones` : "repair-record-list"}>
+                  {placeSection === "zones" && location ? (
+                    <button
+                      type="button"
+                      disabled={c.busy}
+                      onClick={() => void c.open(JSON.stringify(["new-zone", JSON.parse(location.id)[2]]))}
+                    >
+                      Add Zone
+                    </button>
+                  ) : null}
+                  {placeItems.slice(listPage * rowSize, (listPage + 1) * rowSize).map((item) =>
+                    placeSection === "zones" ? (
+                      <VenueZoneRow
+                        key={item.id}
+                        id={item.id}
+                        name={item.title}
+                        image={item.image}
+                        onOpen={() => {
+                          c.setPlacePath([...c.placePath, item.id]);
+                          setPlaceSection("details");
+                          setListPage(0);
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        key={item.id}
+                        aria-label={item.title}
+                        disabled={c.busy}
+                        onClick={() =>
+                          item.personId
+                            ? void c.choosePerson(
+                                c.index!.people.find((person) => person.id === item.personId)!,
+                                "home",
+                              )
+                            : item.children
+                              ? (c.setPlacePath([...c.placePath, item.id]), setListPage(0))
+                              : void c.open(item.id)
+                        }
+                      >
+                        <strong>{item.title}</strong>
+                        {item.summary ? <small>{short(item.summary)}</small> : null}
+                        <span>›</span>
+                      </button>
+                    ),
+                  )}
+                </div>
+                {!placeItems.length ? (
+                  <p>
+                    No {placeSection === "conditions" ? "conditions" : "records"} for {targetPlace.title}.
+                  </p>
+                ) : null}
+                <Pages page={listPage} size={rowSize} total={placeItems.length} onPage={setListPage} />
+              </section>
+            ) : c.topic === "people" && c.section === "agenda" ? (
+              <section className="repair-directory">
+                <AgendaPlanner
+                  days={days}
+                  date={agendaDate}
+                  disabled={c.busy}
+                  pageSize={Math.max(1, Math.floor((space.height - 200) / 55))}
+                  onDate={(date) => setAgendaDate(date)}
+                  onActivity={(day, block) => {
+                    const record = days.find((entry) => entry.date === day.date)?.record;
+                    if (block.repairRecordId) void c.open(block.repairRecordId);
+                    else if (record && block.repairIndex !== undefined)
+                      void c.open(record.id, { index: block.repairIndex, token: record.token });
+                    else setProblem("This saved commitment has no current booking.");
+                  }}
+                  renderDayAction={(day) => (
+                    <>
+                      {c.records.some((r) => r.id === JSON.stringify(["routine", c.person?.id])) ? (
+                        <button
+                          type="button"
+                          disabled={c.busy}
+                          onClick={() => void c.open(JSON.stringify(["routine", c.person?.id]))}
+                        >
+                          Routine
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={c.busy}
+                        onClick={() => {
+                          const record = days.find((entry) => entry.date === day.date)?.record;
+                          if (record) void c.open(record.id, { index: "new", token: record.token });
+                        }}
+                      >
+                        Add activity
+                      </button>
+                    </>
+                  )}
+                />
+              </section>
+            ) : (
+              <section className="repair-directory">
+                {c.topic === "progress" ? (
+                  <>
+                    <Sections
+                      name="Recovery status"
+                      entries={[
+                        ["attention", "Needs attention"],
+                        ["active", "In progress"],
+                        ["paused", "Paused"],
+                        ["completed", "Completed"],
+                      ]}
+                      value={recoveryFilter}
+                      onChange={(next) => {
+                        setRecoveryFilter(next);
+                        setListPage(0);
+                      }}
+                    />
+                    {preparation?.status === "failed" && onRetryPreparation ? (
+                      <section className="repair-recovery-row" aria-label="Initial preparation">
+                        <strong>Initial preparation</strong>
+                        {preparation.error ? <span>{preparation.error}</span> : null}
+                        <button type="button" onClick={() => void onRetryPreparation()}>
+                          Retry unfinished work
+                        </button>
+                        {preparationProblem ? <p role="alert">{preparationProblem}</p> : null}
+                      </section>
+                    ) : null}
+                    <div className="repair-record-list">
+                      {visibleJobs.slice(listPage * rowSize, (listPage + 1) * rowSize).map((job) => (
+                        <div key={job.id} className="repair-recovery-row">
+                          <strong>{job.kind === "resident-planning" ? "Resident activity" : job.label}</strong>
+                          <span>{job.status}</span>
+                          {job.error ? <span>{short(job.error)}</span> : null}
+                          {["failed", "interrupted", "paused"].includes(job.status) && onRetryWork ? (
+                            <button type="button" disabled={!!retrying} onClick={() => void retry(job)}>
+                              {retrying === job.id
+                                ? "Queuing…"
+                                : job.status === "paused"
+                                  ? "Run now"
+                                  : "Retry unfinished work"}
+                            </button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+                {c.topic === "world" ? (
+                  <button
+                    type="button"
+                    className="repair-world-snapshots"
+                    onClick={() => {
+                      setListPage(0);
+                      void c.chooseTopic("restore");
+                    }}
+                  >
+                    Village snapshots →
+                  </button>
+                ) : null}
+                {browseMemory ? (
+                  <>
+                    <input
+                      autoComplete="off"
+                      type="search"
+                      aria-label={
+                        c.section === "relationships"
+                          ? "Find a relationship"
+                          : c.section === "wishes"
+                            ? "Find a Wish"
+                            : "Find a memory"
+                      }
+                      placeholder={
+                        c.section === "relationships"
+                          ? "Find a relationship"
+                          : c.section === "wishes"
+                            ? "Find a Wish"
+                            : "Find a memory"
+                      }
+                      value={recordQuery}
+                      onChange={(event) => {
+                        setRecordQuery(event.target.value);
+                        void c.searchRecords(event.target.value);
+                        setListPage(0);
+                      }}
+                    />
+                    {c.section === "memories" ? (
+                      <Sections
+                        name="Memory status"
+                        entries={[
+                          ["remembered", "Remembered"],
+                          ["forgotten", "Forgotten"],
+                        ]}
+                        value={memoryFilter}
+                        onChange={(next) => {
+                          setMemoryFilter(next);
+                          void c.searchRecords(recordQuery, 0, next);
+                          setListPage(0);
+                        }}
+                      />
+                    ) : null}
+                    {c.creation && ["memories", "wishes"].includes(c.section) ? (
+                      <button type="button" onClick={() => void c.open(c.creation!.id)}>
+                        {c.section === "wishes" ? "Add Wish" : "Add memory"}
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+                <div className="repair-record-list">
+                  {filteredRecords.slice(0, rowSize).map((record) => (
+                    <button
+                      type="button"
+                      key={record.id}
+                      aria-label={record.title}
+                      onClick={() => {
+                        setStep(0);
+                        void c.open(record.id);
+                      }}
+                    >
+                      <strong>{short(record.title)}</strong>
+                      <small>{record.summary}</small>
+                      <span>›</span>
+                    </button>
+                  ))}
+                </div>
+                {!filteredRecords.length && !visibleJobs.length && !c.busy ? <p>No records here.</p> : null}
+                {c.topic === "progress" && !filteredRecords.length ? (
+                  <Pages page={listPage} size={rowSize} total={visibleJobs.length} onPage={setListPage} />
+                ) : (
                   <Pages
                     page={0}
                     offset={c.offset}
-                    size={Math.max(1, rowSize - 1)}
+                    size={rowSize}
                     total={c.total}
                     onPage={(offset) => void c.searchRecords(recordQuery, offset)}
                   />
-                </aside>
-              ) : (
-                <aside className="repair-steps">
-                  {arrangementSteps.length
-                    ? arrangementSteps
-                        .map((item, index) => ({ ...item, ordinal: index }))
-                        .slice(Math.floor(arrangementStep / 4) * 4, Math.floor(arrangementStep / 4) * 4 + 4)
-                        .map(({ record, label, index, ordinal }) => (
-                          <button
-                            type="button"
-                            key={record.id + index}
-                            disabled={c.busy}
-                            aria-current={record.id === selected.id && currentStep === index ? "step" : undefined}
-                            onClick={() => openPage(record.id, index)}
-                          >
-                            <span>{ordinal + 1}</span>
-                            {label}
-                          </button>
-                        ))
-                    : fieldGroups
-                        .map((group, index) => ({ group, index }))
-                        .slice(Math.floor(currentStep / 4) * 4, Math.floor(currentStep / 4) * 4 + 4)
-                        .map(({ group, index }) => (
-                          <button
-                            type="button"
-                            key={index}
-                            aria-current={currentStep === index ? "step" : undefined}
-                            onClick={() => setStep(index)}
-                          >
-                            <span>{index + 1}</span>
-                            {stepTitle(group)}
-                          </button>
-                        ))}
-                </aside>
-              )}
-              <section className="repair-card">
-                <header className="repair-card-title">
-                  <h2>
-                    {selected.id.startsWith('["relationship",')
-                      ? selected.title
-                      : isMemory
-                        ? editorTitle
-                        : fieldGroups[currentStep]
-                          ? stepTitle(fieldGroups[currentStep]!)
-                          : editorTitle}
-                  </h2>
-                  <small>
-                    {arrangementSteps.length ? arrangementStep + 1 : currentStep + 1} of{" "}
-                    {arrangementSteps.length || Math.max(1, fieldGroups.length)}
-                  </small>
-                  {!(c.person && c.section === "home") ? (
-                    <button
-                      type="button"
-                      className="repair-close"
-                      aria-label={`Back to ${c.person ? personSections.find(([id]) => id === c.section)?.[1] : targetPlace ? placeSection : "records"}`}
-                      disabled={c.busy}
-                      onClick={() => void c.load(c.topic, c.offset, recordQuery)}
-                    >
-                      ×
-                    </button>
-                  ) : null}
-                </header>
-                {selected.actions.length > 3 ? (
-                  <label className="repair-field">
-                    Action
-                    <select
-                      aria-label="Repair action"
-                      disabled={c.busy}
-                      value={c.draft.action}
-                      onChange={(event) =>
-                        c.update({
-                          action: event.target.value,
-                          ...(event.target.value === "teach" ? { knowers: [] } : {}),
-                        })
-                      }
-                    >
-                      {selected.actions.map((action) => (
-                        <option key={action.id} value={action.id}>
-                          {action.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : selected.actions.length > 1 ? (
-                  <div className="repair-actions">
-                    {selected.actions.map((action) => (
-                      <button
-                        type="button"
-                        key={action.id}
-                        aria-pressed={c.draft!.action === action.id}
-                        disabled={c.busy}
-                        onClick={() =>
-                          c.update({ action: action.id, ...(action.id === "teach" ? { knowers: [] } : {}) })
-                        }
-                      >
-                        {action.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {c.draft.action === "teach" ? (
-                  <label className="repair-field">
-                    Add person
-                    <select
-                      aria-label="Add person"
-                      value={c.draft.knowers[0] ?? ""}
-                      onChange={(event) => c.update({ knowers: event.target.value ? [event.target.value] : [] })}
-                    >
-                      <option value="">Choose a person</option>
-                      {selected.recipients?.map((person) => (
-                        <option key={person.id} value={person.id}>
-                          {person.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : fieldGroups[currentStep]?.[0]?.key === "__evidence" ? (
-                  <PagedText
-                    label="Original conversation"
-                    value={selected.source.join("\n\n")}
-                    readOnly
-                    rows={proseRows}
-                  />
-                ) : fieldGroups[currentStep]?.[0]?.key === "__tools" && onCharacterTools ? (
-                  <button
-                    type="button"
-                    disabled={c.busy || c.canReview}
-                    onClick={() => onCharacterTools(JSON.parse(selected.id)[1])}
-                  >
-                    Character tools →
-                  </button>
-                ) : selected.artwork && fieldGroups[currentStep]?.[0]?.key === "image" && artwork ? (
-                  <ZoneImageControls
-                    name={selected.title}
-                    imageUrl={selected.artwork.imageUrl}
-                    canGenerate={selected.artwork.canGenerate}
-                    disabled={c.busy || !!artwork.placeBusyId || c.canReview}
-                    onGenerate={() =>
-                      void artwork
-                        .drawPlaceImage(selected.artwork!.locationId, selected.artwork!.zoneId)
-                        .then(() => c.refreshSelected())
-                    }
-                    onUpload={(file) =>
-                      void artwork
-                        .keepPlaceImage(selected.artwork!.locationId, selected.artwork!.zoneId, file)
-                        .then(() => c.refreshSelected())
-                    }
-                    onRemove={() =>
-                      void artwork
-                        .dropPlaceImage(selected.artwork!.locationId, selected.artwork!.zoneId)
-                        .then(() => c.refreshSelected())
-                    }
-                  />
-                ) : readOnlyMemory ? (
-                  <PagedText label="Memory" value={String(selected.fields[0]?.value ?? "")} readOnly rows={proseRows} />
-                ) : (
-                  <div className="repair-fields" data-columns={selected.id.startsWith('["work",') && !compact}>
-                    {fieldGroups[currentStep]?.map((field) => (
-                      <RepairFieldControl
-                        key={`${c.person?.id ?? selected.account?.personId ?? ""}:${selected.id}:${c.draft.action}:${field.key}`}
-                        field={field}
-                        value={c.draft!.values[field.key] ?? field.value}
-                        disabled={c.busy}
-                        error={c.errorField === field.key ? c.error : undefined}
-                        onChange={(value) => changeValue(field, value)}
-                        rows={proseRows}
-                        hideLabel={
-                          !selected.id.startsWith('["relationship",') &&
-                          fieldGroups[currentStep]?.length === 1 &&
-                          (isMemory || stepTitle(fieldGroups[currentStep]!) === field.label)
-                        }
-                      />
-                    ))}
-                  </div>
                 )}
-                {fields.some((field) => field.key === "letterFontId") ? (
-                  <p style={{ fontFamily: letterFontFamily(font) }}>Dear friend, I hope this letter finds you well.</p>
-                ) : null}
-                {isMemory && selected.source.length && space.height >= 520 ? (
-                  <section className="repair-evidence">
-                    <h3>Original conversation</h3>
-                    <PagedText label="Original conversation" readOnly value={selected.source.join("\n\n")} rows={3} />
-                  </section>
-                ) : null}
-                {!fields.length && selected.source.length ? (
-                  <PagedText
-                    label="Current state"
-                    readOnly
-                    value={selected.source.join("\n\n")}
-                    rows={compact ? 3 : 6}
-                  />
-                ) : null}
               </section>
-            </div>
-          ) : c.topic === "places" && targetPlace ? (
-            <section className="repair-directory">
-              {nestedFolder ? (
-                <button type="button" onClick={() => c.setPlacePath(c.placePath.slice(0, -1))}>
-                  ← {placeSection === "access" ? "Access" : "Back"}
-                </button>
-              ) : null}
-              <div className={placeSection === "zones" ? `${P}-venue-zones` : "repair-record-list"}>
-                {placeSection === "zones" && location ? (
-                  <button
-                    type="button"
-                    disabled={c.busy}
-                    onClick={() => void c.open(JSON.stringify(["new-zone", JSON.parse(location.id)[2]]))}
-                  >
-                    Add Zone
-                  </button>
-                ) : null}
-                {placeItems.slice(listPage * rowSize, (listPage + 1) * rowSize).map((item) =>
-                  placeSection === "zones" ? (
-                    <VenueZoneRow
-                      key={item.id}
-                      id={item.id}
-                      name={item.title}
-                      image={item.image}
-                      onOpen={() => {
-                        c.setPlacePath([...c.placePath, item.id]);
-                        setPlaceSection("details");
-                        setListPage(0);
-                      }}
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      key={item.id}
-                      disabled={c.busy}
-                      onClick={() =>
-                        item.personId
-                          ? void c.choosePerson(
-                              c.index!.people.find((person) => person.id === item.personId)!,
-                              "home",
-                            )
-                          : item.children
-                            ? (c.setPlacePath([...c.placePath, item.id]), setListPage(0))
-                            : void c.open(item.id)
-                      }
-                    >
-                      <strong>{item.title}</strong>
-                      {item.summary ? <small>{short(item.summary)}</small> : null}
-                      <span>›</span>
-                    </button>
-                  ),
-                )}
-              </div>
-              {!placeItems.length ? (
-                <p>
-                  No {placeSection === "conditions" ? "conditions" : "records"} for {targetPlace.title}.
-                </p>
-              ) : null}
-              <Pages page={listPage} size={rowSize} total={placeItems.length} onPage={setListPage} />
-            </section>
-          ) : c.topic === "people" && c.section === "agenda" ? (
-            <section className="repair-directory">
-              <AgendaPlanner
-                days={days}
-                date={agendaDate}
-                disabled={c.busy}
-                pageSize={Math.max(1, Math.floor((space.height - 200) / 55))}
-                onDate={(date) => setAgendaDate(date)}
-                onActivity={(day, block) => {
-                  const record = days.find((entry) => entry.date === day.date)?.record;
-                  if (block.repairRecordId) void c.open(block.repairRecordId);
-                  else if (record && block.repairIndex !== undefined)
-                    void c.open(record.id, { index: block.repairIndex, token: record.token });
-                  else setProblem("This saved commitment has no current booking.");
-                }}
-                renderDayAction={(day) => (
-                  <>
-                    {c.records.some((r) => r.id === JSON.stringify(["routine", c.person?.id])) ? (
-                      <button
-                        type="button"
-                        disabled={c.busy}
-                        onClick={() => void c.open(JSON.stringify(["routine", c.person?.id]))}
-                      >
-                        Routine
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={c.busy}
-                      onClick={() => {
-                        const record = days.find((entry) => entry.date === day.date)?.record;
-                        if (record) void c.open(record.id, { index: "new", token: record.token });
-                      }}
-                    >
-                      Add activity
-                    </button>
-                  </>
-                )}
-              />
-            </section>
-          ) : (
-            <section className="repair-directory">
-              {c.topic === "progress" ? (
-                <>
-                  <Sections
-                    name="Recovery status"
-                    entries={[
-                      ["attention", "Needs attention"],
-                      ["active", "In progress"],
-                      ["paused", "Paused"],
-                      ["completed", "Completed"],
-                    ]}
-                    value={recoveryFilter}
-                    onChange={(next) => {
-                      setRecoveryFilter(next);
-                      setListPage(0);
-                    }}
-                  />
-                  {preparation?.status === "failed" && onRetryPreparation ? (
-                    <section className="repair-recovery-row" aria-label="Initial preparation">
-                      <strong>Initial preparation</strong>
-                      {preparation.error ? <span>{preparation.error}</span> : null}
-                      <button type="button" onClick={() => void onRetryPreparation()}>
-                        Retry unfinished work
-                      </button>
-                      {preparationProblem ? <p role="alert">{preparationProblem}</p> : null}
-                    </section>
-                  ) : null}
-                  <div className="repair-record-list">
-                    {visibleJobs.slice(listPage * rowSize, (listPage + 1) * rowSize).map((job) => (
-                      <div key={job.id} className="repair-recovery-row">
-                        <strong>{job.kind === "resident-planning" ? "Resident activity" : job.label}</strong>
-                        <span>{job.status}</span>
-                        {job.error ? <span>{short(job.error)}</span> : null}
-                        {["failed", "interrupted", "paused"].includes(job.status) && onRetryWork ? (
-                          <button type="button" disabled={!!retrying} onClick={() => void retry(job)}>
-                            {retrying === job.id
-                              ? "Queuing…"
-                              : job.status === "paused"
-                                ? "Run now"
-                                : "Retry unfinished work"}
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-              {c.topic === "world" ? (
-                <button
-                  type="button"
-                  className="repair-world-snapshots"
-                  onClick={() => {
-                    setListPage(0);
-                    void c.chooseTopic("restore");
-                  }}
-                >
-                  Village snapshots →
-                </button>
-              ) : null}
-              {browseMemory ? (
-                <>
-                  <input
-                    autoComplete="off"
-                    type="search"
-                    aria-label={
-                      c.section === "relationships"
-                        ? "Find a relationship"
-                        : c.section === "wishes"
-                          ? "Find a Wish"
-                          : "Find a memory"
-                    }
-                    placeholder={
-                      c.section === "relationships"
-                        ? "Find a relationship"
-                        : c.section === "wishes"
-                          ? "Find a Wish"
-                          : "Find a memory"
-                    }
-                    value={recordQuery}
-                    onChange={(event) => {
-                      setRecordQuery(event.target.value);
-                      void c.searchRecords(event.target.value);
-                      setListPage(0);
-                    }}
-                  />
-                  {c.section === "memories" ? (
-                    <Sections
-                      name="Memory status"
-                      entries={[
-                        ["remembered", "Remembered"],
-                        ["forgotten", "Forgotten"],
-                      ]}
-                      value={memoryFilter}
-                      onChange={(next) => {
-                        setMemoryFilter(next);
-                        void c.searchRecords(recordQuery, 0, next);
-                        setListPage(0);
-                      }}
-                    />
-                  ) : null}
-                  {c.creation && ["memories", "wishes"].includes(c.section) ? (
-                    <button type="button" onClick={() => void c.open(c.creation!.id)}>
-                      {c.section === "wishes" ? "Add Wish" : "Add memory"}
-                    </button>
-                  ) : null}
-                </>
-              ) : null}
-              <div className="repair-record-list">
-                {filteredRecords.slice(0, rowSize).map((record) => (
-                  <button
-                    type="button"
-                    key={record.id}
-                    aria-label={record.title}
-                    onClick={() => {
-                      setStep(0);
-                      void c.open(record.id);
-                    }}
-                  >
-                    <strong>{short(record.title)}</strong>
-                    <small>{record.summary}</small>
-                    <span>›</span>
-                  </button>
-                ))}
-              </div>
-              {!filteredRecords.length && !visibleJobs.length && !c.busy ? <p>No records here.</p> : null}
-              {c.topic === "progress" && !filteredRecords.length ? (
-                <Pages page={listPage} size={rowSize} total={visibleJobs.length} onPage={setListPage} />
-              ) : (
-                <Pages
-                  page={0}
-                  offset={c.offset}
-                  size={rowSize}
-                  total={c.total}
-                  onPage={(offset) => void c.searchRecords(recordQuery, offset)}
-                />
-              )}
-            </section>
-          )}
+            )}
+          </div>
         </div>
       </main>
       <footer className="repair-footer" data-active={editing || c.view === "review"}>
