@@ -526,7 +526,7 @@ export function ExplorationScreen({
                   }}
                   mobile={mobile}
                   exploration
-                  navigationSlider
+                  gameplayNavigation
                   navigationView={navigationView}
                   onNavigationView={setNavigationView}
                   keyboardPlacementId={markerDraft?.selected}

@@ -19,7 +19,7 @@ function Harness(){const [view,setView]=useState(null),[lighting,setLighting]=us
 window.setLighting=setLighting;
 return <MapStage src={window.mapImage} alt="Map" pins={[]} placing={false} view={defaultView('contain')}
 shape={{width:1376,height:768}} compact={false} fitToRoom={false} mobile={window.phone}
-exploration navigationSlider navigationView={view} onNavigationView={setView} lighting={lighting}/>;}
+exploration gameplayNavigation navigationView={view} onNavigationView={setView} lighting={lighting}/>;}
 createRoot(document.getElementById('root')).render(<Harness/>);`,
   },
   bundle: true,
@@ -32,8 +32,9 @@ const browser = await chromium.launch({ headless: true });
 await runCase("maps/zoom-stability", () =>
   withBrowser(browser, async () => {
     for (const width of [1366, 390]) {
+      const mobile = width < 600;
       for (const animatedAccent of [false, true]) {
-        const page = await browser.newPage({ viewport: { width, height: 800 }, hasTouch: width < 600 });
+        const page = await browser.newPage({ viewport: { width, height: 800 }, hasTouch: mobile });
         await page.setContent(`<style>html,body{margin:0}marinara-capability-villages,#root{display:block;height:600px}
 /* Engine 61ec07274ac0, globals.css: animated accent override installed on 8500. */
 html[data-marinara-accent-animation] *,html[data-marinara-accent-animation] *::before,html[data-marinara-accent-animation] *::after {
@@ -45,15 +46,29 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
             window.phone = phone;
             document.documentElement.toggleAttribute("data-marinara-accent-animation", animated);
           },
-          { image: mapImage, phone: width < 600, animated: animatedAccent },
+          { image: mapImage, phone: mobile, animated: animatedAccent },
         );
         await page.addScriptTag({ content: bundle.outputFiles[0].text });
         const stage = page.locator("[data-navigation-zoom]");
         const image = page.getByRole("img", { name: "Map", exact: true });
         const slider = page.getByRole("slider", { name: "Map zoom", exact: true });
         await expect(stage).toHaveAttribute("data-picture-width", /\d/);
-        for (const action of ["20", "40", "30", "0", "50", "30"]) {
-          await slider.fill(action);
+        const bounds = await stage.boundingBox();
+        const cdp = await page.context().newCDPSession(page);
+        if (mobile) await expect(slider).toHaveCount(0);
+        for (const action of mobile ? [1.25, 1.2, 0.8, 0.5] : [20, 40, 30, 0, 50, 0]) {
+          if (mobile) {
+            const before = await stage.getAttribute("data-navigation-zoom");
+            await cdp.send("Input.synthesizePinchGesture", {
+              x: bounds.x + bounds.width / 2,
+              y: bounds.y + bounds.height / 2,
+              scaleFactor: action,
+              gestureSourceType: "touch",
+            });
+            if (action > 1) await expect(stage).not.toHaveAttribute("data-navigation-zoom", before);
+          } else {
+            await slider.fill(String(action));
+          }
           const result = await stage.evaluate(async (element) => {
             const image = element.querySelector("img");
             const samples = [];
@@ -87,11 +102,11 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
             "Only lighting may animate the map image",
           );
         }
-        const bounds = await stage.boundingBox();
-        const control = await slider.boundingBox();
-        assert.equal(control.x + control.width, bounds.x + bounds.width - 16);
-        assert.equal(control.y + control.height, bounds.y + bounds.height - 16);
-        if (width === 1366 && animatedAccent) {
+        const overview = await image.boundingBox();
+        assert.ok(overview.width >= bounds.width - 0.5 && overview.height >= bounds.height - 0.5);
+        assert.ok(Math.min(Math.abs(overview.width - bounds.width), Math.abs(overview.height - bounds.height)) < 0.5);
+        if (!mobile) await expect(slider).toHaveAttribute("aria-valuetext", "Overview");
+        if (!mobile && animatedAccent) {
           await page.addStyleTag({
             content:
               'input[type="range"]::-webkit-slider-thumb{width:15px;height:15px;background:#f5f5f7;border-radius:9999px;opacity:0}',
@@ -115,12 +130,10 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
           }
           assert.ok(handleRows >= 5, "The rectangular handle remains visible over Engine range styles");
         }
-        await slider.press("Home");
-        await expect(slider).toHaveAttribute("aria-valuetext", "Full map");
-        await expect(stage).toHaveAttribute("data-navigation-zoom", "1");
-        const fit = await image.boundingBox();
-        assert.ok(fit.width <= bounds.width + 0.5 && fit.height <= bounds.height + 0.5);
-        if (width === 1366 && !animatedAccent) {
+        if (!mobile && !animatedAccent) {
+          const control = await slider.boundingBox();
+          assert.equal(control.x + control.width, bounds.x + bounds.width - 16);
+          assert.equal(control.y + control.height, bounds.y + bounds.height - 16);
           const x = control.x + control.width / 2;
           const y = control.y + control.height / 2;
           await page.mouse.click(x, y);
@@ -141,9 +154,16 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
           await expect.poll(async () => (await image.boundingBox()).y).toBeCloseTo(beforePan.y - 45, 0);
           await expect(stage).toHaveAttribute("data-navigation-zoom", zoomBeforePan);
 
+          const beforeMiddleDrag = await image.boundingBox();
+          await page.mouse.down({ button: "middle" });
+          await page.mouse.move(point.x + 28, point.y + 19, { steps: 4 });
+          await page.mouse.up({ button: "middle" });
+          await expect.poll(async () => (await image.boundingBox()).x).toBeCloseTo(beforeMiddleDrag.x + 28, 0);
+          await expect.poll(async () => (await image.boundingBox()).y).toBeCloseTo(beforeMiddleDrag.y + 19, 0);
+          await expect(stage).toHaveAttribute("data-navigation-zoom", zoomBeforePan);
+
           const beforePinch = await image.boundingBox();
           const sliderBeforePinch = Number(await slider.inputValue());
-          const cdp = await page.context().newCDPSession(page);
           await cdp.send("Input.synthesizePinchGesture", {
             ...point,
             scaleFactor: 1.25,

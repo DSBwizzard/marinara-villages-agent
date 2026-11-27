@@ -319,8 +319,12 @@ await withBrowser(browser, async () => {
     await expect(home).toHaveAttribute("data-mobile", String(mobile));
     await expect(art).toHaveAttribute("src", mapImage);
     const slider = home.getByRole("slider", { name: "Map zoom", exact: true });
-    await expect(slider).toBeVisible();
-    await expect(slider).toHaveAttribute("aria-orientation", "vertical");
+    if (mobile) {
+      await expect(slider).toHaveCount(0);
+    } else {
+      await expect(slider).toBeVisible();
+      await expect(slider).toHaveAttribute("aria-orientation", "vertical");
+    }
     await expect(home.locator("." + P + "-pin-photo-card")).toHaveCount(0);
     await expect(home.locator('[data-kind="person"]')).toHaveCount(0);
     const cover = async () => {
@@ -387,8 +391,14 @@ await withBrowser(browser, async () => {
       label.y > dot.y + dot.height && Math.abs(label.x + label.width / 2 - dot.x - dot.width / 2) < 1,
       "venue name is centered below its dot",
     );
-    if (mobile) await marker.locator("." + P + "-map-point").tap();
-    else await marker.locator("." + P + "-map-point").click();
+    const markerPoint = marker.locator("." + P + "-map-point");
+    if (mobile) {
+      await markerPoint.tap();
+    } else {
+      await markerPoint.click({ button: "middle" });
+      await expect(venue.getByRole("heading", { name: "Village Market", exact: true })).toHaveCount(0);
+      await markerPoint.click();
+    }
     await expect(page.getByRole("heading", { name: "Village Market", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await screenshot("venue");
@@ -543,7 +553,7 @@ await withBrowser(browser, async () => {
     if (!mobile) await canvas.press("Home");
     await settleLayout();
     const initial = await geometry();
-    const zoomBefore = Number(await slider.inputValue());
+    const zoomBefore = Number(await stage.getAttribute("data-navigation-zoom"));
     if (mobile) {
       const frame = await canvas.boundingBox();
       const px = frame.x + frame.width * 0.5,
@@ -558,12 +568,12 @@ await withBrowser(browser, async () => {
       ]);
       await touch("touchEnd", []);
     } else {
-      await slider.fill(String(Math.min(100, zoomBefore + 20)));
+      await slider.fill(String(Math.min(100, Number(await slider.inputValue()) + 20)));
     }
     await expect
       .poll(async () => (await geometry()).width, { message: `pinch or zoom at ${width}x${height}` })
       .toBeGreaterThan(initial.width);
-    await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(zoomBefore);
+    await expect.poll(async () => Number(await stage.getAttribute("data-navigation-zoom"))).toBeGreaterThan(zoomBefore);
     await select("Village Market");
     // A new selection after zooming must become the next drag's starting view.
     const before = await geometry(),

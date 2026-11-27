@@ -83,7 +83,7 @@ In **DEBUG Settings**, enabling **Verbose runtime logging** also enables **Loreb
 
 ## Find your way around
 
-- **Map:** Drag with a mouse or finger, or scroll with two fingers on a trackpad to pan. Pinch or use the lower-right zoom slider, whose bottom fits the whole map. Select a Venue marker to open its illustrated Venue page. Choose **Visit** to enter a Scene, **Zones** or **Assignments** for the Venue controls, or **Map** to return to the same map view.
+- **Map:** Pan by dragging with the left or middle mouse button or with one finger. Scrolling the mouse wheel or scrolling with two fingers on a trackpad also pans. Pinch to zoom on touchscreens and trackpads, or use the lower-right desktop slider. The widest view fills the map area. Select a Venue marker to open its illustrated Venue page. Choose **Visit** to enter a Scene, **Zones** or **Assignments** for the Venue controls, or **Map** to return to the same map view.
 - **Locations:** Browse known destinations with search, map and category filters. Both Venues and other Locations open their illustrated detail page. **Map** opens the separate village map, and **Visit** starts Scene entry.
 - **People:** Browse residents and open their profiles.
 - **More:** Open the Village's other pages and settings.

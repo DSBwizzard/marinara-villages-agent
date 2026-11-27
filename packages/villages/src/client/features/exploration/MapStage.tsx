@@ -180,7 +180,7 @@ export function MapStage({
   mobile,
   exploration = false,
   navigationControlsWhilePlacing = false,
-  navigationSlider = false,
+  gameplayNavigation = false,
   navigationFit = "cover",
   navigationView,
   onNavigationView,
@@ -231,7 +231,7 @@ export function MapStage({
   mobile?: boolean;
   exploration?: boolean;
   navigationControlsWhilePlacing?: boolean;
-  navigationSlider?: boolean;
+  gameplayNavigation?: boolean;
   navigationFit?: "cover" | "contain";
   navigationView?: MapNavigationView | null;
   onNavigationView?(next: MobileMapView | null): void;
@@ -313,18 +313,17 @@ export function MapStage({
     [src, decoded, shape, failedSrc],
   );
   const coverNavigationZoom = mobileImage && frame ? mobileCoverZoom(mobileImage, frame) : 1;
-  const minimumNavigationZoom = navigationSlider || navigationFit === "contain" ? 1 : coverNavigationZoom;
+  const minimumNavigationZoom = navigationFit === "contain" ? 1 : coverNavigationZoom;
   const maximumNavigationZoom = mobileMaximumZoom(coverNavigationZoom);
-  const initialNavigationZoom = navigationFit === "contain" ? 1 : coverNavigationZoom;
   const savedCamera = exploration ? navigationView : mobileView;
   const mobileCurrent = useMemo(() => {
-    const zoom = savedCamera?.zoom ?? initialNavigationZoom;
+    const zoom = savedCamera?.zoom ?? minimumNavigationZoom;
     return {
-      zoom: navigationSlider ? Math.min(zoom, maximumNavigationZoom) : zoom,
+      zoom: gameplayNavigation ? clamp(zoom, minimumNavigationZoom, maximumNavigationZoom) : zoom,
       centerX: savedCamera?.centerX ?? 0.5,
       centerY: savedCamera?.centerY ?? 0.5,
     };
-  }, [initialNavigationZoom, maximumNavigationZoom, navigationSlider, savedCamera]);
+  }, [minimumNavigationZoom, maximumNavigationZoom, gameplayNavigation, savedCamera]);
   const sliderValue = Math.round(
     (100 * (mobileCurrent.zoom - minimumNavigationZoom)) / (maximumNavigationZoom - minimumNavigationZoom),
   );
@@ -359,11 +358,11 @@ export function MapStage({
   });
   useEffect(() => {
     const canvas = frameRef.current;
-    if (!navigationSlider || !canvas) return;
+    if (!gameplayNavigation || !canvas) return;
     const onWheel = (event: WheelEvent) => navigateWheel(event);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
-  }, [navigationSlider]);
+  }, [gameplayNavigation]);
   const picture = useMemo(
     () =>
       mobile || exploration
@@ -580,13 +579,20 @@ export function MapStage({
   };
 
   const mobilePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if ((!mobile && !exploration) || (!exploration && event.pointerType !== "touch") || event.button > 0) return;
+    const middlePan = gameplayNavigation && event.pointerType === "mouse" && event.button === 1;
+    if (
+      (!mobile && !exploration) ||
+      (!exploration && event.pointerType !== "touch") ||
+      (event.button > 0 && !middlePan)
+    )
+      return;
     if (event.isPrimary) {
       pointersRef.current.clear();
       suppressTouchClickRef.current = false;
     }
     if (
       onMovePin &&
+      !middlePan &&
       event.pointerType !== "touch" &&
       event.target instanceof Element &&
       event.target.closest("[data-pin-id]")
@@ -599,6 +605,7 @@ export function MapStage({
     }
     if (!frameRef.current) return;
     if (event.target instanceof Element && event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)) return;
+    if (middlePan) event.preventDefault();
     stageRef.current?.setAttribute("data-mobile-gesturing", "true");
     const rect = frameRef.current.getBoundingClientRect();
     pointersRef.current.set(event.pointerId, { x: event.clientX - rect.left, y: event.clientY - rect.top });
@@ -658,7 +665,7 @@ export function MapStage({
   };
   const mobilePointerEnd = (event: ReactPointerEvent<HTMLDivElement>, cancelled = false) => {
     if ((!mobile && !exploration) || !pointersRef.current.has(event.pointerId)) return;
-    const tapped = !cancelled && pointersRef.current.size === 1 && !suppressTouchClickRef.current;
+    const tapped = !cancelled && event.button === 0 && pointersRef.current.size === 1 && !suppressTouchClickRef.current;
     pointersRef.current.delete(event.pointerId);
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -1003,7 +1010,7 @@ export function MapStage({
                             compactPhotos
                               ? 0.36
                               : mobile
-                                ? mobilePhotoScale(mobileCurrent.zoom, initialNavigationZoom)
+                                ? mobilePhotoScale(mobileCurrent.zoom, minimumNavigationZoom)
                                 : DESKTOP_PHOTO_SCALE,
                             pin.selected === true,
                           ) +
@@ -1095,17 +1102,19 @@ export function MapStage({
         : null}
 
       {exploration && (!placing || navigationControlsWhilePlacing) ? (
-        navigationSlider ? (
+        !mobile &&
+        (gameplayNavigation ? (
           <input
             className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-zoom-slider`}
             type="range"
+            autoComplete="off"
             min={0}
             max={100}
             value={sliderValue}
             style={{ "--map-zoom-position": `${sliderValue}%` } as CSSProperties}
             aria-label="Map zoom"
             aria-orientation="vertical"
-            aria-valuetext={sliderValue === 0 ? "Full map" : `${Math.round(mobileCurrent.zoom * 100)}%`}
+            aria-valuetext={sliderValue === 0 ? "Overview" : `${Math.round(mobileCurrent.zoom * 100)}%`}
             disabled={!mobileImage || !frame}
             onChange={(event) => {
               const fraction = event.currentTarget.valueAsNumber / 100;
@@ -1113,28 +1122,18 @@ export function MapStage({
             }}
           />
         ) : (
-          !mobile && (
-            <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
-              <button
-                type="button"
-                aria-label="Zoom out"
-                onClick={() => changeNavigationZoom(mobileCurrent.zoom / 1.25)}
-              >
-                −
-              </button>
-              <button type="button" aria-label="Reset map view" onClick={resetNavigation}>
-                Reset
-              </button>
-              <button
-                type="button"
-                aria-label="Zoom in"
-                onClick={() => changeNavigationZoom(mobileCurrent.zoom * 1.25)}
-              >
-                +
-              </button>
-            </div>
-          )
-        )
+          <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
+            <button type="button" aria-label="Zoom out" onClick={() => changeNavigationZoom(mobileCurrent.zoom / 1.25)}>
+              −
+            </button>
+            <button type="button" aria-label="Reset map view" onClick={resetNavigation}>
+              Reset
+            </button>
+            <button type="button" aria-label="Zoom in" onClick={() => changeNavigationZoom(mobileCurrent.zoom * 1.25)}>
+              +
+            </button>
+          </div>
+        ))
       ) : framing && zoom && live.fit === "cover" ? (
         <div className={`${ELEMENT_TAG}-zoom`}>
           <button
