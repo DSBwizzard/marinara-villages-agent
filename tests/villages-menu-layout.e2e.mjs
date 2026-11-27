@@ -447,7 +447,7 @@ await withBrowser(browser, async () => {
     if (mobile) await picker.selectOption("repair");
     else await nav.getByRole("button", { name: "REPAIR", exact: true }).click();
     const repair = page.locator(".villages-repair:visible");
-    const heading = repair.getByRole("heading", { name: "Find a record", exact: true });
+    const heading = repair.getByRole("heading", { name: "People", exact: true });
     await expect(heading).toHaveCSS("color", "rgb(236, 234, 227)");
     await expect(page.getByRole("navigation", { name: "Village navigation" })).toBeHidden();
     assert.deepEqual(

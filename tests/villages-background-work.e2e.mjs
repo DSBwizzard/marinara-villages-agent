@@ -147,7 +147,7 @@ await withBrowser(browser, async () => {
         json: {
           seed: "world",
           identity: "world",
-          people: [],
+          people: [{ id: "mara", name: "Mara" }],
           records: [],
           history: [],
           historyTotal: 0,
@@ -191,6 +191,17 @@ await withBrowser(browser, async () => {
   await page.getByRole("button", { name: "Debug", exact: true }).click();
   await expect(page.getByRole("button", { name: "Retry unfinished work" })).toHaveCount(0);
   await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Repair Mara", exact: true })).toBeVisible();
+  assert(
+    await page
+      .locator(".repair-pages")
+      .evaluate(
+        (element) =>
+          element.getBoundingClientRect().bottom <=
+          document.querySelector(".repair-footer").getBoundingClientRect().top,
+      ),
+    "the native portrait grid must keep paging above REPAIR footer",
+  );
   await page.getByRole("button", { name: "Recover work", exact: true }).click();
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
   await expect(page.getByText("Finished Wish check", { exact: true })).toHaveCount(0);

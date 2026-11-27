@@ -43,7 +43,7 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-search{display:flex;align-items:center;gap:12px;border:1px solid var(--repair-control);border-radius:7px;padding:0 15px;min-height:46px;max-width:650px;flex:none}
 .villages-repair .repair-search input{border:0;padding:9px 0;background:none}
 .villages-repair .${P}-storybook-search-icon{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.villages-repair .${P}-directory-grid{display:grid;grid-template-columns:repeat(2,166px);gap:18px}
+.villages-repair .${P}-directory-grid{display:grid;grid-template-columns:repeat(2,166px);grid-template-rows:none;grid-auto-rows:auto;height:auto;max-height:none;padding:0;flex:none;gap:18px}
 .villages-repair .repair-locations>select{max-width:280px}
 .villages-repair .repair-location-filters{display:flex;flex-direction:column;gap:16px}
 .villages-repair .repair-location-filters>select{max-width:280px}

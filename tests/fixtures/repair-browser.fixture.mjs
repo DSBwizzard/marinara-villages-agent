@@ -6,7 +6,7 @@ const code = await build({
   stdin: {
     loader: "tsx",
     resolveDir: process.cwd(),
-    contents: `import {createRoot} from 'react-dom/client';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async(kind)=>{window.appliedKind=kind;return window.repairRefresh ? await window.repairRefresh : null;});window.c=c;return <RepairPage controller={c} jobs={window.fixtureJobs||[]} onRetryWork={async job=>{window.retryJobs.push(job.id)}} onBack={()=>{window.leftRepair=true}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
+    contents: `import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';syncVillagesStyles();import {createRoot} from 'react-dom/client';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async(kind)=>{window.appliedKind=kind;return window.repairRefresh ? await window.repairRefresh : null;});window.c=c;return <RepairPage controller={c} jobs={window.fixtureJobs||[]} onRetryWork={async job=>{window.retryJobs.push(job.id)}} onBack={()=>{window.leftRepair=true}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
   },
   bundle: true,
   write: false,
@@ -322,7 +322,7 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
   await page.route("http://repair.test/", (route) =>
     fulfill(route, {
       contentType: "text/html",
-      body: '<style>html,body,#root{margin:0;height:100%;width:100%}</style><div id="root"></div>',
+      body: '<style>html,body,#root{margin:0;height:100%;width:100%}</style><marinara-capability-villages id="root"></marinara-capability-villages>',
     }),
   );
   await page.route("**/api/villages/repair**", async (route) => {

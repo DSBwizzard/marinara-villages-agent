@@ -161,6 +161,7 @@ export function PagedText({
   return (
     <div className="repair-prose">
       <textarea
+        autoComplete="off"
         ref={control}
         id={id}
         aria-label={label}
@@ -229,6 +230,7 @@ export function RepairFieldControl({
           {field.options?.map((option) => (
             <label key={option.value}>
               <input
+                autoComplete="off"
                 type="checkbox"
                 disabled={disabled}
                 checked={String(value).split(",").includes(option.value)}
@@ -251,6 +253,7 @@ export function RepairFieldControl({
         </div>
       ) : field.type === "date" ? (
         <input
+          autoComplete="off"
           id={id}
           type="date"
           value={String(value)}
@@ -278,6 +281,7 @@ export function RepairFieldControl({
         </select>
       ) : field.type === "boolean" ? (
         <input
+          autoComplete="off"
           id={id}
           type="checkbox"
           checked={value === true}
@@ -286,6 +290,7 @@ export function RepairFieldControl({
         />
       ) : field.type === "number" ? (
         <input
+          autoComplete="off"
           id={id}
           type="number"
           min={field.min}
@@ -299,6 +304,7 @@ export function RepairFieldControl({
       ) : field.type === "clock" ? (
         <div className="repair-clock">
           <input
+            autoComplete="off"
             id={id}
             type="time"
             value={value === "24:00" ? "" : String(value)}
@@ -309,6 +315,7 @@ export function RepairFieldControl({
           {/^end(?::|$)/u.test(field.key) ? (
             <label>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={value === "24:00"}
                 disabled={disabled}
@@ -320,6 +327,7 @@ export function RepairFieldControl({
         </div>
       ) : field.multiline === false ? (
         <input
+          autoComplete="off"
           id={id}
           type="text"
           value={String(value)}

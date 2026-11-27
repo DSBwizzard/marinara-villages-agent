@@ -521,6 +521,7 @@ export function RepairPage({
         <span>{c.index?.villageName}</span>
         <AreaChoice area={area} disabled={c.saving} onChange={chooseArea} compact />
         <form
+          autoComplete="off"
           onSubmit={(event) => {
             event.preventDefault();
             setListPage(0);
@@ -528,6 +529,7 @@ export function RepairPage({
           }}
         >
           <input
+            autoComplete="off"
             type="search"
             placeholder="Search REPAIR"
             aria-label="Search REPAIR"
@@ -728,6 +730,7 @@ export function RepairPage({
               {c.review.kind === "restore" ? (
                 <label>
                   <input
+                    autoComplete="off"
                     type="checkbox"
                     checked={c.restoreAcknowledged}
                     onChange={(event) => c.setRestoreAcknowledged(event.target.checked)}
@@ -761,6 +764,7 @@ export function RepairPage({
               <label className="repair-search">
                 <StorybookSearchIcon />
                 <input
+                  autoComplete="off"
                   type="search"
                   aria-label="Find a person"
                   placeholder="Find a person"
@@ -809,6 +813,7 @@ export function RepairPage({
                 <label className="repair-search">
                   <StorybookSearchIcon />
                   <input
+                    autoComplete="off"
                     type="search"
                     aria-label="Search known locations"
                     placeholder="Search known locations"
@@ -929,6 +934,7 @@ export function RepairPage({
           ) : isSnapshots ? (
             <section className="repair-directory">
               <form
+                autoComplete="off"
                 className="repair-snapshot-create"
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -936,6 +942,7 @@ export function RepairPage({
                 }}
               >
                 <input
+                  autoComplete="off"
                   aria-label="Snapshot name"
                   placeholder="Snapshot name"
                   maxLength={120}
@@ -1042,6 +1049,7 @@ export function RepairPage({
               {browseMemory && !small ? (
                 <aside className="repair-memory-list">
                   <input
+                    autoComplete="off"
                     type="search"
                     aria-label="Find a memory"
                     placeholder="Find a memory"
@@ -1311,13 +1319,14 @@ export function RepairPage({
                     }}
                   />
                   {preparation?.status === "failed" && onRetryPreparation ? (
-                    <div className="repair-recovery-row">
+                    <section className="repair-recovery-row" aria-label="Initial preparation">
                       <strong>Initial preparation</strong>
+                      {preparation.error ? <span>{preparation.error}</span> : null}
                       <button type="button" onClick={() => void onRetryPreparation()}>
                         Retry unfinished work
                       </button>
                       {preparationProblem ? <p role="alert">{preparationProblem}</p> : null}
-                    </div>
+                    </section>
                   ) : null}
                   <div className="repair-record-list">
                     {visibleJobs.slice(listPage * rowSize, (listPage + 1) * rowSize).map((job) => (
@@ -1354,6 +1363,7 @@ export function RepairPage({
               {browseMemory ? (
                 <>
                   <input
+                    autoComplete="off"
                     type="search"
                     aria-label="Find a memory"
                     placeholder="Find a memory"

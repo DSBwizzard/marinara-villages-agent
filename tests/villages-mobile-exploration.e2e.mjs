@@ -535,7 +535,7 @@ await withBrowser(browser, async () => {
     assert.equal(sceneRequests.length, 0, "map and keyboard selections remain free of Scene requests");
     await showPlaces();
     await navigator.getByRole("searchbox").fill("New Mill");
-    await navigator.getByRole("button", { name: "New Mill · Venue", exact: true }).click();
+    await navigator.getByRole("button", { name: "New Mill, Venue", exact: true }).click();
     const worksite = page.getByRole("region", { name: "Venue", exact: true });
     await expect(worksite.getByRole("button", { name: "View Project", exact: true })).toBeVisible();
     await expect(worksite.getByRole("button", { name: "Visit venue", exact: true })).toHaveCount(0);
