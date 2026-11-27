@@ -1,4 +1,4 @@
-// Test cases: repair-people/navigation, repair-people/home-work-switching, repair-people/agenda, repair-people/letter-font, repair-people/visitor, repair-people/late-responses, repair-people/restore-draft
+// Test cases: repair-people/navigation, repair-people/home-work-switching, repair-people/agenda, repair-people/reverted-edits, repair-people/letter-font, repair-people/visitor, repair-people/late-responses, repair-people/restore-draft
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
@@ -12,6 +12,12 @@ await withBrowser(browser, async () => {
     await f.section("memories");
     await page.getByRole("button", { name: "The workshop key", exact: true }).click();
     const field = page.getByRole("textbox", { name: "Memory", exact: true });
+    const review = page.getByRole("button", { name: "Review changes", exact: true });
+    await expect(field).toHaveValue("Ellis lent me the workshop key.");
+    await field.fill("A temporary account.");
+    await expect(review).toBeEnabled();
+    await field.fill("Ellis lent me the workshop key.");
+    await expect(review).toBeDisabled();
     await field.fill("A separate draft for Nora.");
     await page.getByRole("button", { name: "Forget", exact: true }).click();
     await expect(field).toHaveValue("Ellis lent me the workshop key.");
@@ -98,6 +104,76 @@ await withBrowser(browser, async () => {
       '["appointment","nora","plan"]',
     );
     await noRepairScroll(page);
+    await page.close();
+  });
+  await runCase("repair-people/reverted-edits", async () => {
+    const f = await repairBrowserFixture(browser),
+      { page } = f;
+    const review = page.getByRole("button", { name: "Review changes", exact: true });
+    const lastReview = () => f.calls.findLast((call) => call.path.endsWith("/review"))?.body.values;
+    await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+    await f.section("home");
+    const home = page.getByRole("combobox", { name: "Home", exact: true });
+    await home.selectOption("inn");
+    await expect(review).toBeEnabled();
+    await home.selectOption("house");
+    await expect(review).toBeDisabled();
+    await page.getByRole("button", { name: "2 Sleeping Zone", exact: true }).click();
+    const sleeping = page.getByRole("combobox", { name: "Sleeping Zone", exact: true });
+    await expect(sleeping).toHaveValue("bedroom");
+    await sleeping.selectOption("");
+    await page.getByRole("button", { name: "1 Home", exact: true }).click();
+    await home.selectOption("inn");
+    await home.selectOption("house");
+    await page.getByRole("button", { name: "2 Sleeping Zone", exact: true }).click();
+    await expect(sleeping).toHaveValue("");
+    await expect(review).toBeEnabled();
+    await sleeping.selectOption("bedroom");
+    await expect(review).toBeDisabled();
+
+    await page.getByRole("button", { name: "3 Work", exact: true }).click();
+    const invite = page.getByRole("checkbox", { name: "May invite guests", exact: true });
+    await invite.uncheck();
+    await expect(review).toBeEnabled();
+    await invite.check();
+    await expect(review).toBeDisabled();
+    await page.getByRole("button", { name: "4 Days & times", exact: true }).click();
+    const monday = page.getByRole("checkbox", { name: "Mon", exact: true });
+    await monday.uncheck();
+    await expect(review).toBeEnabled();
+    await monday.check();
+    await expect(review).toBeDisabled();
+    await page.getByRole("button", { name: "3 Work", exact: true }).click();
+    await page.getByRole("textbox", { name: "Work", exact: true }).fill("Repair books");
+    await review.click();
+    await expect(page.locator(".repair-review").getByRole("group", { name: "Work after" })).toHaveText("Repair books");
+    assert.equal(lastReview().days, "Monday,Thursday,Friday,Saturday,Sunday");
+    await expect(page.locator(".repair-review").getByRole("heading", { name: "Days", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+
+    await f.section("agenda");
+    await page.getByRole("button", { name: /Reading/ }).click();
+    const advanceTo = async (field) => {
+      for (let step = 0; step < 5 && !(await field.count()); step++)
+        await page.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(field).toBeVisible();
+    };
+    const activity = page.getByRole("textbox", { name: "Activity", exact: true });
+    await activity.fill("Read");
+    await activity.fill("Reading");
+    await expect(review).toBeDisabled();
+    const endOfDay = page.getByRole("checkbox", { name: "End of day", exact: true });
+    await advanceTo(endOfDay);
+    await endOfDay.check();
+    await expect(review).toBeEnabled();
+    await endOfDay.uncheck();
+    await expect(page.locator('[id="repair-field-end:0"]')).toHaveValue("10:00");
+    await expect(review).toBeDisabled();
+    const location = page.getByRole("combobox", { name: "Location", exact: true });
+    await advanceTo(location);
+    await location.selectOption("inn");
+    await location.selectOption("house");
+    await expect(review).toBeDisabled();
     await page.close();
   });
   await runCase("repair-people/letter-font", async () => {

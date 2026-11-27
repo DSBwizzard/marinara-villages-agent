@@ -375,7 +375,9 @@ export function RepairFieldControl({
                 type="checkbox"
                 checked={value === "24:00"}
                 disabled={disabled}
-                onChange={(event) => onChange(event.target.checked ? "24:00" : "")}
+                onChange={(event) =>
+                  onChange(event.target.checked ? "24:00" : field.value === "24:00" ? "" : field.value)
+                }
               />
               End of day
             </label>

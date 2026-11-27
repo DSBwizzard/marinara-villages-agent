@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   RepairBrowseItem,
+  RepairField,
   RepairIndex,
   RepairPerson,
   RepairPersonSection,
@@ -17,11 +18,34 @@ import { repairClockMinutes } from "../../../shared/helpers/repair-clock.js";
 import { request, messageFrom, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 
-type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: string; agendaToken?: string };
+type Draft = {
+  values: Record<string, RepairValue>;
+  knowers: string[];
+  action: string;
+  agendaToken?: string;
+  linkedChoices?: Map<string, RepairValue>;
+};
 type Section = RepairPersonSection | RepairWorldSection;
 type RecordTopic = RepairTopic | "all";
 type AgendaPick = { index: number | "new"; token?: string };
 type View = "hub" | "loading" | "list" | "edit" | "review" | "restored" | "history" | "checkpoints";
+
+function sameFieldValue({ key, type, value, multiline }: RepairField, next: RepairValue) {
+  if (next === value) return true;
+  if (type === "number") return next !== "" && value !== "" && Number(next) === Number(value);
+  if (type === "days") return String(next).split(",").sort().join(",") === String(value).split(",").sort().join(",");
+  if (type === "clock") {
+    const saved = repairClockMinutes(String(value));
+    return saved !== undefined && repairClockMinutes(String(next)) === saved;
+  }
+  if (key.startsWith("activity:")) return String(next).trim() === String(value).trim();
+  return (
+    type === "text" &&
+    multiline !== false &&
+    String(next).replace(/\r\n?/gu, "\n") === String(value).replace(/\r\n?/gu, "\n")
+  );
+}
+
 export function useRepairController(
   active: boolean,
   onApplied: (kind: RepairReview["kind"]) => Promise<{ title: string; text: string } | null>,
@@ -374,15 +398,20 @@ export function useRepairController(
       const score = Number(next);
       return next === "" || !Number.isInteger(score) || score < (min ?? -Infinity) || score > (max ?? Infinity);
     });
-  const hasFieldChanges = fields.some(({ key, value, type }) => {
-    const next = draft?.values[key] ?? value;
-    if (relationship && type === "number") return Number(next) !== Number(value);
-    if (type === "clock") {
-      const before = repairClockMinutes(String(value));
-      if (before !== undefined) return repairClockMinutes(String(next)) !== before;
-    }
-    return key.startsWith("activity:") ? String(next).trim() !== String(value).trim() : next !== value;
+  const activeFields = fields.filter(({ key }) => {
+    const target = /^target:\d+:/u.exec(key)?.[0];
+    if (draft?.values.scope === "village" && (key === "venueId" || key === "zoneId" || target)) return false;
+    if (target && key !== target + "keep" && draft?.values[target + "keep"] === false) return false;
+    return true;
   });
+  const changedValues = Object.fromEntries(
+    activeFields.flatMap((field) => {
+      const next = draft?.values[field.key] ?? field.value;
+      return sameFieldValue(field, next) ? [] : [[field.key, next] as const];
+    }),
+  );
+  const hasFieldChanges = Object.keys(changedValues).length > 0;
+  const savedText = fields.find((field) => field.key === "text")?.value;
   const canReview = Boolean(
     selected &&
     draft?.action &&
@@ -398,8 +427,7 @@ export function useRepairController(
         selected.people.some(
           (person) =>
             draft.knowers.includes(person.id) &&
-            (person.forgotten ||
-              (person.text ?? selected.fields.find((field) => field.key === "text")?.value) !== draft.values.text),
+            (person.forgotten || (person.text ?? savedText) !== (changedValues.text ?? savedText)),
         )
       : draft.action === "correct" || draft.action === "add-activity" || selected.creating
         ? hasFieldChanges
@@ -428,6 +456,26 @@ export function useRepairController(
     setFailure(undefined);
     setNotice("");
   };
+  const setField = (field: RepairField, value: RepairValue) => {
+    if (!selected || !draft) return;
+    if (field.key === "timeZone" && value === "") value = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const prior = draft.values[field.key] ?? field.value;
+    if (prior === value) return;
+    const values = { ...draft.values, [field.key]: value };
+    const agendaZone = selected.agendaDay && field.key.startsWith("venue:") ? "zone:" + field.key.slice(6) : undefined;
+    const linked = fields.filter((child) => child.dependsOn === field.key || child.key === agendaZone);
+    if (!linked.length) {
+      update({ values });
+      return;
+    }
+    const linkedChoices = new Map(draft.linkedChoices);
+    for (const child of linked) {
+      linkedChoices.set(JSON.stringify([child.key, prior]), draft.values[child.key] ?? child.value);
+      values[child.key] =
+        linkedChoices.get(JSON.stringify([child.key, value])) ?? (value === field.value ? child.value : "");
+    }
+    update({ values, linkedChoices });
+  };
   const prepare = () => {
     if (!selected || !draft || !canReview) return;
     return act(async (ticket) => {
@@ -439,7 +487,7 @@ export function useRepairController(
         values:
           selected.topic === "memories" && ["forget", "remember"].includes(draft.action)
             ? Object.fromEntries(selected.fields.map((field) => [field.key, field.value]))
-            : draft.values,
+            : { ...Object.fromEntries(fields.map((field) => [field.key, field.value])), ...changedValues },
         expectedRecord: draft.agendaToken ?? selected.token ?? "",
         ...(person ? { personId: person.id } : {}),
       };
@@ -601,7 +649,7 @@ export function useRepairController(
     setPlacePath,
     creation,
     selected,
-    editorFields: fields,
+    editorFields: activeFields,
     draft,
     review,
     canReview,
@@ -638,6 +686,7 @@ export function useRepairController(
         ? act((ticket) => fetchRecord(selected.id, ticket, agendaPick, true))
         : Promise.resolve(),
     closeAgendaEditor,
+    setField,
     update,
     discard,
     prepare,

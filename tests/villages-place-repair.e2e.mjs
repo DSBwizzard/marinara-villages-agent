@@ -18,7 +18,13 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("combobox", { name: "Filter by location type", exact: true })).toHaveCount(0);
       await expect(page.getByRole("navigation", { name: "Pages", exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "Hearth Alms Rooms, Venue", exact: true }).click();
-      await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Hearth Alms Rooms");
+      const venueName = page.getByRole("textbox", { name: "Name", exact: true });
+      const review = page.getByRole("button", { name: "Review changes", exact: true });
+      await expect(venueName).toHaveValue("Hearth Alms Rooms");
+      await venueName.fill("Temporary name");
+      await expect(review).toBeEnabled();
+      await venueName.fill("Hearth Alms Rooms");
+      await expect(review).toBeDisabled();
       if (width < 700)
         await page.getByRole("combobox", { name: "Location repairs", exact: true }).selectOption("people");
       else {
@@ -35,7 +41,12 @@ await withBrowser(browser, async () => {
         await nav.getByRole("button", { name: "People & roles", exact: true }).click();
       }
       await page.getByRole("button", { name: "Runs this Venue", exact: true }).click();
-      await expect(page.getByRole("checkbox", { name: "Nora", exact: true })).toBeChecked();
+      const manager = page.getByRole("checkbox", { name: "Nora", exact: true });
+      await expect(manager).toBeChecked();
+      await manager.uncheck();
+      await expect(review).toBeEnabled();
+      await manager.check();
+      await expect(review).toBeDisabled();
       await noRepairScroll(page);
       if (width < 700)
         await page.getByRole("combobox", { name: "Location repairs", exact: true }).selectOption("zones");

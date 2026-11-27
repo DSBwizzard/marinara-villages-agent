@@ -1,4 +1,5 @@
-// Test cases: repair-capabilities/desktop, repair-capabilities/phone, repair-capabilities/compact
+// Test cases: repair-capabilities/desktop, repair-capabilities/phone, repair-capabilities/compact, repair-capabilities/reverted-scope
+import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
@@ -46,4 +47,65 @@ await withBrowser(browser, async () => {
       }
       await page.close();
     });
+  await runCase("repair-capabilities/reverted-scope", async () => {
+    const template = records.find((record) => record.id === '["new-situation"]');
+    const situation = {
+      ...template,
+      id: '["narrative-situation","saved"]',
+      title: "Market day",
+      actions: [{ id: "correct", label: "Modify" }],
+      fields: template.fields.map((field) => ({
+        ...field,
+        value:
+          { title: "Market day", summary: "The stalls are open.\r\nThe roads are clear." }[field.key] ?? field.value,
+      })),
+    };
+    const { page, calls } = await repairBrowserFixture(browser, 1440, 900, { records: [situation] });
+    await page.evaluate(async (id) => {
+      await window.c.chooseTopic("world");
+      await window.c.open(id);
+    }, situation.id);
+
+    const show = async (field) => {
+      await expect(page.locator(".repair-editor")).toBeVisible();
+      if (!(await field.count())) {
+        const first = page.locator(".repair-steps").getByRole("button", { name: /^1 / });
+        await first.click();
+        for (let step = 0; step < situation.fields.length && !(await field.count()); step++)
+          await page.getByRole("button", { name: "Next", exact: true }).click();
+      }
+      await expect(field).toBeVisible();
+    };
+    const review = page.getByRole("button", { name: "Review changes", exact: true });
+    const scope = page.getByRole("combobox", { name: "Scope", exact: true });
+    await show(scope);
+    await scope.selectOption("zone");
+    const location = page.getByRole("combobox", { name: "Location", exact: true });
+    await show(location);
+    const zoneOption = situation.fields.find((field) => field.key === "zoneId").options.find((option) => option.parent);
+    await location.selectOption(zoneOption.parent);
+    const zone = page.getByRole("combobox", { name: "Zone", exact: true });
+    await show(zone);
+    await zone.selectOption(zoneOption.value);
+    await show(scope);
+    await scope.selectOption("village");
+    await expect(review).toBeDisabled();
+    const summary = page.getByRole("textbox", { name: "Circumstances", exact: true });
+    await show(summary);
+    await summary.fill("Temporary description");
+    await summary.fill("The stalls are open.\nThe roads are clear.");
+    await expect(review).toBeDisabled();
+    const title = page.getByRole("textbox", { name: "Title", exact: true });
+    await show(title);
+    await title.fill("Summer market");
+    await review.click();
+    const comparison = page.locator(".repair-review");
+    await expect(comparison.getByRole("group", { name: "Title after" })).toHaveText("Summer market");
+    const { values } = calls.findLast((call) => call.path.endsWith("/review")).body;
+    assert.equal(values.summary, "The stalls are open.\r\nThe roads are clear.");
+    assert.equal(values.venueId, "");
+    assert.equal(values.zoneId, "");
+    await expect(comparison.getByRole("heading", { name: "Location", exact: true })).toHaveCount(0);
+    await page.close();
+  });
 });
