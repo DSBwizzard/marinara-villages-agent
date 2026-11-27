@@ -195,10 +195,11 @@ const release = configureVillagesRuntime({
           calls++;
           lastOptions = options;
           const { residents } = JSON.parse(String(messages.at(-1).content)) as {
-            residents: { name: string; brief: string; recent?: string[]; days: [string, string, number][] }[];
+            residents: { name: string; characterCard: string; recent?: string[]; days: [string, string, number][] }[];
           };
           assert.equal(residents.length, 1, "Regeneration supplies only the selected villager.");
-          assert.equal(residents[0]!.brief, "An autonomous gardener Patient Grows herbs");
+          for (const detail of [/An autonomous gardener/, /Patient/, /Grows herbs/])
+            assert.match(residents[0]!.characterCard, detail);
           assert.equal(residents[0]!.recent, undefined, "Saved plans stay out of the regeneration request.");
           const plans = Object.fromEntries(
             residents[0]!.days.map(([id, date, count]) => {
@@ -222,6 +223,7 @@ async function main() {
   const repairedWorld = coerceVillageState(raw);
   repairedWorld.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const repairAgenda = unwrittenVillageAgenda(today);
+  repairAgenda.personalizationPending = false;
   const nextDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12);
   const followingDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2, 12);
   const chosenDate = agendaDateKey(nextDay);

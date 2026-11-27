@@ -280,6 +280,7 @@ await runCase("repair/agenda", async () => {
       await timed.repo.mutateAuthority((state) => {
         state.timeZone = "UTC";
         state.villagers[0]!.agenda = unwrittenVillageAgenda(clock);
+        state.villagers[0]!.agenda.personalizationPending = false;
         state.venues.push(venue("hall"));
         ensureNarrative(state, clock.toISOString()).conditions.push({
           id: "spill",

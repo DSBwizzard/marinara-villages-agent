@@ -1,5 +1,6 @@
 import { readResidentPlanningInput } from "../domain/rules/resident-planning.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { ZonedDate } from "../../shared/helpers/zoned-date.js";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
@@ -578,7 +579,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   function requestTurn<T>(start: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       tickets.push({
-        start: async () => {
+        // The previous ticket may pump the queue from its own provider context.
+        start: AsyncLocalStorage.bind(async () => {
           try {
             await recoveryReady;
             if (recoveryError)
@@ -587,7 +589,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           } catch (error) {
             reject(error);
           }
-        },
+        }),
         reject,
       });
       pump();

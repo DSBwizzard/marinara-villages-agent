@@ -226,7 +226,7 @@ async function independentFounding() {
     await pendingB;
     assert.equal(b.state().foundingPreparation?.status, "ready");
     assert.deepEqual(b.state().foundingPreparation?.completedIds, ["first", "second"]);
-    assert.deepEqual(b.calls, ["first,second"], "the batch preserves resident order");
+    assert.deepEqual(b.calls, ["first", "second"], "Founding requests each resident in order");
     assert.match(b.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /B$/);
     assert.equal(a.state().foundingPreparation?.status, "pending");
     assert.equal(a.counts().preparationRequests, 1);
@@ -234,16 +234,21 @@ async function independentFounding() {
     await pendingA;
     assert.equal(a.state().foundingPreparation?.status, "failed");
     assert.match(a.state().foundingPreparation!.error, /Resident preparation incomplete/);
-    assert.deepEqual(a.calls, ["first,second"], "request failure leaves both Wishes eligible");
+    assert.deepEqual(a.calls, ["first", "second"], "request failure leaves both Wishes eligible");
     await a.service.foundingPreparationSnapshot();
     await a.service.prepareFoundedVillage();
-    assert.deepEqual(a.calls, ["first,second"], "discovery does not retry an interrupted paid request");
+    assert.deepEqual(a.calls, ["first", "second"], "discovery does not retry an interrupted paid request");
     await assert.rejects(a.service.assertFoundedVillageReady(), /Finish Founding preparation/);
     a.setFailure(false);
     await a.service.retryFoundedVillagePreparation();
     await a.service.prepareFoundedVillage();
-    assert.deepEqual(a.retries, [FOUNDING_AGENDA_SLOT, foundingSlot("wish", "first"), foundingSlot("wish", "second")]);
-    assert.deepEqual(a.calls, ["first,second"]);
+    assert.deepEqual(a.retries, [
+      foundingSlot("routine", "first"),
+      foundingSlot("routine", "second"),
+      foundingSlot("wish", "first"),
+      foundingSlot("wish", "second"),
+    ]);
+    assert.deepEqual(a.calls, ["first", "second"]);
     assert.equal(a.counts().seedRequests, 0, "preparation never regenerates reviewed physical descriptions");
     assert.match(a.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /A$/);
     assert.equal(a.state().foundingPreparation?.status, "ready");
@@ -251,10 +256,15 @@ async function independentFounding() {
     await a.service.retryFoundedVillagePreparation();
     assert.deepEqual(
       a.retries,
-      [FOUNDING_AGENDA_SLOT, foundingSlot("wish", "first"), foundingSlot("wish", "second")],
+      [
+        foundingSlot("routine", "first"),
+        foundingSlot("routine", "second"),
+        foundingSlot("wish", "first"),
+        foundingSlot("wish", "second"),
+      ],
       "repeated retry after completion sends no request",
     );
-    assert.deepEqual(b.calls, ["first,second"], "another world's retry leaves this owner intact");
+    assert.deepEqual(b.calls, ["first", "second"], "another world's retry leaves this owner intact");
   } finally {
     a.gate.resolve();
     b.gate.resolve();
@@ -294,7 +304,7 @@ async function scopedAndDefaultDispatch() {
     const snapshot = await ownerB.run(() => foundingPreparationSnapshot());
     assert.equal(snapshot.name, "scoped-B");
     await ownerB.run(() => prepareFoundedVillage());
-    assert.deepEqual(b.calls, ["first,second"]);
+    assert.deepEqual(b.calls, ["first", "second"]);
   } finally {
     a.gate.resolve();
     b.gate.resolve();
@@ -319,7 +329,7 @@ async function pendingSnapshotResumes() {
   f.gate.resolve();
   await pending;
   assert.equal(f.state().foundingPreparation?.status, "ready");
-  assert.deepEqual(f.calls, ["first,second"]);
+  assert.deepEqual(f.calls, ["first", "second"]);
 }
 async function partialOpeningCount() {
   const f = fixture("partial-opening");
@@ -400,7 +410,7 @@ async function main() {
   assert.equal(historyAdmissions, 2);
   await history.service.retryFoundedVillagePreparation();
   assert.equal(historyAdmissions, 3, "A saved ready marker can recover a missing history job");
-  assert.deepEqual(history.calls, ["first,second"], "Retrying history preserves successfully generated Agendas");
+  assert.deepEqual(history.calls, ["first", "second"], "Retrying history preserves successfully generated Agendas");
   await foundingDoesNotPopulateNpcs();
   await interactiveOpeningNeedsNoIdeas();
   await partialOpeningCount();

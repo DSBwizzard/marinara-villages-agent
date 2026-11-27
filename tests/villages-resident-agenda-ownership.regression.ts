@@ -337,6 +337,7 @@ const now = new Date(),
   today = agendaDateKey(now),
   weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
 const current = { dateKey: today, weekday, blocks: [], scheduleInformed: false };
+a.resident.agenda.personalizationPending = false;
 a.resident.agenda.activeDay = structuredClone(current);
 const result = structuredClone(a.resident.agenda);
 const wishesBefore = continuityWishes(a.state, "same", true, now.toISOString());

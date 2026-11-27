@@ -110,6 +110,10 @@ const model = {
     assert.equal(options.reasoningEffort, wish ? "none" : undefined);
     assert.equal(options.maxTokens, wish ? 1536 : 4096);
     const plan = wish ? undefined : keyedStarterReply(packet);
+    const setup = {
+      ...plan?.setup,
+      identityDescription: "A patient resident with a lasting interest in local history.",
+    };
     const napDay: string | undefined = packet.residents?.[0].days[1][0];
     return {
       finishReason: "stop",
@@ -124,14 +128,14 @@ const model = {
                 ? {
                     plans: {
                       ...plan!.plans,
-                      [napDay]: [{ kind: "nap", minutes: 45 }, ...plan!.plans[napDay]!.slice(1)],
+                      [napDay]: [
+                        { kind: "nap", minutes: 45, label: "Courtyard doze" },
+                        ...plan!.plans[napDay]!.slice(1),
+                      ],
                     },
                   }
                 : {}),
-              setup: keyedFoundingSetup(packet, {
-                ...plan!.setup,
-                identityDescription: "A patient resident with a lasting interest in local history.",
-              }),
+              setup: packet.setup ? setup : keyedFoundingSetup(packet, setup),
             },
       ),
     };
@@ -206,10 +210,10 @@ try {
     "missing_result",
     "a complete saved malformed reply has a known parser failure, not an unknown provider outcome",
   );
-  assert.equal(calls, 4, "Both Agendas share one request. The failed Wish receives one automatic retry.");
+  assert.equal(calls, 5, "Founding requests one Agenda per resident and retries the failed Wish once.");
   assert.equal(marker.status, "failed");
   assert.equal((await enter()).statusCode, 409, "An unfinished Wish still blocks entry");
-  assert.equal(marker.tasks.a.routine.status, "completed");
+  assert.equal(marker.tasks.a.routine.status, "completed", marker.tasks.a.routine.error);
   const starterAgenda = records.get("villages-village").data.villagers[0].agenda;
   const bookedAgenda = records.get("villages-village").data.villagers[1].agenda;
   assert.ok(
@@ -234,7 +238,7 @@ try {
   assert.deepEqual(
     planned.map(([, blocks]) =>
       blocks
-        .filter(({ activity }) => activity === "Napping")
+        .filter(({ activity }) => activity === "Courtyard doze")
         .map(({ startMinute, endMinute }) => endMinute - startMinute),
     ),
     [[], [45], [], [], [], [], []],
@@ -250,8 +254,9 @@ try {
   );
   const afterStarter = calendarAt(new Date(), starterAgenda.starterWeekThrough, 720);
   afterStarter.setDate(afterStarter.getDate() + 1);
-  const fallback = ordinaryAgendaBlocksFor(starterAgenda, afterStarter);
-  assert.ok(new Set(fallback.filter((block) => block.flexible).map((block) => block.activity)).size >= 3);
+  const pending = ordinaryAgendaBlocksFor(starterAgenda, afterStarter);
+  assert.ok(pending.some((block) => block.activity === "Sleeping"));
+  assert.ok(pending.every((block) => !block.activity.startsWith("Starter activity")));
   for (const [index, [, blocks]] of planned.entries()) {
     assert.ok(blocks.filter(({ activity }) => activity.startsWith(`Starter activity ${index + 1}/`)).length >= 3);
     assert.ok(blocks.some((block) => block.activity === "Sleeping" && block.essential));
@@ -292,7 +297,7 @@ try {
     },
   });
   assert.equal(oversizedDescription.statusCode, 400);
-  assert.equal(calls, 4, "Editing uses no model request.");
+  assert.equal(calls, 5, "Editing uses no model request.");
   const before = calls;
   await stop!();
   app = Fastify();

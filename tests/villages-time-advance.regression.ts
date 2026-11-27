@@ -133,7 +133,7 @@ async function fixture() {
     Object.assign(state, next);
     return structuredClone(state);
   };
-  const agendas = createResidentAgendas({ readVillageState, mutateVillageState } as any);
+  const agendas = createResidentAgendas({ readVillageState, mutateVillageState, weeklyAgenda: { handler: {} } } as any);
   const world = createWorldCoordination({
     readVillageAuthority: async () => structuredClone(state),
     readVillageState,
