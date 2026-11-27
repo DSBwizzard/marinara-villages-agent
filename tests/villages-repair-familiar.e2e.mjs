@@ -45,14 +45,16 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Main menu", exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "← Return to village", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
-      await f.section("relationships");
-      await page.getByRole("button", { name: "Nora → You", exact: true }).click();
+      const partner = page.getByRole("combobox", { name: "Relationship with" });
+      await expect(partner).toHaveValue('["relationship","nora","player"]');
+      await expect(page.getByRole("button", { name: "Back to Relationships" })).toHaveCount(0);
+      const slider = page.getByRole("slider", { name: "Adjust Warmth", exact: true });
+      await expect(slider).toHaveValue("50");
       await expect(page.getByRole("meter", { name: "Warmth toward the selected person" })).toHaveAttribute(
         "aria-valuenow",
-        "42",
+        "50",
       );
       if (width >= 390) {
-        const slider = page.getByRole("slider", { name: "Adjust Warmth", exact: true });
         const score = page.getByRole("spinbutton", { name: "Warmth", exact: true });
         const sliderBox = await slider.boundingBox();
         const scoreBox = await score.boundingBox();
@@ -61,6 +63,26 @@ await withBrowser(browser, async () => {
         await expect(page.getByRole("slider", { name: "Adjust Romantic interest", exact: true })).toBeInViewport({
           ratio: 1,
         });
+        const tracks = await page
+          .locator('.repair-field[data-score] :is(.villages-relationship-bar, input[type="range"])')
+          .evaluateAll((nodes) =>
+            nodes.map((node) => {
+              const { x, width } = node.getBoundingClientRect();
+              return { x, width };
+            }),
+          );
+        expect(tracks).toHaveLength(3);
+        expect(tracks[1]).toEqual(tracks[0]);
+        expect(tracks[2]).toEqual(tracks[0]);
+        await slider.click({ position: { x: sliderBox.width / 2, y: sliderBox.height / 2 } });
+        await expect(slider).toHaveValue("0");
+        await partner.selectOption('["relationship","nora","ellis"]');
+        await expect(slider).toHaveValue("-25");
+        await page.getByRole("button", { name: "Discard", exact: true }).click();
+        await partner.selectOption('["relationship","nora","player"]');
+        await expect(slider).toHaveValue("0");
+        await page.getByRole("button", { name: "Discard", exact: true }).click();
+        await expect(slider).toHaveValue("50");
       }
       await capture("relationships");
       if (name === "phone")

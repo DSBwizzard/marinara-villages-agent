@@ -222,6 +222,9 @@ export function RepairFieldControl({
 }) {
   const id = "repair-field-" + field.key;
   const isScore = field.type === "number" && ["warmth", "romance"].includes(field.key);
+  const min = field.min ?? 0;
+  const max = field.max ?? 0;
+  const percent = isScore && max > min ? (100 * (Math.max(min, Math.min(max, Number(value))) - min)) / (max - min) : 50;
   return (
     <div className="repair-field" data-score={isScore || undefined}>
       <label htmlFor={id} className={hideLabel ? "repair-sr" : undefined}>
@@ -304,17 +307,27 @@ export function RepairFieldControl({
             <RomanticInterest score={Number(value)} target="the selected person" />
           ) : null}
           {isScore ? (
-            <input
-              autoComplete="off"
-              type="range"
-              min={field.min}
-              max={field.max}
-              step={1}
-              value={Number(value)}
-              disabled={disabled}
-              aria-label={`Adjust ${field.label}`}
-              onChange={(e) => onChange(Number(e.target.value))}
-            />
+            <div
+              className="repair-score-slider"
+              style={{ "--repair-score-position": `${percent}%` } as React.CSSProperties}
+            >
+              <input
+                autoComplete="off"
+                type="range"
+                min={field.min}
+                max={field.max}
+                step={1}
+                value={Number(value)}
+                disabled={disabled}
+                aria-label={`Adjust ${field.label}`}
+                onChange={(e) => onChange(Number(e.target.value))}
+              />
+              <div className="repair-score-axis" aria-hidden="true">
+                <span>{String(min).replace("-", "−")}</span>
+                <span>0</span>
+                <span>+{max}</span>
+              </div>
+            </div>
           ) : null}
           <input
             autoComplete="off"

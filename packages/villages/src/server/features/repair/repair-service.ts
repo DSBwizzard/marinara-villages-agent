@@ -549,9 +549,19 @@ export function createRepairService(ports: RepairPorts) {
     if (searchAll && !words.length) return { records: [], total: 0, next: null };
     const memoryList =
       topic === "memories" || (topic === "people" && ["memories", "relationships", "wishes"].includes(section));
+    const worldKinds: Partial<Record<string, string[]>> = {
+      setting: ["world"],
+      circumstances: ["new-situation", "narrative-situation", "narrative-claim"],
+      conditions: ["new-condition", "narrative-condition"],
+      weather: ["narrative-weather"],
+      scenes: ["scene"],
+      snapshots: ["snapshot-schedule"],
+    };
+    const worldKindsInSection =
+      topic === "world" && Object.hasOwn(worldKinds, section) ? worldKinds[section] : undefined;
     const { state, records } = await allRecords(
       memoryList || searchAll,
-      searchAll || topic === "world" || topic === "progress",
+      searchAll || topic === "progress" || (topic === "world" && (!worldKindsInSection || section === "scenes")),
       personId,
     );
     const npc = personId && placeRegistry(state)?.npcs[personId];
@@ -570,6 +580,7 @@ export function createRepairService(ports: RepairPorts) {
     const selected = records.filter(
       (r) =>
         !r.creating &&
+        (!worldKindsInSection || worldKindsInSection.includes(repairParts(r.id)[0])) &&
         !(topic === "world" && repairParts(r.id)[0] === "new-condition" && repairParts(r.id)[1]) &&
         (!personId ||
           !memoryList ||
