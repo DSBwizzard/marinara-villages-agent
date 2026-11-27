@@ -417,6 +417,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
           onSend={() => void sendRoom()}
+          onRemember={(recipient) => void sendRoom(undefined, recipient)}
           onRetryReply={() => void changeReply()}
           retryPending={retryPending}
           onViewVenue={() => {

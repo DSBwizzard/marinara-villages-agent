@@ -11,6 +11,7 @@ type Pending = {
   sceneId: string;
   submissionId: string;
   text: string;
+  rememberFor?: string;
   started: number;
   editVersion: number;
   changed?: boolean;
@@ -20,6 +21,9 @@ type Pending = {
 
 export function sceneSubmissionText(operation: RoomOperation | null, submissionId: string): string | undefined {
   if (operation?.id === submissionId) return operation.submittedMessage ?? operation.input?.message;
+}
+export function sceneSubmissionReminder(operation: RoomOperation | null, submissionId: string): string | undefined {
+  if (operation?.id === submissionId) return operation.submittedRememberFor ?? operation.input?.rememberFor;
 }
 function writeSession(key: string, text: string) {
   if (!key) return;
@@ -138,6 +142,7 @@ export function useTurnRecovery(ports: {
       failure?: string,
       changed?: boolean,
       trace?: SceneFailure["trace"],
+      rememberFor?: string,
     ) => {
       recordTurnTiming(latest.current.room.id, submissionId, "recoveryStarted");
       const attempt = {
@@ -149,6 +154,7 @@ export function useTurnRecovery(ports: {
         failure,
         changed,
         trace,
+        rememberFor,
       };
       track({ ...attempt, failure: undefined });
       owner.current = attempt;
@@ -237,7 +243,11 @@ export function useTurnRecovery(ports: {
         if (scene.status !== "closed") releaseCompletion();
         latest.current.refreshSnapshot?.();
         latest.current.setRoomError("");
-        if (pending.changed && acceptedText !== pending.text) {
+        if (
+          pending.changed &&
+          (acceptedText !== pending.text ||
+            sceneSubmissionReminder(operation, pending.submissionId) !== pending.rememberFor)
+        ) {
           finishDraft(true);
           reportFailure("An earlier version of this message went through.");
         } else finishDraft(false);

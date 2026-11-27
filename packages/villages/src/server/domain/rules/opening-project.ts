@@ -34,6 +34,16 @@ export function matchesOpeningGathering(state: VillageState, scene: VenueScene):
     state.seed === scene.villageSeed
   );
 }
+export function gatheringCast(state: VillageState, zoneId: string) {
+  return state.villagers
+    .filter((resident) => state.opening?.residentIds.includes(resident.characterId))
+    .map((resident) => ({
+      characterId: resident.characterId,
+      name: resident.cardSnapshot.name,
+      doing: "at the Community gathering",
+      zoneId,
+    }));
+}
 export function completeOpeningGathering(state: VillageState, scene: VenueScene): void {
   if (matchesOpeningGathering(state, scene)) state.opening!.stage = "complete";
 }

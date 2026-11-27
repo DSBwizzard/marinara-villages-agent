@@ -1,6 +1,6 @@
 import { accessibleVenueRoute } from "./venue-path.js";
 import type { VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
-import { flexibleAgendaBlock } from "./agenda-flexibility.js";
+import { flexibleAgendaBlock, readAgendaPurpose, restingAgendaBlock } from "./agenda-flexibility.js";
 import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
@@ -124,6 +124,7 @@ export function routineProfileFromWeek(week: Record<string, VillageAgendaBlock[]
     for (const block of week[weekday] ?? []) {
       const key = JSON.stringify([
         block.activity,
+        block.purpose,
         block.venueId,
         block.zoneId,
         block.flexible,
@@ -179,6 +180,7 @@ export function coerceRoutineProfile(value: unknown): RoutineProfile | undefined
       return undefined;
     activities.push({
       activity: text(row.activity),
+      purpose: readAgendaPurpose(row.purpose),
       venueId: text(row.venueId),
       zoneId: text(row.zoneId) || undefined,
       flexible: row.flexible === true,
@@ -284,11 +286,9 @@ export function routineDay(
         const prior = retained[index - 1]!,
           next = retained[index]!;
         const desired =
-          profile.rhythm.some((row) => profile.activities[row.activity]?.activity === prior.activity) &&
-          flexibleAgendaBlock(next)
+          restingAgendaBlock(prior) && flexibleAgendaBlock(next)
             ? preference.endMinute
-            : flexibleAgendaBlock(prior) &&
-                profile.rhythm.some((row) => profile.activities[row.activity]?.activity === next.activity)
+            : flexibleAgendaBlock(prior) && restingAgendaBlock(next)
               ? preference.startMinute
               : undefined;
         if (desired === undefined) continue;
@@ -374,7 +374,7 @@ export function routineDay(
               ),
             ),
         );
-    result.push({ ...activity, startMinute: minute, endMinute: end });
+    result.push({ ...activity, purpose: rhythm ? "rest" : activity.purpose, startMinute: minute, endMinute: end });
     minute = end;
   }
   return result;
@@ -397,7 +397,7 @@ export function validateRoutineDay(
       venue &&
       (block.zoneId
         ? venueZones(venue).find((item) => item.id === block.zoneId)
-        : chooseAgendaZone(venue, resident.characterId, block.activity, "", state, accessContext));
+        : chooseAgendaZone(venue, resident.characterId, block, "", state, accessContext));
     if (
       !venue ||
       !zone ||
@@ -411,6 +411,7 @@ export function validateRoutineDay(
         venueId: "",
         zoneId: undefined,
         activity: "Taking care of their own affairs",
+        purpose: "unplanned",
         flexible: true,
       };
     return { ...block, zoneId: zone.id };

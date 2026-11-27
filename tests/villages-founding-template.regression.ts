@@ -39,7 +39,7 @@ assert.deepEqual(foundingVenueIssues([entranceOnly.venue]), []);
 assert.doesNotThrow(() => parsePlace(entranceOnly.venue, true));
 for (const activity of ["sleep", "eat", "work"])
   assert.equal(
-    chooseAgendaZone(parsePlace(entranceOnly.venue, true) as any, "player", activity).id,
+    chooseAgendaZone(parsePlace(entranceOnly.venue, true) as any, "player", { activity }).id,
     "exterior",
     "Entrance-only Venues remain usable without inventing Zones",
   );
