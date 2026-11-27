@@ -702,8 +702,8 @@ await runCase("narration-writing/single-request", async () => {
   const [boundary, submitted, reminder] = deepSeek.messages().slice(-3);
   assert.equal(boundary.content, "## Current player submission");
   assert.deepEqual(submitted, { role: "user", content: exact });
-  assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
-  assert.match(reminder.content, /Use text for narration and dialogue/u);
+  assert.match(reminder.content, /^## Scene reply reminder\nKeep the player in .* until they use Move or Visit\./u);
+  assert.match(reminder.content, /Return "segments".*one JSON object/u);
   assert.doesNotMatch(
     deepSeek
       .messages()
@@ -720,7 +720,7 @@ await runCase("narration-writing/single-request", async () => {
     (opening.raw.segments as { text: string }[]).map(({ text }) => text),
     ["Rain taps the glass.", "Footsteps fade from the street."],
   );
-  assert.deepEqual(deepSeek.formats, [undefined, undefined]);
+  assert.deepEqual(deepSeek.formats, [{ type: "json_object" }, undefined]);
   assert.equal(deepSeek.messages().at(-2).content, "");
   const greeting = deepSeek
     .messages()
@@ -800,10 +800,10 @@ await runCase("narration-writing/single-request", async () => {
   const legacy = fixture(undefined, "deepseek-flash");
   await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
   const saved = [...legacy.checkpoints.values()][0] as { plainJson?: true };
-  assert.equal(saved.plainJson, true);
-  delete saved.plainJson;
+  assert.equal(saved.plainJson, undefined, "New requests take the same transport regardless of model name");
+  saved.plainJson = true;
   await legacy.writing.generate(legacy.scene, input, "chat");
-  assert.deepEqual(legacy.formats, [{ type: "json_object" }], "an admitted request retains its previous transport");
+  assert.deepEqual(legacy.formats, [undefined], "an admitted request retains its previous transport");
 });
 
 await runCase("narration-writing/open-offer-guidance", async () => {
