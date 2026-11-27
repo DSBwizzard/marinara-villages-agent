@@ -56,6 +56,34 @@ const home = {
   related: [],
   token: "home",
 };
+const work = {
+  ...home,
+  id: JSON.stringify(["work", "nora", "house"]),
+  topic: "people",
+  title: "Work",
+  fields: [
+    { ...home.fields[0], key: "venueId", label: "Location" },
+    { ...home.fields[1], key: "zoneId", label: "Zone", dependsOn: "venueId" },
+    { key: "activity", label: "Work", type: "text", multiline: false, value: "Bind books" },
+    { key: "inviteGuests", label: "May invite guests", type: "boolean", value: true },
+    {
+      key: "days",
+      label: "Days",
+      type: "days",
+      value: "Monday,Thursday,Friday,Saturday,Sunday",
+      options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((value) => ({
+        value,
+        label: value.slice(0, 3),
+      })),
+    },
+    { key: "start", label: "Start", type: "clock", value: "09:00" },
+    { key: "end", label: "End", type: "clock", value: "17:00" },
+  ],
+  actions: [
+    { id: "correct", label: "Modify" },
+    { id: "cancel", label: "Remove" },
+  ],
+};
 const memories = ["nora", "ellis"].map((person) => ({
   id: JSON.stringify(["memory", person]),
   topic: "memories",
@@ -279,6 +307,7 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
     const found = [world, letter, visitor, detail, appointment, ...agenda, ...localMemories].find(
       (record) => record.id === id,
     );
+    if (id?.startsWith('["work",')) return { ...structuredClone(work), id };
     if (id?.startsWith('["home",'))
       return { ...structuredClone(home), id, title: person + " home assignment", token: "home-" + person };
     if (id?.startsWith('["new-memory",'))
@@ -322,7 +351,7 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
   await page.route("http://repair.test/", (route) =>
     fulfill(route, {
       contentType: "text/html",
-      body: '<style>html,body,#root{margin:0;height:100%;width:100%}</style><marinara-capability-villages id="root"></marinara-capability-villages>',
+      body: '<style>html,body{margin:0;height:100%;width:100%}#root{display:block;margin-top:52px;height:calc(100% - 52px);width:100%}</style><marinara-capability-villages id="root"></marinara-capability-villages>',
     }),
   );
   await page.route("**/api/villages/repair**", async (route) => {
@@ -347,7 +376,10 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
               : section === "details"
                 ? [person === "guest" ? visitor : letter]
                 : section === "home"
-                  ? [recordFor(JSON.stringify(["home", person]), person)]
+                  ? [
+                      recordFor(JSON.stringify(["home", person]), person),
+                      recordFor(JSON.stringify(["work", person, "house"]), person),
+                    ]
                   : localMemories.filter((record) => record.people.some((entry) => entry.id === person));
       const query = (url.searchParams.get("query") ?? "").toLowerCase();
       records = records.filter((record) => JSON.stringify(record).toLowerCase().includes(query));

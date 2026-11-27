@@ -212,6 +212,7 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-menu-short{display:inline}
 .villages-repair .repair-chrome{gap:8px;padding-inline:10px}
 .villages-repair .repair-chrome>button{padding-inline:5px}
-.villages-repair .repair-card{padding:10px;gap:8px}
+.villages-repair .repair-card{padding:8px;gap:8px}
+.villages-repair .repair-editor{gap:8px}
 }
 `;

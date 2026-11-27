@@ -34,6 +34,30 @@ await withBrowser(browser, async () => {
           .getByRole("combobox", { name: "Sleeping Zone", exact: true })
           .getByRole("option", { name: "Bedroom", exact: true }),
       ).toHaveCount(0);
+      for (
+        let pages = 0;
+        pages < 3 && !(await page.getByRole("combobox", { name: "Location", exact: true }).count());
+        pages++
+      ) {
+        const title = page.locator(".repair-card h2");
+        const before = await title.textContent();
+        await page.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(title).not.toHaveText(before);
+      }
+      await expect(page.getByRole("combobox", { name: "Location", exact: true })).toBeVisible();
+      await capture("work");
+      for (
+        let steps = 0;
+        steps < 8 && !(await page.getByRole("group", { name: "Days", exact: true }).count());
+        steps++
+      ) {
+        await page.getByRole("button", { name: "Next", exact: true }).click();
+        await page.evaluate(
+          () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        );
+      }
+      await expect(page.getByRole("checkbox", { name: "Sun", exact: true })).toBeVisible();
+      await capture("work-days");
       await f.section("memories");
       await page.getByRole("button", { name: "The workshop key", exact: true }).click();
       await capture("memory");
