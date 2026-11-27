@@ -113,13 +113,9 @@ function fixture({ oldCompactCapture = false } = {}) {
         readset: {
           ...readset,
           ...(oldCompactCapture ? { compactSceneDecisions: true as const } : {}),
-          agendaOptions: sceneAgendaContext(
-            world,
-            [{ characterId: "mara", doing: "Talking" }],
-            when,
-            "schedule",
-            venue.id,
-          ).agendaOptions,
+          agendaOptions: sceneAgendaContext(world, [{ characterId: "mara", doing: "Talking" }], when, venue.id, [
+            { id: venue.id, zones: [{ id: "exterior" }] },
+          ]).agendaOptions,
           agendaVenues: [{ id: venue.id, zones: ["exterior"] }],
         },
       },
@@ -282,7 +278,7 @@ await runCase("weekly-agenda/compact-context", () => {
   const agenda = Object.assign(resident.agenda, { calendarVersion: 1 as const });
   const day = [
     { startMinute: 0, endMinute: 720, venueId: "mill", activity: "Morning errand" },
-    { startMinute: 720, endMinute: 900, venueId: "mill", activity: "Mend nets" },
+    { startMinute: 720, endMinute: 900, venueId: "mill", activity: "Mend nets", flexible: true },
     { startMinute: 900, endMinute: 1440, venueId: "mill", activity: "Staff the desk" },
   ];
   agenda.plannedDays = { [tomorrow]: day };
@@ -290,22 +286,19 @@ await runCase("weekly-agenda/compact-context", () => {
   agenda.plannedDays[tomorrow] = [
     day[0]!,
     { ...day[1]!, endMinute: 780 },
-    { ...day[1]!, startMinute: 780, activity: "Fill in at the library" },
+    { ...day[1]!, startMinute: 780, activity: "Fill in at the library", flexible: false },
     day[2]!,
   ];
   recordAgendaChanges(world, before, when);
   const cast = [{ characterId: "mara", doing: "Talking with the player" }];
-  const ordinary = sceneAgendaContext(world, cast, when, "", "mill");
+  const knownPlaces = [{ id: "mill", zones: [{ id: "exterior" }] }];
+  const ordinary = sceneAgendaContext(world, cast, when, "mill", knownPlaces);
   assert.deepEqual(ordinary.activities, [{ actorId: "mara", doing: "Talking with the player" }]);
   assert(ordinary.agendaOptions.some((row) => row.time.date === tomorrow));
-  assert.equal(ordinary.recentChange, undefined);
-  const asked = sceneAgendaContext(world, cast, when, "Are you free tomorrow afternoon?", "mill");
-  assert.equal(asked.agendaOptions[0]?.time.date, tomorrow);
-  assert(asked.agendaOptions[0]!.time.startMinute >= 720);
-  assert(asked.agendaOptions.length <= 16);
-  assert.equal(asked.available?.[0]?.free, false);
-  const changed = sceneAgendaContext(world, cast, when, "Why did your plans change tomorrow afternoon?", "mill");
-  assert.deepEqual(changed.recentChange, {
+  assert(ordinary.agendaOptions.length <= 16);
+  assert.deepEqual(ordinary.available?.mara?.[tomorrow], [[720, 780]]);
+  assert.equal(Object.keys(ordinary.available?.mara ?? {}).length, 7);
+  assert.deepEqual(ordinary.recentChange, {
     actorId: "mara",
     date: tomorrow,
     startMinute: 780,
@@ -313,15 +306,34 @@ await runCase("weekly-agenda/compact-context", () => {
     previous: "Mend nets",
     replacement: "Fill in at the library",
   });
-  assert.equal(
-    sceneAgendaContext(world, [], when, "Why did the plan change tomorrow?", "mill").recentChange,
-    undefined,
-  );
+  assert.equal(sceneAgendaContext(world, [], when, "mill", knownPlaces).recentChange, undefined);
   const afterWindow = new Date("2026-11-12T08:00:00.000Z");
-  assert.equal(
-    sceneAgendaContext(world, cast, afterWindow, "Why did your plan change yesterday?", "mill").recentChange,
-    undefined,
+  assert.equal(sceneAgendaContext(world, cast, afterWindow, "mill", knownPlaces).recentChange, undefined);
+  const other = {
+    ...resident,
+    characterId: "tess",
+    agenda: agendaFixture({
+      day: [{ startMinute: 900, endMinute: 960, venueId: "mill", zoneId: "exterior", activity: "Check the nets" }],
+    }),
+  };
+  const restricted = {
+    ...resident,
+    agenda: agendaFixture({
+      day: [
+        { startMinute: 540, endMinute: 600, venueId: "mill", zoneId: "store", activity: "Count supplies privately" },
+        { startMinute: 660, endMinute: 720, venueId: "mill", zoneId: "store", activity: "Seal the finished order" },
+      ],
+    }),
+  };
+  const shared = sceneAgendaContext(
+    { ...world, villagers: [restricted, other] },
+    [...cast, { characterId: other.characterId, doing: "Visiting" }],
+    when,
+    "mill",
+    knownPlaces,
   );
+  assert(shared.agendaOptions.some((slot) => slot.actorId === other.characterId && slot.time.date === tomorrow));
+  assert(shared.agendaOptions.every((slot) => slot.time.zoneId !== "store"));
   assert(!JSON.stringify(agendaWeek(world, "mara", when, true)).includes("recentChanges"));
 });
 

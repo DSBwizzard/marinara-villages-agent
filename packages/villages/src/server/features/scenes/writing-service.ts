@@ -356,17 +356,6 @@ export function createSceneWriting({
     const memoryResident = JSON.stringify(requestedMemory?.recipientId ?? "resident-id");
     const memoryKeep = `{"id":"remember-fact","for":[${memoryResident}],"class":"information","text":"Player said: <exact submitted words>","source":[{"input":"<exact submitted words>","ground":{"kind":"spoken","delivery":"whisper","targetId":${memoryResident},"to":[${memoryResident}],"at":"start"}}]}`;
     const npcIntroduction = !context.codeRequestedMemory && !scene.visitorIntroduction;
-    const agenda = sceneAgendaContext(
-      village,
-      cast.map(
-        (speaker) => scene.sceneAttendance?.occupants.find((row) => row.characterId === speaker.characterId) ?? speaker,
-      ),
-      new Date(calendar.instant),
-      input,
-      scene.placeId,
-      leadSpeakerId,
-    );
-    const { agendaOptions: slots, activities, ...agendaFacts } = agenda;
     const scheduledCast = village.villagers.some(
       (resident) => resident.agenda && selectedIds.includes(resident.characterId),
     );
@@ -392,11 +381,16 @@ export function createSceneWriting({
             ]
           : [];
       });
-    const agendaOptions = slots.filter(({ time }) =>
-      agendaVenues.some(
-        ({ id, zones }) => id === time.venueId && zones.some((zone) => zone.id === (time.zoneId ?? "exterior")),
+    const agenda = sceneAgendaContext(
+      village,
+      cast.map(
+        (speaker) => scene.sceneAttendance?.occupants.find((row) => row.characterId === speaker.characterId) ?? speaker,
       ),
+      new Date(calendar.instant),
+      scene.placeId,
+      agendaVenues,
     );
+    const { agendaOptions, activities, ...agendaFacts } = agenda;
     const agendaContext = "agenda-context";
     const location = sceneLocationContext(scene, venue, selectedIds, activities);
     const otherPeople = worldCharacterReferences(village, {
@@ -519,7 +513,7 @@ export function createSceneWriting({
           : "",
         npcIntroduction
           ? tagged
-            ? "If the NPC chooses to introduce themselves by name in a line heard by the player, put [speaker-id] [introduce]: on its own line with nothing after the colon. The game supplies their exact name in that line. Use the NPC’s ID for other dialogue."
+            ? "When an NPC tells the player their own name, tag that dialogue [speaker-id] [introduce]: and add any remaining words on the same line. The game supplies the name at the start of that speech. Leave the name out of the remaining words. Use the NPC’s ID for other dialogue."
             : 'For an unnamed NPC, use a distinct public role label like "Pastry seller" at admission. When their name becomes public, put speakerLabel:"Name" on their dialogue line heard by the player. Copy their exact saved name. Leave speakerLabel out while their name stays private.'
           : "",
       ]),
@@ -658,8 +652,18 @@ export function createSceneWriting({
           ? [
               {
                 text: [
+                  ...(agenda.available
+                    ? [
+                        "Available lists each admitted resident's flexible minute ranges by local calendar date. An empty day has no flexible time. Choose a dated range that contains the whole appointment, or keep the discussion tentative.",
+                      ]
+                    : []),
                   ...(agenda.recentChange
                     ? ["This change is known to its villager. Explain it only from what they know."]
+                    : []),
+                  ...(agenda.homeActivities
+                    ? [
+                        "Home activities are known only to their resident. Share them only when that resident chooses to.",
+                      ]
                     : []),
                   ...(agendaOptions.length
                     ? [

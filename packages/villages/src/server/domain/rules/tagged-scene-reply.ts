@@ -168,9 +168,11 @@ export function decodeTaggedSceneReply(
     }
     const [, narration, speaker, tags, body] = header;
     const meta = [...(tags ?? "").matchAll(/\[([^\]]+)\]/gu)].map((part) => part[1]);
-    const nestedIntroduction = readset.explicitNpcIntroduction && speaker && !meta.length && body === "[introduce]:";
+    const introductionTag = "[introduce]:";
+    const nestedIntroduction =
+      readset.explicitNpcIntroduction && speaker && !meta.length && body.startsWith(introductionTag);
     if (nestedIntroduction) meta.push("introduce");
-    const text = nestedIntroduction ? "" : body;
+    const text = nestedIntroduction ? body.slice(introductionTag.length).trimStart() : body;
     const control = speaker?.trim().toLowerCase();
     const reserved = reservedControl(speaker ?? "");
     if (reserved && reserved !== "action") {
@@ -398,8 +400,14 @@ export function decodeTaggedSceneReply(
       }
       if (admission) requirements.push(admission);
       const introducedName = introduction ? knownNames.get(speakerId) : undefined;
+      const introductionSpeech = introducedName ? `My name is ${introducedName}.${text ? " " + text : ""}` : "";
       if (
-        (introduction && (text || !introducedName || choice || appointment || work)) ||
+        (introduction &&
+          (!introducedName ||
+            introductionSpeech.length > NARRATION_SEGMENT_CHARACTERS ||
+            choice ||
+            appointment ||
+            work)) ||
         ((appointment || work) && (choice || admission || (appointment && work)))
       ) {
         issue = "invalid_dialogue_tag";
@@ -410,7 +418,7 @@ export function decodeTaggedSceneReply(
         kind: "dialogue",
         speakerId,
         text: introducedName
-          ? `My name is ${introducedName}.`
+          ? introductionSpeech
           : appointment
             ? "Appointment offered."
             : work
