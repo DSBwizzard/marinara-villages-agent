@@ -321,7 +321,9 @@ export function createSceneWriting({
       selectedIds,
       new ZonedDate(calendar.instant, calendar.timeZone),
     );
-    const followingOptions = offerSpeechActions ? residentFollowingOptions(venue, scene, movementOptions) : [];
+    const { ongoing: currentFollowers, choices: followingOptions } = offerSpeechActions
+      ? residentFollowingOptions(village, venue, scene, movementOptions)
+      : { ongoing: [], choices: [] };
     const sceneSpeechActions: SceneSpeechAction[] = offerSpeechActions
       ? [
           ...visitOptions.map(({ actorId, option }) => ({ kind: "visit" as const, actorId, option })),
@@ -507,7 +509,7 @@ export function createSceneWriting({
           ? 'Entry needs a spoken invitation and "visit":{"option":1,"segment":2,"escort":false}. Use the speaker’s option and dialogue position. A group invite counts if it includes the player. Omit tentative or unmet terms. afterHours means admission despite the schedule. Escort only if offered. Leave movement to the player.'
           : "",
         sceneSpeechActions.length
-          ? "For each settled invitation or following decision, copy its listed number and write [action N]: their exact words to the player. One action per line, even when the same person says both. The game supplies the speaker and records the outcome. Keep tentative offers in ordinary dialogue. Leave movement to the player." +
+          ? "For each settled invitation or following decision, copy its listed number and write [action N]: their exact words to the player. One action per line, even when the same person says both. The game supplies the speaker and records the outcome. Put the words only on the numbered line. Keep tentative offers in ordinary dialogue. Leave movement to the player." +
             (canInviteForVisit
               ? " Use [action N escort]: text only when the speaker offers to accompany the player. A group invitation must include the player."
               : "")
@@ -520,7 +522,7 @@ export function createSceneWriting({
         !npcIntroduction
           ? ""
           : tagged
-            ? 'Follow the player’s intent in narration or dialogue. If they seek an unfamiliar person, use an npcArrivalCandidate they have not met or create one new named NPC. Reserve npcReturnCandidate for a familiar encounter that fits the turn. Show the visible arrival with Narration!: text. Then use [command]: {"type":"npc.admit","existingId":"supplied-id"} and [supplied-id]: text for a supplied candidate. Add "returning":true to that command only for an npcReturnCandidate. For a new named person, use [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."} and [new:baker]: text. A candidate is not already present. A passerby can appear briefly in narration.'
+            ? 'Admit anyone new who speaks, including a person the player addresses at a shop or stall. A silent passerby can stay in ordinary narration. First show the person entering or coming into view with Narration!: text. On the next line use [command]: {"type":"npc.admit","existingId":"supplied-id"} for a supplied candidate, then use [supplied-id]: text for what they say. Add "returning":true only for an npcReturnCandidate whose return fits. Otherwise admit at most one new NPC with [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A local baker."}. Start their first spoken line with [new:baker]: text. Their name can stay private.'
             : nativeCommands
               ? NARRATION_NATIVE
               : narrationNpcCommands(positions),
@@ -632,6 +634,7 @@ export function createSceneWriting({
               : {}),
             leadSpeakerId,
             movements: residentMovementPrompt(movementOptions),
+            ...(currentFollowers.length ? { currentFollowers } : {}),
             zoneContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
             protections: context.protections,
             roomReferences: context.roomReferences,
@@ -662,7 +665,7 @@ export function createSceneWriting({
                     : []),
                   ...(agendaOptions.length
                     ? [
-                        'Agenda discovery: information keep for:["player"],about:[actorId],agenda:{actorId,kind:"told"|"seen",time:{date,startMinute,endMinute,venueId,zoneId?}}. Copy the supplied slot location and cite exact spoken activity/times or the witnessed activity in its Zone (captured minute through next minute).',
+                        'Agenda discovery: information keep for:["player"],about:[actorId],agenda:{actorId,kind:"told"|"seen",time:{date,startMinute,endMinute,venueId,zoneId?}}. For told, use the resident’s line heard by the player that says the supplied activity and both times. For seen, cite sight of the resident in that Zone and use the captured minute through the next minute. Otherwise leave the schedule in dialogue.',
                       ]
                     : []),
                   ...(agendaDiscussed
@@ -700,8 +703,11 @@ export function createSceneWriting({
           : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. End crossing attempts before entry despite prior prose. `) +
         attendanceDirection +
         (tagged
-          ? "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. Put each lasting change on its own tag line." +
-            (sceneSpeechActions.length ? " Put invitation and following words on their numbered [action N] lines." : "")
+          ? "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. Use a marked beat only when its next line proposes the lasting change." +
+            (npcIntroduction ? " Admit a new speaker before their first line." : "") +
+            (sceneSpeechActions.length
+              ? " Put invitation and following words only on their numbered [action N] lines."
+              : "")
           : 'Return "segments" and any "keep" or "commands" in one JSON object.'),
     );
     if (loreInspection) {

@@ -9,8 +9,8 @@ import type { SceneReplyIssue } from "../../../shared/contracts/scene-failure-di
 export const TAGGED_SCENE_FORMAT = [
   "For a narration-only reply, write plain prose. When mixing narration, dialogue or effects, use one Scene beat per line: Narration: text or [speaker-id]: spoken text. A unique displayed speaker name also works in brackets. Omit code fences.",
   "[speaker-id] [whisper recipient-id]: text, [speaker-id] [shout]: text, and [speaker-id] [aside]: text are optional. An aside follows its main line.",
-  "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
-  "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
+  "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Use [!speaker-id]: text or Narration!: text only when the next line is its required proposal. Ordinary speech, plans and uncertain details use unmarked beats.",
+  "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may cite other events only for the people who witnessed them; omit keeps for conjecture or recalled context alone.",
   "Do not repeat an outcome in other prose. Player movement and Village time come from the game. Show what people attempt and how they react.",
 ].join("\n");
 

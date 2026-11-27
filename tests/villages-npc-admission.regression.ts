@@ -213,6 +213,42 @@ await runCase("npc-admission/tagged-turn", () => {
     assert.equal(Object.keys(f.state.worldPlaces.npcs).length, count);
     assert(acceptNarration(f.state, publication, "tagged-return", at).replayed);
   }
+  for (const admitted of [true, false]) {
+    const f = fixture();
+    const readset = { ...f.publication({}).readset, taggedSceneReply: true as const, npcSpeakerNames: {} };
+    const content = [
+      "Narration: Rain drums on the awning.",
+      ...(admitted
+        ? [
+            "Narration!: A seller leans out from behind the counter.",
+            '[command]: {"type":"npc.admit","localKey":"new:seller","name":"Lena Pike","label":"Cheese seller","characterization":"A seller at the market."}',
+          ]
+        : []),
+      "[new:seller]: Try the lane by the well.",
+    ].join("\n");
+    const raw = decodeTaggedSceneReply(content, readset).value!;
+    const result = acceptNarration(f.state, { raw, readset, responseDigest: memoryHash(content) }, "market", at);
+    assert(!result.held, JSON.stringify(result.rejected));
+    assert.equal(result.rejected.length, 0);
+    const episode = readAcceptedEpisode(result.episode!, f.state.seed);
+    assert.deepEqual(
+      episode.segments.map(({ content, name }) => [content, name ?? ""]),
+      admitted
+        ? [
+            ["Rain drums on the awning.", "Narration"],
+            ["A seller leans out from behind the counter.", "Narration"],
+            ["Try the lane by the well.", "Cheese seller"],
+          ]
+        : [["Rain drums on the awning.", "Narration"]],
+    );
+    const seller = Object.values(f.state.worldPlaces.npcs).find(({ name }) => name === "Lena Pike");
+    assert.equal(!!seller, admitted);
+    if (seller) {
+      assert(!episode.segments[0]!.heardBy.includes(seller.id), "Arrival does not backdate knowledge");
+      assert.equal(episode.segments.at(-1)?.speakerId, seller.id);
+      assert.equal(seller.label, "Cheese seller");
+    }
+  }
   const f = fixture(),
     readset = f.publication({}).readset;
   const raw = decodeTaggedSceneReply(
