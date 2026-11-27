@@ -303,13 +303,7 @@ export function FoundingSettingScene({
   const draftLabel = waitingForMari ? (setupSuggestionsBusy ? "Drafting Map…" : "Resume Map draft") : "Suggest";
   const suggestReply =
     brief.trim() || waitingForMari ? (
-      <button
-        type="button"
-        className="villages-founding-draft-map"
-        ref={draftButton}
-        disabled={!canDraft}
-        onClick={submitBrief}
-      >
+      <button type="button" ref={draftButton} disabled={!canDraft} onClick={submitBrief}>
         {draftLabel}
       </button>
     ) : null;
@@ -446,9 +440,9 @@ export function FoundingSettingScene({
                   Next
                 </button>
               ) : null}
-              {!phone ? next : null}
               {dismiss}
               {!phone ? suggestReply : null}
+              {!phone ? next : null}
             </div>
           </>
         )}
@@ -461,8 +455,8 @@ export function FoundingSettingScene({
             <button type="button" disabled={controller.busy} onClick={closeEditor}>
               Back
             </button>
-            {next}
             {suggestReply}
+            {next}
           </footer>
         </FoundingDialog>
       ) : null}
