@@ -2365,13 +2365,18 @@ export async function verifyFoundingLayout(group) {
           );
           await expect(fullMap.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
           await showVenuePin("founding-home:player");
-          await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
-          await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
-          const zoomedPicture = await mapCanvas.getByRole("img", { name: "Map of Old Harbour" }).boundingBox();
+          const zoomIn = mapCanvas.getByRole("button", { name: "Zoom in", exact: true });
+          const mapImage = mapCanvas.getByRole("img", { name: "Map of Old Harbour" });
           const zoomedViewport = await mapCanvas.getByRole("group", { name: "Map navigation" }).boundingBox();
+          const rightEdge = zoomedViewport.x + zoomedViewport.width;
+          const overhang = async () => {
+            const picture = await mapImage.boundingBox();
+            return picture.x + picture.width - rightEdge;
+          };
+          for (let steps = 0; steps < 5 && (await overhang()) <= 24; steps++) await zoomIn.click();
+          await expect.poll(overhang).toBeGreaterThan(24);
           const point = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
-          assert.ok(zoomedPicture.x + zoomedPicture.width > zoomedViewport.x + zoomedViewport.width + 24);
-          await drag(zoomedViewport.x + zoomedViewport.width + 12 - point.x - point.width / 2, 0);
+          await drag(rightEdge + 12 - point.x - point.width / 2, 0);
           await expect(root.getByRole("alert")).toContainText("inside the map");
           assert.deepEqual(
             await page.evaluate(

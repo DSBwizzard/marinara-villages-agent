@@ -56,8 +56,9 @@ function Harness(){
  window.legacyReview=()=>setWorkspace(state=>({...state,venueReview:{baseline:JSON.stringify(venues),sourceKey:source,venues:venues.slice(0,1)}}));
  window.redraftSelected=()=>suggest({venueId:venues[0].id,fullVenue:true});
  window.editDuringRequest=()=>patch(venues[0].id,row=>({...row,form:'A newer manual description'}));
+ const dismissReview=()=>{setProblem('');setWorkspace(state=>({...state,venueReview:undefined}));};
  return <><style>{VILLAGES_FORGING_STYLES}</style><div className='villages-forging-v2'><header className='villages-forging-heading'><h1>Founding Venues</h1></header><main className='villages-forging-body'>
- {workspace.venueReview && <FoundingVenueReview review={workspace.venueReview} current={venues} sourceKey={source} onUse={setVenues} onDismiss={()=>{setProblem('');setWorkspace(state=>({...state,venueReview:undefined}))}/>}
+ {workspace.venueReview && <FoundingVenueReview review={workspace.venueReview} current={venues} sourceKey={source} onUse={setVenues} onDismiss={dismissReview}/>}
  <QuickStartVenues venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
  actions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest&&!workspace.suggestionRequest.failure} failed={!!workspace.suggestionRequest?.failure} onGenerate={()=>suggest({plan:true})}/>}/>
  {problem?<p role='alert'>{problem}</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
