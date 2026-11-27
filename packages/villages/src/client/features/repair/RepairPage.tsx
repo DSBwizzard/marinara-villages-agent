@@ -4,7 +4,6 @@ import type {
   RepairBrowseItem,
   RepairField,
   RepairPersonSection,
-  RepairValue,
   RepairWorldSection,
 } from "../../../shared/contracts/repair.js";
 import { VillageIcon, type VillageIconName } from "../../shared/VillageIcon.js";
@@ -504,20 +503,11 @@ export function RepairPage({
   const chosenVenue = selected?.agenda?.venues?.find((venue) => venue.value === c.draft?.values[venueField?.key ?? ""]);
   const fields = c.editorFields.flatMap<RepairField>((field) => {
     if (
-      c.draft?.values.scope === "village" &&
-      (["venueId", "zoneId"].includes(field.key) || field.key.startsWith("target:"))
-    )
-      return [];
-    if (
       c.topic === "places" &&
       selected?.id.startsWith('["narrative-condition",') &&
       (field.key === "venueId" || (zone && field.key === "zoneId"))
     )
       return [{ ...field, readOnly: true }];
-    if (selected?.id === '["snapshot-schedule"]') {
-      if (c.draft?.values.frequency === "off" && field.key !== "frequency") return [];
-      if (field.key === "weekday" && c.draft?.values.frequency !== "weekly") return [];
-    }
     if (field.dependsOn)
       return c.draft?.values[field.dependsOn]
         ? [
@@ -710,18 +700,6 @@ export function RepairPage({
         : selected?.id.startsWith('["management",')
           ? "Runs this Venue"
           : group.map((field) => field.label).join(" & ");
-  const changeValue = (field: RepairField, value: RepairValue) =>
-    c.update({
-      values: {
-        ...c.draft!.values,
-        [field.key]:
-          field.key === "timeZone" && value === "" ? Intl.DateTimeFormat().resolvedOptions().timeZone : value,
-        ...Object.fromEntries(
-          c.editorFields.filter((child) => child.dependsOn === field.key).map((child) => [child.key, ""]),
-        ),
-        ...(field === venueField ? { [`zone:${field.key.split(":")[1]}`]: "" } : {}),
-      },
-    });
   const font = String(c.draft?.values.letterFontId ?? "");
   useLetterFont(font || undefined);
   const collectionBesideEditor =
@@ -1731,7 +1709,7 @@ export function RepairPage({
                           value={c.draft!.values[field.key] ?? field.value}
                           disabled={c.busy}
                           error={c.errorField === field.key ? c.error : undefined}
-                          onChange={(value) => changeValue(field, value)}
+                          onChange={(value) => c.setField(field, value)}
                           rows={mainWorldSetting && fieldGroups[currentStep]?.length === 4 ? 2 : proseRows}
                           hideLabel={
                             !placeNotebook &&
