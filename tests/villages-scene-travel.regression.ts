@@ -719,7 +719,7 @@ await runCase("scene-travel/local-permission", async () => {
       assert(option, "The actual fitted reply includes the host's same-Venue invitation option");
       assert.match(
         messages.at(-1)!.content,
-        /each lasting change on its own tag line/,
+        /marked beat only when its next line proposes the lasting change/,
         "The final reminder uses one proposal line per change",
       );
       if (mode === "unrelated")
