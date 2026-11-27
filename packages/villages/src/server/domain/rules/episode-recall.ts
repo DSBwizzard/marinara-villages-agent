@@ -220,7 +220,7 @@ export function compactSceneExchange(
       : undefined;
   const exchange = {
     pastExchange: "e" + exchangeNumber,
-    ...("text" in gmPrivateInput ? { gmPrivateInput: gmPrivateInput.text } : { inputWithheld: true }),
+    ...(transcript && "text" in gmPrivateInput ? { gmPrivateInput: gmPrivateInput.text } : { inputWithheld: true }),
     ...(formerActors?.length ? { formerActors } : {}),
     ...(groundedInput.length
       ? {

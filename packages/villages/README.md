@@ -218,7 +218,7 @@ After Founding, the incoming resident, housemates and affected access controller
 
 ### Activities and Keepsakes
 
-Agreed plans appear in the Villager’s **Agenda**. Visit the meeting place at the agreed time and use its usual entrances and access rules. After a shared Scene, planned or spontaneous, a Villager may send a follow-up through the usual background activity allowance. A rare Keepsake recalls a particular moment that mattered to its sender.
+Review an offered time in the Villager’s **Agenda** and choose **Confirm appointment** to reserve it. Use **Cancel appointment** to release the reservation. Visit the meeting place at the confirmed time and use its usual entrances and access rules. After a shared Scene, planned or spontaneous, a Villager may send a follow-up through the usual background activity allowance. A rare Keepsake recalls a particular moment that mattered to its sender.
 
 Open a letter to reveal any attached Keepsake. **Mailbox → Keepsakes** collects the gifts you’ve opened. **Generate illustration** uses your configured image connection for that gift. The letter and caption are saved independently.
 

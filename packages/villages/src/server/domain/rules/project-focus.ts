@@ -117,8 +117,8 @@ export function projectAgendaReservations(state: VillageState): void {
         });
   }
   const player = continuityActor(state, "player");
-  for (const { id, resident, playerIncarnation, time, activity } of state.residentPlans.appointments ?? []) {
-    if (player?.incarnation !== playerIncarnation) continue;
+  for (const { id, resident, playerIncarnation, time, activity, cancelled } of state.residentPlans.appointments ?? []) {
+    if (cancelled || player?.incarnation !== playerIncarnation) continue;
     const agenda = state.villagers.find(
       (row) => row.characterId === resident.id && row.incarnation === resident.incarnation,
     )?.agenda;

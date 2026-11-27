@@ -19,7 +19,7 @@ import {
   refreshSceneAfterFailure,
   staleVenueReason,
 } from "./ScenePanel.js";
-import { sceneSubmissionText, useTurnRecovery } from "./turn-recovery.js";
+import { sceneSubmissionReminder, sceneSubmissionText, useTurnRecovery } from "./turn-recovery.js";
 import { sceneFailure, type SceneFailure, type SceneGreetingFailure } from "./scene-error-report.js";
 import type { ContactRecovery } from "./useScenesState.js";
 import { sceneResend } from "./villages-venue-send";
@@ -489,8 +489,9 @@ export function useSendRoom(ports: {
     refreshSnapshot: () => void loadSnapshot({ quiet: true }),
   });
   const { pending: recoveryPending, attempt: uncertain, check, begin: beginRecovery, finish, track } = recovery;
+  const reminderAttempt = useRef<{ roomId: string; recipient: string; text: string; editVersion: number } | null>(null);
   const sendRoom = useCallback(
-    async (replacement?: ContactRecovery) => {
+    async (replacement?: ContactRecovery, rememberFor?: string) => {
       if (contactRecovery?.sceneId === room?.id && !replacement) return;
       const editVersion = composerEditVersionRef?.current ?? 0;
       const text = roomDraft;
@@ -498,6 +499,12 @@ export function useSendRoom(ports: {
         return;
       const claim = lifetime.begin(room.id);
       if (!claim) return;
+      const lastReminder = reminderAttempt.current;
+      if (lastReminder?.roomId === room.id && lastReminder.text === text && lastReminder.editVersion === editVersion)
+        rememberFor ??= lastReminder.recipient;
+      if (uncertain?.sceneId === room.id && uncertain.text === text && uncertain.editVersion === editVersion)
+        rememberFor ??= uncertain.rememberFor;
+      if (rememberFor) reminderAttempt.current = { roomId: room.id, recipient: rememberFor, text, editVersion };
       const owns = () => lifetime.owns(claim);
       setRoomBusy(true);
       claim.busy = true;
@@ -513,6 +520,14 @@ export function useSendRoom(ports: {
           { signal: AbortSignal.timeout(5_000) },
         );
         if (!owns()) return;
+        if (
+          operation?.input?.rememberFor &&
+          operation.input.message === text &&
+          editVersion === 0 &&
+          (operation.status !== "complete" || operation.error)
+        )
+          rememberFor ??= operation.input.rememberFor;
+        if (rememberFor) reminderAttempt.current = { roomId: room.id, recipient: rememberFor, text, editVersion };
         if (operation?.status === "running")
           setRoom((current) =>
             current?.id === room.id &&
@@ -536,6 +551,8 @@ export function useSendRoom(ports: {
                 ).operation;
           if (!owns()) return;
           if (previous && (previous.committed || previous.terminal || previous.status === "running")) {
+            if ((previous.committed || previous.terminal) && reminderAttempt.current?.roomId === room.id)
+              reminderAttempt.current = null;
             await check(previous);
             if (lifetime.finish(claim)) setRoomBusy(false);
             return;
@@ -543,7 +560,7 @@ export function useSendRoom(ports: {
           if (!previous) {
             // One submission ID lets the server admit either input while a late original is still possible.
             submissionId = uncertain.submissionId;
-            sharedIdentity = !!uncertain.changed || text !== uncertain.text;
+            sharedIdentity = !!uncertain.changed || text !== uncertain.text || rememberFor !== uncertain.rememberFor;
             keptUnconfirmedId = true;
           } else if (previous.id !== operation?.id) submissionId = createVillagesClientId();
         }
@@ -561,12 +578,21 @@ export function useSendRoom(ports: {
             message: text,
             mode: "chat",
             targetId: "",
+            ...(rememberFor ? { rememberFor } : {}),
           },
           submissionId,
         );
         submissionId = resend.submissionId;
         finish();
-        track({ sceneId: room.id, submissionId, text, editVersion, started: Date.now(), changed: sharedIdentity });
+        track({
+          sceneId: room.id,
+          submissionId,
+          text,
+          editVersion,
+          started: Date.now(),
+          changed: sharedIdentity,
+          rememberFor,
+        });
         roomSubmissionIdRef.current = submissionId;
         claim.submission = submissionId;
       } catch (cause) {
@@ -611,6 +637,7 @@ export function useSendRoom(ports: {
             message: text,
             mode: "chat",
             targetId: "",
+            ...(rememberFor ? { rememberFor } : {}),
             ...resend,
             expectedSceneRevision: room.sceneRevision ?? 0,
           }),
@@ -619,6 +646,7 @@ export function useSendRoom(ports: {
         if (!owns()) return;
         finish();
         recordTurnTiming(room.id, submissionId, "responseReceived");
+        if (reminderAttempt.current?.roomId === room.id) reminderAttempt.current = null;
         setRoom(currentRoom(answer.session));
         setRoomEnded(answer.session.status === "closed");
         if (answer.session.status !== "closed") {
@@ -650,7 +678,7 @@ export function useSendRoom(ports: {
               : current,
           );
           const failure = sceneFailure(cause, "Couldn’t confirm your reply.", "send", submissionId);
-          beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace);
+          beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace, rememberFor);
           return;
         }
         const { operation } = await request<{ operation: RoomOperation | null }>(
@@ -670,20 +698,24 @@ export function useSendRoom(ports: {
           if (sharedIdentity && !rejectedInput && acceptedText === undefined) {
             const failure = sceneFailure(cause, "The reply connection was interrupted.", "send", submissionId);
             setRoom(currentRoom(recovered));
-            beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace);
+            beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace, rememberFor);
             return;
           }
           finish();
           if (replacement) setContactRecovery(null);
           setRoom(currentRoom(recovered));
           setRoomEnded(recovered.status === "closed");
-          if (sharedIdentity && (rejectedInput || acceptedText !== text)) {
+          if (
+            sharedIdentity &&
+            (rejectedInput || acceptedText !== text || sceneSubmissionReminder(operation, submissionId) !== rememberFor)
+          ) {
             if (!composerEditVersionRef || composerEditVersionRef.current === editVersion)
               setRoomDraft((current) => current || text);
             setRoomError(sceneFailure(cause, "An earlier version of this message went through.", "send"));
           } else setRoomError("");
           roomSubmissionIdRef.current = null;
           claim.submission = null;
+          if (reminderAttempt.current?.roomId === room.id) reminderAttempt.current = null;
           setRoomGreetingNotice("");
           void loadSnapshot();
           return;
@@ -724,7 +756,7 @@ export function useSendRoom(ports: {
         const stillUncertain = uncertainResponse && !confirmedFailure;
         if (stillUncertain) {
           const failure = sceneFailure(cause, "The reply connection was interrupted.", "send", submissionId);
-          beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace);
+          beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace, rememberFor);
           setRoomError("");
         } else {
           finish();

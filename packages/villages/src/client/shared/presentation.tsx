@@ -146,7 +146,7 @@ export function drawVillagesNodes(nodes: readonly VillagesMarkdownNode[], keyPre
   });
 }
 
-/** The six marks, one element each. Bold-italic is the two the Engine nests. */
+/** Bold-italic uses the same two nested elements as the Engine. */
 function drawVillagesStyled(node: VillagesStyledNode, at: string) {
   const children = drawVillagesNodes(node.children, `${at}-`);
   switch (node.style) {
@@ -164,6 +164,12 @@ function drawVillagesStyled(node: VillagesStyledNode, at: string) {
       return <u key={at}>{children}</u>;
     case "strikethrough":
       return <del key={at}>{children}</del>;
+    case "scene-direction":
+      return (
+        <em key={at} data-scene-direction="true">
+          {children}
+        </em>
+      );
     default:
       return (
         <mark key={at} className={`${ELEMENT_TAG}-chat-md-highlight`}>
