@@ -47,6 +47,7 @@ import {
   sceneEpisodeId,
 } from "./episode-sources.js";
 import { capturePlaceContext, npcProfile } from "./places.js";
+import { npcEncounterIndex } from "./npc-encounters.js";
 import { offerSceneNarrative } from "./scene-narrative.js";
 import { nativeCircumstanceRoots } from "./native-continuity.js";
 import { sceneRepairOffers } from "./narration-circumstance.js";
@@ -200,6 +201,7 @@ export function narrationContinuityContext(
   input: string,
   at: string,
   separateRecallFromEvidence = false,
+  distinguishNpcMeetings = false,
 ) {
   memoryRequire(state.seed === scene.villageSeed && scene.zoneId, "Scene continuity scope changed");
   const episodeId = sceneEpisodeId(state.seed, scene.id, operationId);
@@ -222,17 +224,23 @@ export function narrationContinuityContext(
   const writerIds = scene.contactGeneration?.actorIds ?? scene.activeIds;
   const captured = sceneContinuityView(state, scene);
   const loreAudience = ["player", ...writerIds];
-  const npcCandidates = Object.values(
-    capturePlaceContext(
-      state,
-      scene.placeId,
-      actors.map((actor) => actor.id),
-      input,
-    ).npcs,
-  )
-    .filter((npc) => !actors.some((actor) => actor.id === npc.id))
-    .slice(0, 4)
-    .map((npc) => ({ npc, holder: continuityActor(state, npc.id)! }));
+  const actorIds = actors.map(({ id }) => id);
+  const npcArrivals = (excluded: readonly string[] = []) =>
+    Object.values(capturePlaceContext(state, scene.placeId, actorIds, input, excluded).npcs).filter(
+      ({ id }) => !actorIds.includes(id),
+    );
+  const arrivalLimit = 4;
+  const shortlist = npcArrivals().slice(0, arrivalLimit);
+  const metNpcs = distinguishNpcMeetings && shortlist.length ? npcEncounterIndex(state) : undefined;
+  if (metNpcs && shortlist.every(({ id }) => metNpcs.has(id))) {
+    const unfamiliar = npcArrivals([...metNpcs.keys()])[0];
+    if (unfamiliar) shortlist.splice(arrivalLimit - 1, 1, unfamiliar);
+  }
+  const npcCandidates = shortlist.map((npc) => ({
+    npc,
+    holder: continuityActor(state, npc.id)!,
+    met: metNpcs?.has(npc.id),
+  }));
   const holders = [
     ...actors.filter((holder) => holder.id === "player" || writerIds.includes(holder.id)),
     ...npcCandidates.map((row) => row.holder),
@@ -309,21 +317,25 @@ export function narrationContinuityContext(
   const rememberStart = addressed.length ? comma + 1 : (speechRange?.[0] ?? 0);
   const remember =
     memoryChange && separateRecallFromEvidence && addressed.length < 2 && speechRange
-      ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+[^:\r\n]{1,60})?\s*:\s*(\S[^\r\n]*?)\s*$/diu.exec(
+      ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+(?<qualification>[^:\r\n]{1,60}))?\s*:\s*(?<fact>\S[^\r\n]*?)\s*$/diu.exec(
           input.slice(rememberStart, speechRange[1]),
         )
       : null;
-  const fact = remember?.[1].replace(/[.!]+$/u, "").trimEnd();
-  const factRange = remember?.indices?.[1];
-  const recipientId = addressed[0]?.characterId;
-  const local = (id: string) => id !== "player" && contactPosition(scene, id) === scene.zoneId;
+  const fact = remember?.groups?.fact?.replace(/[.!]+$/u, "").trimEnd();
+  const factRange = remember?.indices?.groups?.fact;
+  const local = actors.filter(({ id }) => id !== "player" && contactPosition(scene, id) === scene.zoneId);
+  const recipientId =
+    addressed[0]?.characterId ??
+    (remember && !remember.groups?.qualification && local.length === 1 ? local[0].id : undefined);
+  const clarifyMemoryRecipient = !!fact && !recipientId && local.length > 1;
   // shortcut: gate only a single quoted “remember this:” fact until mixed-intent speech has a structured input.
   const requestedMemory =
     fact &&
     factRange &&
+    !clarifyMemoryRecipient &&
     !/[.!?"“”]/u.test(fact) &&
     Buffer.byteLength("Player said: " + fact) < CONTINUITY_TEXT_BYTES &&
-    actors.some(({ id }) => local(id) && (!recipientId || id === recipientId))
+    local.some(({ id }) => !recipientId || id === recipientId)
       ? {
           start: rememberStart + factRange[0],
           end: rememberStart + factRange[0] + fact.length,
@@ -423,16 +435,17 @@ export function narrationContinuityContext(
   const recallCandidates = scene.visitEvent && opening ? [] : (history.recallCandidates ?? []);
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
-  for (const { npc } of npcCandidates)
+  for (const { npc, met } of npcCandidates)
     parts.push({
       ...emptyPart(),
       block: {
         text: JSON.stringify({
-          npcArrivalCandidate: {
+          [met ? "npcReturnCandidate" : "npcArrivalCandidate"]: {
             id: npc.id,
             profile: npcProfile(npc),
+            ...(met !== undefined ? { metByPlayer: met } : {}),
             presence:
-              "If their presence is plausible, bring back this same ID with npc.admit and use their own witnessed history. Use private continuity only for this character. Let them recognize the player when they have met and follow up naturally. They can speak or hear only after the player observes their arrival.",
+              "If their arrival is plausible, use this exact ID with npc.admit. Use witnessed history and private continuity only for this character. They can speak or hear after the player observes their arrival.",
           },
         }),
         evidenceId: "npc-candidate:" + npc.id,
@@ -806,6 +819,7 @@ export function narrationContinuityContext(
     at,
     memoryChange,
     requestedMemory,
+    clarifyMemoryRecipient,
     codeRequestedMemory,
     parts: bounded,
     recentLore: bounded
@@ -941,10 +955,11 @@ export function fittedNarrationReadset(
         evidenceIds.includes("repair-context:" + repair.id) &&
         repair.entries.every((id) => evidenceIds.includes("room-context:" + id)),
     ),
-    npcCandidates: candidates.map(({ npc, holder }) => ({
+    npcCandidates: candidates.map(({ npc, holder, met }) => ({
       npc,
       incarnation: holder.incarnation,
       offered: offered.get(continuityHolderKey(holder))?.ids ?? [],
+      ...(met !== undefined ? { met } : {}),
     })),
     projects: context.projects.filter((project) => evidenceIds.includes("project-context:" + project.projectId)),
     access: context.access,

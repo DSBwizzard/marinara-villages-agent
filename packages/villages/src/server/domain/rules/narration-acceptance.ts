@@ -22,12 +22,14 @@ import { readNarrationEffectHeader } from "./narration-contract.js";
 import { prepareNarrationKeep } from "./narration-keep.js";
 import {
   assertNarrationSourceOrder,
+  bindNarrationReceipt,
   bindNarrationSource,
   readSceneNarrationReply,
   type NarrationSourceContext,
 } from "./narration-sources.js";
-import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
+import { MAX_SCENE_REJECTIONS, selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { narrationLines } from "./narration-lines.js";
+import { SCENE_EXPRESSION_REJECTION } from "./sprite-expressions.js";
 import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./npc-participation.js";
 import { findLocation, findNpc } from "./places.js";
 import { venueDesignHash } from "./project-structure.js";
@@ -59,6 +61,7 @@ export type NarrationPublication = {
 
 type SavedNarration = Pick<NarrationPublication, "readset" | "raw" | "responseDigest">;
 export const ACTOR_MEMORY_TARGETS_ROOM = "actor memory targeted Room";
+export const SCENE_REPLY_NOT_PERCEIVED = "The reply contained no lines the player could see or hear.";
 const roomNoteFields = new Set(["id", "for", "text", "source", "requires", "independent"]);
 const roomFactFields = new Set([
   ...roomNoteFields,
@@ -154,6 +157,8 @@ export function acceptNarrationContinuity(
   publication: NarrationPublication,
   submissionId: string,
   acceptedAt: string,
+  raw = publication.raw,
+  discarded: { id: string; reason: string }[] = [],
 ) {
   const { readset, native } = publication;
   const digest = memoryHash([publication.responseDigest, publication.raw, readset]);
@@ -200,7 +205,7 @@ export function acceptNarrationContinuity(
       ]),
     ];
   const reply = readSceneNarrationReply(
-    bindNpcReferences(publication.raw, native.admissions),
+    bindNpcReferences(raw, native.admissions),
     scene.contactGeneration?.actorIds ?? scene.activeIds,
     readset,
     state.continuity,
@@ -215,25 +220,44 @@ export function acceptNarrationContinuity(
     movementDependencies.every((id) => native.effects.some((effect) => effect.id === id)),
     "movement has no owning native effect",
   );
+  let expressionRejected = false;
+  const { nameReveals, ...routed } = narrationLines(
+    reply,
+    scene,
+    readset.source.episodeId,
+    readset.capturedAt,
+    native.moves,
+    native.playerMoves,
+    readset.presentation,
+    (id) => findNpc(state, id),
+    readset,
+    () => {
+      expressionRejected = true;
+    },
+  );
   const source: NarrationSourceContext = {
     ...readset.source,
     scene,
     actors,
-    ...narrationLines(
-      reply,
-      scene,
-      readset.source.episodeId,
-      readset.capturedAt,
-      native.moves,
-      native.playerMoves,
-      readset.presentation,
-    ),
+    ...routed,
     moves: [
       ...native.moves,
       ...native.playerMoves.map((move) => ({ characterId: "player", zoneId: move.zoneId, segment: move.segment })),
     ],
     native: Object.fromEntries(Object.entries(native.receipts).map(([id, receipt]) => ["native:" + id, receipt])),
   };
+  if (
+    readset.taggedSceneReply &&
+    !reply.halt &&
+    !source.lines.some((line) => (!line.contactHidden && line.heardBy?.includes("player")) || line.soundOnly?.player)
+  )
+    return {
+      held: true as const,
+      rejected: [{ id: "visible-reply", reason: SCENE_REPLY_NOT_PERCEIVED }],
+      usableIds: [],
+      acceptedIds: [],
+      episode: undefined,
+    };
   memoryRequire(
     source.lines.length === reply.segments.length &&
       source.lines.every(
@@ -924,6 +948,33 @@ export function acceptNarrationContinuity(
     );
   }
   const commandReceipts = selection.acceptedIds.flatMap((id) => (native.receipts[id] ? [native.receipts[id]] : []));
+  const namesRecorded = new Set(
+    commandReceipts.filter(({ kind }) => kind === "npc-introduction").map(({ targetId }) => targetId),
+  );
+  const nameDependencies: Record<string, string[]> = {};
+  const nameSources: ContinuityEvidence[] = [];
+  const nameReceipts: string[] = [];
+  for (const [index, name] of nameReveals) {
+    const line = source.lines[index];
+    if (namesRecorded.has(line.speakerId) || line.name !== name) continue;
+    const row = reply.segments[index];
+    const proof = bindNarrationSource({ segment: row.id }, source);
+    if (!proof.perceptions.some(({ actorId, channel }) => actorId === "player" && channel === "words")) continue;
+    const id = "native-" + memoryHash([source.episodeId, "npc-speaker-label", row.id]).slice(0, 40);
+    namesRecorded.add(line.speakerId);
+    const receipt = {
+      id,
+      kind: "npc-introduction" as const,
+      targetId: line.speakerId,
+      revision: readset.sceneRevision,
+      text: name,
+      witnesses: ["player"],
+    };
+    nameSources.push(proof, bindNarrationReceipt(receipt, source));
+    nameDependencies["native:" + id] = [continuitySourceUnit(proof)];
+    nameReceipts.push(id);
+    commandReceipts.push(receipt);
+  }
   const sceneEffects = (native.sceneEffects ?? []).filter((effect) => selection.acceptedIds.includes(effect.effectId));
   memoryRequire(
     sceneEffects.every(
@@ -949,6 +1000,7 @@ export function acceptNarrationContinuity(
     ...readOnlyKnowledge,
     ...acceptedKeeps.flatMap((keep) => keep.sources),
     ...selection.acceptedIds.flatMap((id) => native.sources[id] ?? []),
+    ...nameSources,
     ...selection.acceptedIds
       .filter((id) => native.receipts[id])
       .map((id) => bindNarrationSource("native:" + id, source)),
@@ -1013,7 +1065,6 @@ export function acceptNarrationContinuity(
     segments: source.lines,
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((row) => row.id),
-    ...(selection.rejected.length ? { rejectedEffects: selection.rejected } : {}),
     offered: [
       ...readset.offered,
       ...readset.npcCandidates
@@ -1021,20 +1072,25 @@ export function acceptNarrationContinuity(
         .map((row) => ({ holder: source.actors.find((actor) => actor.id === row.npc.id)!, ids: row.offered })),
     ],
     commandReceipts,
-    ...(sceneEffects.length
+    ...(sceneEffects.length || nameReceipts.length
       ? {
           sceneDelta: {
             expectedRevision: readset.sceneRevision,
             contactEndedIds: [...new Set(sceneEffects.flatMap((effect) => effect.contactEndedIds))],
             ...(sceneEffects.some((effect) => effect.closed) ? { closed: true as const } : {}),
-            receiptIds: sceneEffects.map((effect) => native.receipts[effect.effectId].id),
+            receiptIds: [...sceneEffects.map((effect) => native.receipts[effect.effectId].id), ...nameReceipts],
           },
         }
       : {}),
-    dependencies,
+    dependencies: { ...dependencies, ...nameDependencies },
     holderDependencies,
     ...(readset.admission.room ? { room: readset.admission.room } : {}),
   };
+  const warnings = expressionRejected ? [{ id: "!sprite-expression", reason: SCENE_EXPRESSION_REJECTION }] : [];
+  const rejected = [
+    ...new Map([...selection.rejected, ...discarded, ...warnings].map((row) => [row.id, row])).values(),
+  ].slice(0, MAX_SCENE_REJECTIONS);
+  if (rejected.length) episode.rejectedEffects = rejected;
   const episodes = appendEpisode(state.episodes, episode, state.seed);
   assertContinuityRetention(continuity, episodes);
   state.continuity = continuity;
@@ -1049,5 +1105,5 @@ export function acceptNarrationContinuity(
   }
   state.residentPlans = scheduledWorld.residentPlans;
   state.villagers = scheduledWorld.villagers;
-  return { ...selection, episode: episodes.records.at(-1)! };
+  return { ...selection, rejected, episode: episodes.records.at(-1)! };
 }

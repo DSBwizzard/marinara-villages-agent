@@ -1,4 +1,4 @@
-// Test cases: narration-access/work-consent, narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority, narration-access/book-without-keep, narration-access/overnight-agreement
+// Test cases: narration-access/doorway-after-hours, narration-access/work-consent, narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority, narration-access/book-without-keep, narration-access/overnight-agreement
 import assert from "node:assert/strict";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { socialWorldFixture } from "./fixtures/social-world.fixture.js";
@@ -9,6 +9,8 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { establishPlace } from "./helpers/places.fixture.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { sceneVisitOptions } from "../packages/villages/src/server/domain/rules/scene-visit-speech.js";
+import { applyAcceptedSceneDelta } from "../packages/villages/src/server/domain/rules/scene-delta.js";
 import {
   fittedNarrationReadset,
   narrationContinuityContext,
@@ -39,6 +41,79 @@ import {
   type NarrationAccessDecision,
 } from "../packages/villages/src/server/domain/rules/narration-access.js";
 const at = "2026-11-09T12:00:00.000Z";
+await runCase("narration-access/doorway-after-hours", () => {
+  const f = fixture();
+  f.state.timeZone = "America/Los_Angeles";
+  const venue = f.cafe.location;
+  const zone = venue.zones!.find((row) => row.id === "parlor")!;
+  zone.access!.visitorHours = [{ days: ["tuesday"], start: "07:00", end: "16:00" }];
+  const scene = f.readset.source.scene;
+  scene.zoneId = "exterior";
+  scene.activeIds = [];
+  scene.participants = [];
+  scene.sceneAttendance!.layout = captureSceneLayout(venue);
+  const input = "I knock and wait at the entrance.";
+  assert.deepEqual(zoneEventScene(scene, venue, { message: "I quietly wait." }).contactGeneration?.actorIds, []);
+  const admitted = zoneEventScene(scene, venue, { message: input });
+  assert.deepEqual(admitted.contactGeneration?.doorwayVoiceIds, [f.actorId]);
+  const prep = narrationContinuityContext(f.state, admitted, venue, "doorway", input, at, true);
+  const readset = {
+    ...fittedNarrationReadset(
+      f.state,
+      prep,
+      prep.parts.flatMap(({ block }) => (block.evidenceId ? [block.evidenceId] : [])),
+    ),
+    strictSceneReply: true as const,
+  };
+  readset.sceneVisitOptions = sceneVisitOptions(
+    readset.access,
+    venue.id,
+    [f.actorId],
+    [zone.id],
+    readset.calendar,
+    venue,
+  );
+  assert(readset.sceneVisitOptions[0]?.afterHours);
+  assert.equal(evaluateZoneAccess(venue, zone, "player", { sceneId: scene.id, at: new Date(at) }).allowed, false);
+  const raw = {
+    segments: [{ kind: "dialogue", speakerId: f.actorId, targetId: "player", text: "We're closed, but come inside." }],
+    visit: { option: 1, segment: 1, escort: false },
+  };
+  const malformed = { ...raw, visit: { ...raw.visit, segment: 2 } };
+  assert.throws(
+    () => acceptNarration(f.state, { readset, raw: malformed, responseDigest: memoryHash(malformed) }, "doorway", at),
+    /invitation needs/,
+  );
+  const quiet = structuredClone(raw);
+  delete (quiet.segments[0] as { targetId?: string }).targetId;
+  const unheard = acceptNarration(
+    structuredClone(f.state),
+    { readset, raw: quiet, responseDigest: memoryHash(quiet) },
+    "doorway",
+    at,
+  );
+  assert(unheard.held);
+  const accepted = acceptNarration(f.state, { readset, raw, responseDigest: memoryHash(raw) }, "doorway", at);
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
+  assert(accepted.episode!.segments[0].heardBy.includes("player"));
+  applyAcceptedSceneDelta(scene, accepted.episode!);
+  assert.equal(scene.zoneId, "exterior", "an invitation is not movement");
+  assert.equal(scene.doorwayContacts?.[0].characterId, f.actorId);
+  assert.deepEqual(zoneEventScene(scene, venue, { message: '"Thank you."' }).contactGeneration?.doorwayVoiceIds, [
+    f.actorId,
+  ]);
+  const current = f.state.worldPlaces.places.cafe.location;
+  assert.equal(current.access!.permissions[0].outsideHours, true);
+  assert.equal(
+    evaluateZoneAccess(
+      current,
+      current.zones!.find((row) => row.id === zone.id)!,
+      "player",
+      { sceneId: scene.id, at: new Date(at) },
+    ).allowed,
+    true,
+  );
+});
 function fixture(resident = false) {
   const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
   const cafe = establishPlace(

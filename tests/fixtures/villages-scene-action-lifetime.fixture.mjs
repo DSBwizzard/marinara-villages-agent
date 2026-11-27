@@ -573,6 +573,8 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     ]) {
       const operation = savedOperation(kind, mode);
       if (kind === "turn") operation.input.message = "  *A private thought.* Why?\n  🪑  ";
+      const freshTurn = kind === "turn" && (mode === "chat" || mode === "contact");
+      if (freshTurn) operation.freshReply = true;
       const f = await mount(strict, width, {
         operation,
         initiallyClosed: kind === "close",
@@ -584,10 +586,12 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         const after = await f.snapshot(),
           post = f.requests.find((item) => item.method === "POST");
         assert.equal(post.kind, path);
+        if (freshTurn) assert.notEqual(post.body.submissionId, operation.id);
         assert.deepEqual(post.body, {
           ...operation.input,
           sessionId: "A",
-          submissionId: "A-saved",
+          submissionId: freshTurn ? post.body.submissionId : "A-saved",
+          ...(freshTurn ? { replaceOfOperationId: "A-saved" } : {}),
           operationId: "A-saved",
           expectedSceneRevision: 0,
           retryOfAttemptId: "A-attempt",

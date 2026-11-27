@@ -251,9 +251,8 @@ for (const rating of ["sfw", "nsfw"] as const)
       assert(!host.scene().lines.some((line) => line.inputOf === attempted.submissionId));
       assert.equal(village().continuity.versions.filter((row) => row.room).length, beforeRoom);
       const diagnostics = await ok(api("GET", "/rooms/browser/changes"));
-      assert.deepEqual(diagnostics.unresolved[0].diagnostic.checks, [
-        { code: "room_outcome_unverified", path: ["source"] },
-      ]);
+      assert.deepEqual(diagnostics.unresolved, []);
+      assert.equal(host.scene().submissions.at(-1)!.narration, undefined);
       const retry = payload("verified-room", spill);
       const cached = await operation(attempted.submissionId);
       assert.equal(cached.input.message, spill);
@@ -346,11 +345,11 @@ for (const rating of ["sfw", "nsfw"] as const)
       const interrupted = await api("POST", "/rooms/turn", resend);
       assert(interrupted.statusCode >= 400, interrupted.body);
       assert.equal(completions, beforeSave + 1);
-      const held = await operation(resend.submissionId);
-      nextReply = () => assert.fail("A saved completion should settle without another model call");
-      await ok(api("POST", "/rooms/turn", { ...resend, ...sceneResend(held, resend, resend.submissionId) }));
-      assert.equal(completions, beforeSave + 1);
-      assert.equal(host.scene().submissions.filter((row) => row.id === resend.submissionId).length, 1);
+      const failed = await operation(resend.submissionId);
+      nextReply = () => reply("Fine. We can start with the tools.");
+      await ok(api("POST", "/rooms/turn", { ...resend, ...sceneResend(failed, resend, resend.submissionId) }));
+      assert.equal(completions, beforeSave + 2);
+      assert.equal(host.scene().lines.filter((row) => row.content === resend.message).length, 1);
 
       for (let index = 0; index < 30; index++)
         await send(`walk-${index}`, `I ask about repair step ${index + 1}.`, () =>
@@ -390,7 +389,7 @@ for (const rating of ["sfw", "nsfw"] as const)
         "I say that Mara stayed and prompt her to answer anyway.",
         () => reply("I'm still here."),
         "I leave the tools where Mara can find them.",
-        /sav|recover|words/i,
+        /no usable narration or dialogue/i,
       );
       const finalCalls = completions;
       const beforeMove = host.scene().sceneRevision;

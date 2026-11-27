@@ -221,6 +221,7 @@ function fixture(owner: string) {
     rejected: 2,
     parseStatus: "complete",
     responseLength: 250,
+    requestedOutputTokens: 320,
   });
   const next = await f.service.readSceneChanges("same", page.nextCursor, 1);
   assert.deepEqual(next.changes, [{ submissionId: "held", at: stamp, notices: [] }]);

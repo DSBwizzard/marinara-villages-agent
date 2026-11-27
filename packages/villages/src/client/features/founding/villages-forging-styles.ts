@@ -608,7 +608,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-founding-map-artwork .villages-quick-map-toolbar h2 { flex:0 0 100%; overflow-wrap:anywhere; }
 .villages-founding-places { display:flex; flex-direction:column; gap:.5rem; }
 .villages-founding-places>.villages-quick-start { flex:1; }
-.villages-forging-map-warning { font-weight:600; font-size:.9rem; margin:.2rem 0; }
+.villages-forging-map-warning { font-weight:600; font-size:.9rem; margin:.2rem 0; overflow-wrap:anywhere; }
 @media(min-width:728px) and (max-width:1100px) {
  .villages-quick-start { grid-template-columns:1fr; grid-template-rows:auto; height:auto; }
  .villages-forging-body>.villages-founding-places { height:auto; }

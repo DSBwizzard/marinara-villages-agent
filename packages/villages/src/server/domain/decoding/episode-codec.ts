@@ -414,8 +414,18 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
             (source) =>
               units.includes(continuitySourceUnit(source)) &&
               source.episodeId === value.id &&
-              value.segments.some((line) => line.id === source.unitId && line.heardBy.includes("player")) &&
-              witnessedNpcName(source, receipt.targetId, receipt.text),
+              value.segments.some(
+                (line) =>
+                  line.id === source.unitId &&
+                  line.heardBy.includes("player") &&
+                  (witnessedNpcName(source, receipt.targetId, receipt.text) ||
+                    (line.speakerId === receipt.targetId &&
+                      line.name === receipt.text &&
+                      !line.contactHidden &&
+                      source.kind === "speech" &&
+                      source.actorId === receipt.targetId &&
+                      source.perceptions.some(({ actorId, channel }) => actorId === "player" && channel === "words"))),
+              ),
           ),
         "NPC introduction lost its Player-heard name",
       );

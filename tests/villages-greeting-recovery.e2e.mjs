@@ -315,7 +315,7 @@ await withBrowser(browser, async () => {
   await closing.focus();
   const closingErrors = await openSceneErrors(closing.page);
   await expect(closingErrors.getByRole("button", { name: /Manage AI connections/ })).toBeVisible();
-  await expect(closingErrors.getByRole("button", { name: "Retry saved request", exact: true })).toBeVisible();
+  await expect(closingErrors.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
   await closing.page.close();
   for (const restored of [false, true]) {
     const f = await fixture({ restored });
