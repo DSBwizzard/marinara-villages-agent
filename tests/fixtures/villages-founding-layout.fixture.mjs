@@ -1580,15 +1580,23 @@ export async function verifyFoundingLayout(group) {
         }
         if (draftWithLore) {
           const originalStage = phone ? null : await stage.boundingBox();
+          const advanceReplacementWarning = async () => {
+            await expect(line).toHaveText(/^Hang on,.*first Map details\.$/);
+            await expect(scene.getByRole("button")).toHaveText(["Next"]);
+            await scene.getByRole("button", { name: "Next", exact: true }).click();
+            await expect(line).toHaveText("Want me to go ahead?");
+            await expect(scene.getByRole("button")).toHaveText(["Back", "Replace and draft"]);
+          };
           await button("Suggest").click();
           if (!phone) {
-            await expect(line).toContainText("I’ll replace your first Map details");
+            await advanceReplacementWarning();
             assert.equal(settingCalls, 0, "Mari asks before replacing existing map details");
-            await button("Keep my Map").click();
+            await scene.getByRole("button", { name: "Back", exact: true }).click();
             await expect(button("Suggest")).toBeFocused();
+            await expect(mapName).toHaveValue("My starting location");
             assert.equal(settingCalls, 0, "Keeping the setting does not send a request");
             await button("Suggest").click();
-            await finishPassage(scene);
+            await advanceReplacementWarning();
             await button("Replace and draft").click();
           }
           await expect.poll(() => settingCalls).toBe(1);
@@ -1634,8 +1642,12 @@ export async function verifyFoundingLayout(group) {
             await advance();
           }
           await button("Suggest").click();
-          await expect(line).toContainText("I’ll replace your first Map details");
-          await finishPassage(scene);
+          await advanceReplacementWarning();
+          await scene.getByRole("button", { name: "Back", exact: true }).click();
+          await expect(mapDescription).toHaveValue("A shared galley aboard a cargo ship.");
+          assert.equal(settingCalls, 1, "Back keeps the current Map without starting a request");
+          await button("Suggest").click();
+          await advanceReplacementWarning();
           await button("Replace and draft").click();
           await expect.poll(() => settingCalls).toBe(2);
           if (phone) await expect(settingPanel).toBeVisible();

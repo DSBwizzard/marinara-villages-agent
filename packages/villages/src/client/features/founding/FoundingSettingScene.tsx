@@ -85,7 +85,7 @@ export function FoundingSettingScene({
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
   const beat = settingBeat(setupWorkspace);
-  const [confirmReplace, setConfirmReplace] = useState(false);
+  const [replaceStep, setReplaceStep] = useState<"warning" | "confirm">();
   const [turn, setTurn] = useState<{ beat: SettingBeat; index: number }>(() => ({
     beat,
     index: beat === "village" && setupWorkspace.settingEditorOpen ? script[beat].length - 1 : 0,
@@ -106,8 +106,8 @@ export function FoundingSettingScene({
     if (enteringScene) lineRef.current?.focus({ preventScroll: true });
   }, [enteringScene]);
   useEffect(() => {
-    if (confirmReplace) lineRef.current?.focus();
-  }, [confirmReplace]);
+    if (replaceStep) lineRef.current?.focus();
+  }, [replaceStep]);
   useEffect(() => {
     if (beat !== "village-overview" || !villageInvalid) return;
     setTurn({ beat, index: script[beat].length - 1 });
@@ -146,13 +146,16 @@ export function FoundingSettingScene({
     !controller.draftSaveError &&
     !connectionProblem &&
     (!pending || waitingForMari);
-  const draftDialogue = confirmReplace
-    ? "Hang on, there’s already something here. If I draft it again, I’ll replace your first Map details. Want me to go ahead?"
-    : setupSuggestionsBusy && waitingForMari
-      ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
-      : phone && waitingForMari
-        ? "I still have your Map draft request. Want me to check on it?"
-        : undefined;
+  const draftDialogue =
+    replaceStep === "warning"
+      ? "Hang on, there’s already something here. If I draft it again, I’ll replace your first Map details."
+      : replaceStep === "confirm"
+        ? "Want me to go ahead?"
+        : setupSuggestionsBusy && waitingForMari
+          ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
+          : phone && waitingForMari
+            ? "I still have your Map draft request. Want me to check on it?"
+            : undefined;
   const lines = beat === "village" && draftDialogue ? [draftDialogue] : script[beat];
   const lineIndex = Math.min(
     lines.length - 1,
@@ -193,7 +196,7 @@ export function FoundingSettingScene({
     setVillagePopup(false);
     if (phone) setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: false }));
     const { setupLocationName, setupSetting } = controller;
-    if (!waitingForMari && [setupLocationName, setupSetting].some((value) => value.trim())) setConfirmReplace(true);
+    if (!waitingForMari && [setupLocationName, setupSetting].some((value) => value.trim())) setReplaceStep("warning");
     else void draftSetupSetting("request");
   };
   const worldField = (
@@ -314,9 +317,11 @@ export function FoundingSettingScene({
       inert={inactive || undefined}
     >
       {title}
-      <FoundingReader text={lines[lineIndex]!} lineRef={lineRef} hidden={!!title || worldPopup}>
+      <FoundingReader text={lines[lineIndex]!} lineRef={lineRef} hidden={!!title || worldPopup} paginate={!replaceStep}>
         {!inactive && !villagePopup ? notices : null}
-        {!phone && beat === "village" && lastLine ? <section aria-label="Your first Map">{mapFields}</section> : null}
+        {!phone && beat === "village" && lastLine && !replaceStep ? (
+          <section aria-label="Your first Map">{mapFields}</section>
+        ) : null}
         {!lastLine ? (
           <div className="villages-founding-replies">
             {backReply}
@@ -391,17 +396,29 @@ export function FoundingSettingScene({
               </button>
             </div>
           </>
-        ) : worldPopup ? null : confirmReplace ? (
+        ) : worldPopup ? null : replaceStep === "warning" ? (
           <div className="villages-founding-replies">
             <button
               type="button"
+              className="villages-forging-primary"
+              data-reader-direction="next"
+              onClick={() => setReplaceStep("confirm")}
+            >
+              Next
+            </button>
+          </div>
+        ) : replaceStep === "confirm" ? (
+          <div className="villages-founding-replies">
+            <button
+              type="button"
+              data-reader-direction="back"
               onClick={() => {
-                setConfirmReplace(false);
+                setReplaceStep(undefined);
                 if (phone) onEditSetting();
                 else requestAnimationFrame(() => draftButton.current?.focus());
               }}
             >
-              Keep my Map
+              Back
             </button>
             <button
               type="button"
@@ -409,7 +426,7 @@ export function FoundingSettingScene({
               data-reader-direction="next"
               disabled={!canDraft}
               onClick={() => {
-                setConfirmReplace(false);
+                setReplaceStep(undefined);
                 void draftSetupSetting("replace");
               }}
             >
