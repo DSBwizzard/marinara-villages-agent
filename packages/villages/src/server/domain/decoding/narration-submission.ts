@@ -117,6 +117,8 @@ const saved = z
           return (
             row.format === 1 &&
             (row.visitorIntroductionFarewell === undefined || row.visitorIntroductionFarewell === true) &&
+            (row.terminalSceneRepair === undefined ||
+              (row.terminalSceneRepair === true && row.taggedSceneReply === true)) &&
             typeof row.setupAt === "string" &&
             Number.isFinite(Date.parse(row.capturedAt)) &&
             Number.isSafeInteger(row.sceneRevision) &&

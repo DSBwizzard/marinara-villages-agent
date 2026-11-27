@@ -592,7 +592,7 @@ export function createSceneWriting({
             ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
             : "",
           tagged && !requestedMemory && context.repairs.length
-            ? 'If the player witnesses completed work that resolves a supplied repair, use one Narration!: line showing the work. Follow it with one [keep]: {"id":"repair-1","for":"room","replace":"supplied-room-entry-id","text":"The corrected Room detail."} per linked entry, with distinct keep IDs. Use text:null only when the affected detail is gone. Then write [command]: {"type":"circumstance","conditions":[{"id":"supplied-condition-id","clear":true}],"requires":["repair-1"]} with every keep ID in requires. All lines cite the same work beat by default. Incomplete work leaves the restriction in effect.'
+            ? 'End the reply with any completed repair. For a supplied repair the player witnesses, use one Narration!: line showing only the work. Leave access warnings and reopening to the game. Follow the work with one [keep]: {"id":"repair-1","for":"room","replace":"supplied-room-entry-id","text":"The corrected Room detail."} per linked entry, with distinct keep IDs. Use text:null only when the affected detail is gone. Finish with [command]: {"type":"circumstance","conditions":[{"id":"supplied-condition-id","clear":true}],"requires":["repair-1"]} with every keep ID in requires. All lines cite the same work beat by default. Incomplete work leaves the restriction in effect.'
             : !nativeCommands && !tagged && context.repairs.length
               ? "For a lasting Room fact changed by repair, cite the actual observed work and use the affected supplied Room entry ID in replace."
               : "",
@@ -787,6 +787,7 @@ export function createSceneWriting({
               explicitNpcIntroduction: true as const,
             }
           : {}),
+        ...(tagged && !requestedMemory && readset.repairs.length ? { terminalSceneRepair: true as const } : {}),
         ...(tagged
           ? {
               npcSpeakerNames,

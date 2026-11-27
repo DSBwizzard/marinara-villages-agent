@@ -372,6 +372,19 @@ export function decodeTaggedSceneReply(
       if (control === "command" && effect.type === "npc.admit")
         registerArrival(effect, id, "new:returning-" + effectIndex);
       list.push(effect);
+      if (
+        readset.terminalSceneRepair &&
+        control === "command" &&
+        anchor?.kind === "narration" &&
+        effect.type === "circumstance" &&
+        effect.situation === undefined &&
+        Array.isArray(effect.conditions) &&
+        effect.conditions.length === 1
+      ) {
+        const condition = asRecord(effect.conditions[0]);
+        // The typed repair closes the reply. Access status comes from the committed room.
+        if (condition.clear === true && readset.repairs.some(({ id }) => id === condition.id)) break;
+      }
       // A malformed control may spill private text onto later lines.
       if (!proposal) break;
       continue;
