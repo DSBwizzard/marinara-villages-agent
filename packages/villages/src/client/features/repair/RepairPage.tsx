@@ -1250,10 +1250,7 @@ export function RepairPage({
                 <button
                   type="button"
                   disabled={c.busy}
-                  onClick={async () => {
-                    await c.chooseTopic("world");
-                    void c.open('["snapshot-schedule"]');
-                  }}
+                  onClick={() => void c.open('["snapshot-schedule"]')}
                 >
                   Snapshot schedule →
                 </button>
