@@ -142,6 +142,22 @@ await withBrowser(browser, async () => {
       assert.deepEqual(action, retries[0], "retrying a lost response retains action ID and expected attempt");
       return fulfill(route, { json: snapshot });
     }
+    if (path.endsWith("/debug/lore"))
+      return fulfill(route, {
+        json: {
+          scope: "world",
+          revision: 1,
+          records: [
+            {
+              id: "last",
+              at: "2026-11-26T12:00:00Z",
+              purpose: "Scene",
+              revision: 1,
+              entries: [{ id: "entry", bookId: "book", name: "Village lore", targets: ["GM"] }],
+            },
+          ],
+        },
+      });
     if (path.endsWith("/repair"))
       return fulfill(route, {
         json: {
@@ -186,12 +202,14 @@ await withBrowser(browser, async () => {
   });
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect.poll(() => heartbeats.some((beat) => beat.visible)).toBe(true);
+  await expect(page.getByRole("button", { name: /^Lorebooks/ })).toBeVisible();
   await page.getByRole("button", { name: "More" }).click();
   await expect(page.getByText("Background work", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Debug", exact: true }).click();
   await expect(page.getByRole("button", { name: "Retry unfinished work" })).toHaveCount(0);
   await page.getByRole("button", { name: "REPAIR", exact: true }).click();
   await expect(page.getByRole("button", { name: "Repair Mara", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Lorebooks/ })).toHaveCount(0);
   assert(
     await page
       .locator(".repair-pages")

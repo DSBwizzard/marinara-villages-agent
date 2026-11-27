@@ -29,6 +29,7 @@ export function VillagesFrame({ controller, children }: FrameProps) {
           enabled={
             controller.screen !== "setup" &&
             controller.screen !== "preparing" &&
+            !(controller.screen === "menu" && controller.menuPage === "repair") &&
             controller.snapshot?.settings.lorebookChipsEnabled !== false
           }
           daylight={daylight}
