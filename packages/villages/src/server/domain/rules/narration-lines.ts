@@ -1,10 +1,12 @@
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
+import type { NpcIdentity } from "../models/places.js";
+import type { NarrationReadset } from "../models/narration-model.js";
 import { coerceSession } from "../decoding/scene-codec.js";
 import type { readNarrationReply } from "./narration-contract.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import type { ContactMove } from "./venue-contact.js";
 import { routeZoneEvents } from "./zone-events.js";
-import { fenceIntroductionWitnesses } from "./npc-participation.js";
+import { fenceIntroductionWitnesses, npcNameInText, revealsNpcName } from "./npc-participation.js";
 import { settleSceneSpriteCues, type SpriteSelectionContext } from "./sprite-expressions.js";
 
 /** Bind labels, routing and presentation once, before any source fingerprint or saved episode is authored. */
@@ -16,6 +18,8 @@ export function narrationLines(
   moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[],
   playerMoves: { zoneId: string; segment: number }[] = [],
   presentation?: SpriteSelectionContext,
+  npcIdentity?: (id: string) => Pick<NpcIdentity, "name" | "label"> | undefined,
+  nameFormat: Pick<NarrationReadset, "taggedSceneReply" | "npcSpeakerNames"> = {},
   onExpressionRejected?: () => void,
 ) {
   memoryRequire(scene.contactGeneration?.venue, "narration needs its captured routing scope");
@@ -45,22 +49,55 @@ export function narrationLines(
       ]),
     ).values(),
   ];
+  const publicNames = new Map<string, string>();
+  const nameReveals = new Map<number, string>();
+  const newlyHeard = new Set(scene.pendingNpcAdmissions?.map(({ npc }) => npc.id));
+  const nameFromHeader = nameFormat.npcSpeakerNames !== undefined;
   const canonical = coerceSession({
     version: 5,
     participants: cast,
     lines: lines.map((line, index) => {
       const person = cast.find((person) => person.characterId === line.speakerId);
       memoryRequire(line.kind === "narration" || person, "narration speaker has no captured identity");
+      const row = reply.segments[index];
+      const npc = row.kind === "dialogue" ? npcIdentity?.(line.speakerId) : undefined;
+      const firstAtAdmission =
+        npc && !line.contactHidden && line.heardBy.includes("player") && newlyHeard.delete(line.speakerId);
+      if (
+        npc &&
+        row.kind === "dialogue" &&
+        npc.label !== npc.name &&
+        !publicNames.has(line.speakerId) &&
+        revealsNpcName(
+          line,
+          npc.name,
+          !!firstAtAdmission,
+          row.speakerLabel,
+          !nameFromHeader && nameFormat.taggedSceneReply === true,
+        ) &&
+        (!nameFromHeader || npcNameInText(line.content, npc.name))
+      ) {
+        publicNames.set(line.speakerId, npc.name);
+        nameReveals.set(index, npc.name);
+      }
       return {
         ...line,
         id: ids[index],
         role: "assistant",
-        name: person?.name ?? "Narration",
+        name:
+          publicNames.get(line.speakerId) ??
+          (npc && npc.label === npc.name ? npc.label : undefined) ??
+          person?.name ??
+          "Narration",
         at,
         ...(line.anchorIndex !== undefined ? { asideFor: ids[line.anchorIndex] } : {}),
       };
     }),
   }).lines;
   memoryRequire(canonical.length === reply.segments.length, "canonical narration lost a generated segment");
-  return { lines: canonical, labels: Object.fromEntries(reply.segments.map((row, index) => [row.id, ids[index]])) };
+  return {
+    lines: canonical,
+    labels: Object.fromEntries(reply.segments.map((row, index) => [row.id, ids[index]])),
+    nameReveals,
+  };
 }

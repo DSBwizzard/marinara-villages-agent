@@ -63,7 +63,7 @@ export function prepareContinuityKeep(
     ordinaryReplyRecovery?: true;
   },
 ) {
-  const proposal = readContinuityProposal(raw, sourceContext.ordinaryReplyRecovery),
+  const proposal = readContinuityProposal(raw, sourceContext.ordinaryReplyRecovery || sourceContext.ordinaryDialogue),
     header = readNarrationEffectHeader(raw, "keep-" + ordinal);
   for (const field of ["replace", "parent"] as const)
     if (proposal[field] && sourceContext.resolveTarget) proposal[field] = sourceContext.resolveTarget(proposal[field]);

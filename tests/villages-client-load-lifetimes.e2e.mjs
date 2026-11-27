@@ -134,6 +134,19 @@ await withBrowser(browser, async () => {
       "Returning focus reads the same admitted attempt without generating another image",
     );
     await f.finish();
+    const engineError = "The Engine refused /api/characters/avatar-generation (500): ";
+    for (const [detail, notice] of [
+      ['OpenAI image generation failed (429): {"error":{"message":"truncated', "HTTP 429"],
+      ['OpenAI image generation failed (400): {"error":{"code":"private provider detail"}}', "HTTP 400"],
+      ['OpenRouter returned an error: {"message":"upstream error details","code":403}', "HTTP 403"],
+      ["No image data in provider response", "Engine 500"],
+    ]) {
+      const failure = await mount({ width: 390, map: true });
+      await expect.poll(() => failure.requests.length).toBe(1);
+      await failure.reply(failure.requests[0], { status: "failed", error: engineError + detail, result: null });
+      await expect(failure.page.getByRole("alert")).toHaveText(`Couldn’t generate the map (${notice}).`);
+      await failure.finish();
+    }
   });
   await runCase("client-load/lifetimes", async () => {
     for (const strict of [false, true]) {

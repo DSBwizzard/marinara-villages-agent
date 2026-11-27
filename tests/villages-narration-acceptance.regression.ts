@@ -235,9 +235,30 @@ await runCase("narration-acceptance/requested-memory", () => {
   assert.equal(Object.hasOwn(raw, "keep"), false);
   acceptNarrationContinuity(repeated.state, publication, "remember", later);
   assert.equal(repeated.state.continuity.versions.length, 1);
-  const unnamed = fixture(`"Remember this: ${fact}."`).publication({}, "operation", true).readset;
-  assert(unnamed.requestedMemory);
-  assert.equal(unnamed.codeRequestedMemory, undefined);
+  const unnamed = fixture(`"Remember this: ${fact}."`);
+  const unnamedPublication = unnamed.publication({ segments: unnamed.response(["remember-fact"]) }, "operation", true);
+  assert.equal(unnamedPublication.readset.requestedMemory?.recipientId, unnamed.id);
+  assert.equal(unnamedPublication.readset.codeRequestedMemory, true);
+  assert.equal(acceptNarrationContinuity(unnamed.state, unnamedPublication, "memory", later).held, false);
+  assert.deepEqual(
+    unnamed.state.continuity.versions[0].sources[0].perceptions.map(({ actorId }) => actorId),
+    [unnamed.id],
+  );
+  const qualified = fixture(`"Remember this for future visits: ${fact}."`).publication({}, "operation", true).readset;
+  assert(qualified.requestedMemory && !qualified.requestedMemory.recipientId && !qualified.codeRequestedMemory);
+  const group = fixture(`"Remember this: ${fact}."`, true);
+  const other = Object.keys(group.state.worldPlaces.npcs)[0];
+  const attending = { characterId: other, name: "Another resident", doing: "Listening" };
+  group.scene.participants.push(attending);
+  group.scene.activeIds.push(other);
+  group.scene.sceneAttendance!.occupants.push({ ...attending, zoneId: group.scene.zoneId! });
+  group.scene.contactGeneration!.actorIds!.push(other);
+  const question = { ...group.response()[0], text: "Which of us would you like to remember this?" };
+  const groupRequest = group.publication({ segments: [question] }, "operation", true);
+  assert.equal(groupRequest.readset.requestedMemory, undefined);
+  assert.equal(groupRequest.readset.codeRequestedMemory, undefined);
+  assert.equal(acceptNarrationContinuity(group.state, groupRequest, "ask-recipient", later).held, false);
+  assert.equal(group.state.continuity.versions.length, 0);
   for (const aside of ["*I use the west peg*", "I think privately that I use the west peg", "[I use the west peg]"])
     assert.equal(
       fixture(`"Mara, remember this: ${aside}"`).publication({}, "operation", true).readset.codeRequestedMemory,

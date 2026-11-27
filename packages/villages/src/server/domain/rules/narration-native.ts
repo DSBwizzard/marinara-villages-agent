@@ -4,6 +4,7 @@ import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { readNarrationEffectHeader } from "./narration-contract.js";
 import {
   bindNarrationSource,
+  bindSceneSourcePositions,
   assertNarrationSourceOrder,
   readSceneNarrationReply,
   type NarrationSourceContext,
@@ -43,6 +44,16 @@ import { nativeCommand, readNarrationNativeCommand } from "./narration-command-c
 import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
 import { asRecord } from "./coerce.js";
+import { pruneTaggedSceneReply } from "./tagged-scene-reply.js";
+
+class TaggedNpcAdmissionFailure extends Error {
+  constructor(
+    readonly effectId: string,
+    cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+  }
+}
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
 export function prepareNarrationNative(
@@ -53,6 +64,8 @@ export function prepareNarrationNative(
   at: string,
   excluded = new Map<string, string>(),
 ) {
+  if (readset.positionedSceneSources)
+    raw = bindSceneSourcePositions(raw, readset.quotedSceneSources === true, readset.recognizeDirectOfferSpeech);
   for (const row of readset.npcCandidates)
     memoryRequire(
       memoryHash(findNpc(state, row.npc.id)) === memoryHash(row.npc),
@@ -63,78 +76,93 @@ export function prepareNarrationNative(
     admissions: NpcAdmission[] = [];
   const rawSegments = Array.isArray(raw.segments) ? raw.segments : [];
   let newNpcCount = 0;
-  for (const value of Array.isArray(raw.commands) ? raw.commands : []) {
-    if (!value || typeof value !== "object" || (value as Record<string, unknown>).type !== "npc.admit") continue;
-    const command = readNarrationNativeCommand(value);
-    memoryRequire(command.type === "npc.admit", "invalid NPC command");
-    if (!command.existingId) memoryRequire(++newNpcCount <= 1, "a reply may introduce at most one new NPC");
-    const segment = rawSegments.findIndex(
-        (value, index) =>
-          value &&
-          typeof value === "object" &&
-          ((value as Record<string, unknown>).id ?? "segment-" + index) === command.at,
-      ),
-      intro = rawSegments[segment] as Record<string, unknown> | undefined;
-    memoryRequire(
-      intro?.kind === "narration" &&
-        typeof intro.text === "string" &&
-        admissions.length < 4 &&
-        !admissions.some((row) => row.localKey === command.localKey),
-      "NPC admission needs one unique current introduction",
-    );
-    const crossings = (readset.playerNavigation || !Array.isArray(raw.commands) ? [] : raw.commands)
-      .flatMap((value, commandIndex) => {
-        const parsed = nativeCommand.safeParse(value);
-        if (!parsed.success || parsed.data.type !== "move" || parsed.data.who !== "player") return [];
-        const command = parsed.data;
-        if (
-          excluded.has(readNarrationEffectHeader(value, "command-" + commandIndex).id) ||
-          !scene.sceneAttendance?.layout?.some((zone) => zone.id === command.to)
-        )
-          return [];
-        const index = rawSegments.findIndex(
+  let admitting: unknown;
+  try {
+    for (const value of Array.isArray(raw.commands) ? raw.commands : []) {
+      if (!value || typeof value !== "object" || (value as Record<string, unknown>).type !== "npc.admit") continue;
+      admitting = asRecord(value).id;
+      const command = readNarrationNativeCommand(value);
+      memoryRequire(command.type === "npc.admit", "invalid NPC command");
+      if (!command.existingId) memoryRequire(++newNpcCount <= 1, "a reply may introduce at most one new NPC");
+      const segment = rawSegments.findIndex(
           (value, index) =>
             value &&
             typeof value === "object" &&
             ((value as Record<string, unknown>).id ?? "segment-" + index) === command.at,
+        ),
+        intro = rawSegments[segment] as Record<string, unknown> | undefined;
+      memoryRequire(
+        intro?.kind === "narration" &&
+          typeof intro.text === "string" &&
+          admissions.length < 4 &&
+          !admissions.some((row) => row.localKey === command.localKey),
+        "NPC admission needs one unique current introduction",
+      );
+      const crossings = (readset.playerNavigation || !Array.isArray(raw.commands) ? [] : raw.commands)
+        .flatMap((value, commandIndex) => {
+          const parsed = nativeCommand.safeParse(value);
+          if (!parsed.success || parsed.data.type !== "move" || parsed.data.who !== "player") return [];
+          const command = parsed.data;
+          if (
+            excluded.has(readNarrationEffectHeader(value, "command-" + commandIndex).id) ||
+            !scene.sceneAttendance?.layout?.some((zone) => zone.id === command.to)
+          )
+            return [];
+          const index = rawSegments.findIndex(
+            (value, index) =>
+              value &&
+              typeof value === "object" &&
+              ((value as Record<string, unknown>).id ?? "segment-" + index) === command.at,
+          );
+          return index >= 0 && index <= segment ? [{ segment: index, zoneId: command.to }] : [];
+        })
+        .sort((a, b) => a.segment - b.segment);
+      const fitted = readset.npcCandidates.find(({ npc }) => npc.id === command.existingId);
+      memoryRequire(!command.returning || command.existingId, "a returning encounter needs a supplied NPC identity");
+      if (fitted?.met !== undefined)
+        memoryRequire(
+          fitted.met === (command.returning === true),
+          fitted.met ? "a familiar NPC needs an explicit returning encounter" : "that NPC has not met the Player",
         );
-        return index >= 0 && index <= segment ? [{ segment: index, zoneId: command.to }] : [];
-      })
-      .sort((a, b) => a.segment - b.segment);
-    const arrival = prepareNpcAdmission(
-      {
-        ...state,
-        worldPlaces: {
-          ...state.worldPlaces,
-          npcs: {
-            ...state.worldPlaces.npcs,
-            ...Object.fromEntries(admissions.map((row) => [row.npc.id, row.npc])),
+      const arrival = prepareNpcAdmission(
+        {
+          ...state,
+          worldPlaces: {
+            ...state.worldPlaces,
+            npcs: {
+              ...state.worldPlaces.npcs,
+              ...Object.fromEntries(admissions.map((row) => [row.npc.id, row.npc])),
+            },
           },
         },
-      },
-      scene,
-      command,
-      readset.source.operationId,
-      segment,
-      crossings.at(-1)?.zoneId ?? scene.zoneId!,
-      intro.text,
-      readset.npcCandidates.find((row) => row.npc.id === command.existingId)?.npc,
-    );
-    memoryRequire(!actors.some((actor) => actor.id === arrival.npc.id), "NPC identity is already in this reply");
-    memoryRequire(
-      !rawSegments.slice(0, segment).some((value) => {
-        const row = asRecord(value);
-        return Array.isArray(row.actors) && row.actors.some((id) => id === command.localKey || id === arrival.npc.id);
-      }),
-      "a person cannot act before their admitted arrival",
-    );
-    admissions.push(arrival);
-    actors.push({
-      kind: "actor",
-      id: arrival.npc.id,
-      incarnation: memoryHash([state.seed, state.setupAt, arrival.npc.id]),
-    });
-    admitNpcParticipants(scene, [arrival]);
+        scene,
+        command,
+        readset.source.operationId,
+        segment,
+        crossings.at(-1)?.zoneId ?? scene.zoneId!,
+        intro.text,
+        fitted?.npc,
+      );
+      memoryRequire(!actors.some((actor) => actor.id === arrival.npc.id), "NPC identity is already in this reply");
+      memoryRequire(
+        !rawSegments.slice(0, segment).some((value) => {
+          const row = asRecord(value);
+          return Array.isArray(row.actors) && row.actors.some((id) => id === command.localKey || id === arrival.npc.id);
+        }),
+        "a person cannot act before their admitted arrival",
+      );
+      admissions.push(arrival);
+      actors.push({
+        kind: "actor",
+        id: arrival.npc.id,
+        incarnation: memoryHash([state.seed, state.setupAt, arrival.npc.id]),
+      });
+      admitNpcParticipants(scene, [arrival]);
+    }
+  } catch (error) {
+    if (readset.taggedSceneReply && typeof admitting === "string")
+      throw new TaggedNpcAdmissionFailure(admitting, error);
+    throw error;
   }
   scene.pendingNpcAdmissions = admissions;
   if (scene.contactGeneration)
@@ -237,6 +265,8 @@ export function prepareNarrationNative(
         planned.filter((move) => move.characterId !== "player"),
         planned.filter((move) => move.characterId === "player"),
         readset.presentation,
+        (id) => findNpc(state, id) ?? admissions.find(({ npc }) => npc.id === id)?.npc,
+        readset,
       ),
       native: {},
       moves: planned,
@@ -326,8 +356,10 @@ export function prepareNarrationNative(
           ),
         "NPC admission needs the actual Player-seen introduction",
       );
-      candidate.worldPlaces.npcs[arrival.npc.id] = structuredClone(arrival.npc);
-      candidate.worldPlaces.revision++;
+      if (!command.existingId) {
+        candidate.worldPlaces.npcs[arrival.npc.id] = structuredClone(arrival.npc);
+        candidate.worldPlaces.revision++;
+      }
       return {
         receipt: {
           id: receiptId,
@@ -583,28 +615,59 @@ export function acceptNarration(
       );
     }
   }
-  const evaluate = (prepared: ReturnType<typeof prepareNarrationNative>) =>
-    prepared.routingFailure
-      ? {
-          ...selectSceneEffects(prepared.native.effects, prepared.native.movementDependencies ?? []),
-          held: true as const,
-          usableIds: [],
-          episode: undefined,
-        }
-      : acceptNarrationContinuity(prepared.candidate, { ...publication, native: prepared.native }, submissionId, at);
-  const selected = resolveNarrationEffects((excluded) => {
-    const prepared = prepareNarrationNative(state, publication.readset, publication.raw, submissionId, at, excluded);
-    const result = evaluate(prepared);
-    return {
-      ...prepared,
-      result,
-      provisional: prepared.native.effects
-        .filter(
-          (effect) => prepared.native.receipts[effect.id] || prepared.native.movementDependencies?.includes(effect.id),
-        )
-        .map((effect) => ({ effect, sources: prepared.native.sources[effect.id] ?? [] })),
-    };
-  });
+  let raw = publication.raw;
+  const discarded = new Map<string, string>();
+  const selectCandidate = () =>
+    resolveNarrationEffects((excluded) => {
+      const prepared = prepareNarrationNative(state, publication.readset, raw, submissionId, at, excluded);
+      const result = prepared.routingFailure
+        ? {
+            ...selectSceneEffects(prepared.native.effects, prepared.native.movementDependencies ?? []),
+            held: true as const,
+            usableIds: [],
+            episode: undefined,
+          }
+        : acceptNarrationContinuity(
+            prepared.candidate,
+            { ...publication, native: prepared.native },
+            submissionId,
+            at,
+            raw,
+            [...discarded].map(([id, reason]) => ({ id, reason })),
+          );
+      return {
+        ...prepared,
+        result,
+        provisional: prepared.native.effects
+          .filter(
+            (effect) =>
+              prepared.native.receipts[effect.id] || prepared.native.movementDependencies?.includes(effect.id),
+          )
+          .map((effect) => ({ effect, sources: prepared.native.sources[effect.id] ?? [] })),
+      };
+    });
+  let selected: ReturnType<typeof selectCandidate>;
+  for (;;) {
+    let rejected: { id: string; reason: string }[];
+    let admissionFailure: TaggedNpcAdmissionFailure | undefined;
+    try {
+      selected = selectCandidate();
+      if (!selected.result.held || !publication.readset.taggedSceneReply) break;
+      rejected = selected.result.rejected;
+      if (rejected.some(({ id }) => id === "requested-memory" || id === "remember-fact")) return selected.result;
+    } catch (error) {
+      if (!(error instanceof TaggedNpcAdmissionFailure)) throw error;
+      admissionFailure = error;
+      rejected = [{ id: error.effectId, reason: error.message }];
+    }
+    const reduced = pruneTaggedSceneReply(raw, new Set(rejected.map(({ id }) => id)));
+    if (!reduced) {
+      if (admissionFailure) throw admissionFailure.cause;
+      return selected!.result;
+    }
+    for (const { id, reason } of rejected) discarded.set(id, reason);
+    raw = reduced;
+  }
   if (!selected.result.held) {
     for (const receipt of selected.result.episode?.commandReceipts ?? []) {
       if (receipt.kind !== "npc-introduction") continue;

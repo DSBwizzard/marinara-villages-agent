@@ -15,12 +15,12 @@ import { useSceneRequestLifetime } from "./request-lifetime.js";
 import {
   completedGreetingAfterFailure,
   currentRoom,
-  openingFailureMessage,
+  openingFailure,
   refreshSceneAfterFailure,
   staleVenueReason,
 } from "./ScenePanel.js";
 import { sceneSubmissionText, useTurnRecovery } from "./turn-recovery.js";
-import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
+import { sceneFailure, type SceneFailure, type SceneGreetingFailure } from "./scene-error-report.js";
 import type { ContactRecovery } from "./useScenesState.js";
 import { sceneResend } from "./villages-venue-send";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
@@ -795,7 +795,7 @@ export function useGreetRoom(ports: {
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
-  setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
+  setRoomGreetingError: React.Dispatch<SetStateAction<SceneGreetingFailure>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
 }) {
   const {
@@ -855,7 +855,7 @@ export function useGreetRoom(ports: {
           setRoomGreetingError((current) => (current?.sessionId === sessionId ? null : current));
         } else
           setRoomGreetingError((current) =>
-            current && current.sessionId !== sessionId ? current : { sessionId, message: openingFailureMessage(cause) },
+            current && current.sessionId !== sessionId ? current : { sessionId, ...openingFailure(cause) },
           );
       } finally {
         if (claim && lifetime.finish(claim)) setRoomBusy(false);
@@ -961,7 +961,7 @@ export function useRetrySavedScene(ports: {
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
-  setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
+  setRoomGreetingError: React.Dispatch<SetStateAction<SceneGreetingFailure>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<SetStateAction<string>>;
 }) {
@@ -1051,13 +1051,19 @@ export function useRetrySavedScene(ports: {
                     ? "/rooms/leave"
                     : "/rooms/turn"
                 : "/rooms/end";
+        const replaceFailedTurn =
+          operation.kind === "turn" &&
+          (operation.input?.mode === "chat" || (operation.input?.mode === "contact" && operation.freshReply)) &&
+          !operation.input.trespassReaction &&
+          !operation.committed;
         const answer = await request<{ session: SceneView; recordEvents?: RoomRecordEvent[] }>(path, {
           method: "POST",
           signal: AbortSignal.timeout(300_000),
           body: JSON.stringify({
             ...operation.input,
             sessionId: room.id,
-            submissionId: operation.id,
+            submissionId: replaceFailedTurn ? createVillagesClientId() : operation.id,
+            ...(replaceFailedTurn ? { replaceOfOperationId: operation.id } : {}),
             operationId: operation.id,
             ...(operation.input?.trespassReaction ? { reactionId: operation.id } : {}),
             expectedSceneRevision: room.sceneRevision ?? 0,

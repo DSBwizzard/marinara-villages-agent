@@ -161,13 +161,13 @@ try {
             stderr = "",
             spawnError,
             timedOut = false;
-          const timer = setTimeout(
-            () => {
-              timedOut = true;
-              child.kill();
-            },
-            test.group === "regression" ? 120_000 : 300_000,
-          );
+          const defaultTimeoutMs = test.group === "regression" ? 120_000 : 300_000;
+          // The growth case applies twenty corrections to retained histories of up to 25,000 records.
+          const timeoutMs = test.path === "tests/villages-retained-storage.regression.ts" ? 240_000 : defaultTimeoutMs;
+          const timer = setTimeout(() => {
+            timedOut = true;
+            child.kill();
+          }, timeoutMs);
           child.stdout.on("data", (data) => {
             output += data;
           });

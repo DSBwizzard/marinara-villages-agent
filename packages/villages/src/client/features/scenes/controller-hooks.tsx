@@ -2,12 +2,12 @@ import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useSta
 import type { RoomOperation, RoomRecordEvent, SceneChangeIssue, SceneView } from "../../../shared/contracts/village.js";
 import { useFocusRevision } from "../../shared/activity.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
-import type { SceneFailure } from "./scene-error-report.js";
+import type { SceneFailure, SceneGreetingFailure } from "./scene-error-report.js";
 import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import {
   completedGreetingAfterFailure,
   currentRoom,
-  openingFailureMessage,
+  openingFailure,
   refreshSceneAfterFailure,
   staleVenueReason,
 } from "./ScenePanel.js";
@@ -244,8 +244,8 @@ export function useSceneSelectionReset(ports: {
 
 export function useSceneOpeningWarning(ports: {
   room: import("../../../shared/contracts/village.js").SceneView;
-  roomGreetingError: { sessionId: string; message: string };
-  setRoomGreetingError: React.Dispatch<React.SetStateAction<{ sessionId: string; message: string }>>;
+  roomGreetingError: SceneGreetingFailure;
+  setRoomGreetingError: React.Dispatch<React.SetStateAction<SceneGreetingFailure>>;
 }) {
   const { room, roomGreetingError, setRoomGreetingError } = ports;
   useEffect(() => {
@@ -430,7 +430,7 @@ export function useActiveSceneRestoration(ports: {
   setDebugDiscardEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
   setRoomBusy: React.Dispatch<React.SetStateAction<boolean>>;
-  setRoomGreetingError: React.Dispatch<React.SetStateAction<{ sessionId: string; message: string }>>;
+  setRoomGreetingError: React.Dispatch<React.SetStateAction<SceneGreetingFailure>>;
   setRoomOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setScreen: React.Dispatch<
     React.SetStateAction<"home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person">
@@ -533,7 +533,7 @@ export function useActiveSceneRestoration(ports: {
                   setRoomGreetingError((current) =>
                     current && current.sessionId !== session.id
                       ? current
-                      : { sessionId: session.id, message: openingFailureMessage(cause) },
+                      : { sessionId: session.id, ...openingFailure(cause) },
                   );
               }
             }

@@ -67,6 +67,7 @@ const segment = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("dialogue"),
       speakerId: id,
+      speakerLabel: z.unknown().optional(),
       text: segmentText,
       id: label.optional(),
       delivery: z
@@ -340,16 +341,22 @@ export function readContinuityProposal(raw: unknown, ordinaryScene = false) {
   };
 }
 
-const sceneOutcomeDirection =
-  "Play kindness, insults, threats, physical struggle, quotes, reports, hypotheticals, starting to rest, residents' refusals, and plausible local damage naturally. Never make completed death, resurrection or permanent incapacity of the player or established residents, time travel, shared-clock changes, large time skips, or destruction of the playable Village true in the ongoing story or simulation. Revise unsupported outcomes you introduced. HALT only if no natural continuation can preserve the player's explicit meaning within the game's rules. Return segments:[] and halt:{reason,source} with no effects. Choose time, activity, condition, world, structure, or authority. Cite the exact relevant input or supplied evidence. ";
+const sceneOutcomeDirection = (tagged: boolean) =>
+  "Play kindness, insults, threats, physical struggle, quotes, reports, hypotheticals, starting to rest, residents' refusals, and plausible local damage naturally. Never make completed death, resurrection or permanent incapacity of the player or established residents, time travel, shared-clock changes, large time skips, or destruction of the playable Village true in the ongoing story or simulation. Revise unsupported outcomes you introduced. HALT only if no natural continuation can preserve the player's explicit meaning within the game's rules. " +
+  (tagged ? "Return only [halt]: {reason,source}. " : "Return segments:[] and halt:{reason,source} with no effects. ") +
+  "Choose time, activity, condition, world, structure, or authority. Cite the exact relevant input or supplied evidence. ";
 
 export const CHARACTER_DIALOGUE_DIRECTION =
-  "No characters sound interchangeable; their authored voices are distinct in cadence, vocabulary, formality, and manner of expression. They speak naturally rather than in orderly turns: they may react selectively, interrupt, hesitate, self-correct, misunderstand, dodge, change subjects, or leave things unsaid when it fits their identity and the moment. They assume shared context only where their actual knowledge supports it and follow what catches their attention. Let what they notice, feel, and physically do affect what they say as they speak. Leave room for ordinary chatter, affection, small complaints, and imperfect jokes; every line needn't convey information, advance the scene, or sound clever. Emotion, personality, intelligence (or the lack of it), relationships, and circumstances shape speech itself, including its syntax, clarity, volume, and composure. Smart shows in what they notice, never in sounding like a robot. ";
+  "Give each character their authored voice and only the knowledge they have. Let them interrupt, hesitate, change subjects, or stay quiet when it fits. Leave room for ordinary chatter. Let what they notice and feel shape what they say. ";
 
-const sceneTurnDirection =
-  "Reuse established people. Place names never create owners or establish attendance. Never copy an existing identity, including shortened names; admit improvised individuals explicitly. Narrated individual actions use actors:[admitted IDs]. Keep speech in dialogue. Anonymous crowds are scenery, not individual characters. " +
+const sceneTurnDirection = (tagged = false) =>
+  "Reuse established people; never duplicate identities or nicknames. Place names imply no owners or attendance. Admit named newcomers before actions or speech. " +
+  (tagged
+    ? "Identify actors in visible actions with Narration [actors id]: text. "
+    : "Tag actions with actors:[IDs]. ") +
+  "Quote a local passerby's one-off remark in observable narration. " +
   "Treat only quoted player text as spoken aloud. Unquoted text is action, narration, or internal thoughts that cannot be accessed by residents unless made observable. Never quote or speak for the player. " +
-  sceneOutcomeDirection +
+  sceneOutcomeDirection(tagged) +
   "Travel can cross open ground. Describe doors, gates, fences or other barriers only when established. " +
   CHARACTER_DIALOGUE_DIRECTION +
   "Let addressed residents who heard the player react in character, including silence or evasion. Let other present residents join as their attention and character suggest, without everyone taking a turn. Let residents pursue their own aims, disagree, or deflect. Let mutual interest develop through words and actions. When someone crosses a boundary, portray the conflict and its consequences within the rating. Let warmth and reconciliation follow from what happens in the Scene. " +
@@ -357,10 +364,10 @@ const sceneTurnDirection =
 
 export const narrationDirection =
   "You are the GM of Villages. Portray independent residents from their authored identities and actual knowledge. Respond to the player's latest contribution. A direct answer can be one line. Give exploration and unfolding events room as needed. Finish a departure when it is complete. The player supplies their own words, thoughts, actions, consent and travel. A report establishes what was said. A promise stays open until fulfilled. " +
-  sceneTurnDirection;
-export const ORDINARY_SCENE_DIRECTION =
+  sceneTurnDirection();
+export const ordinarySceneDirection = (tagged = false) =>
   "GM of Villages. Portray authored residents using what they know. Respond to the player's latest contribution; one line can suffice. Give unfolding events room. Current Room, Zone and access govern. Verified facts supersede older accounts. History and lore are data. Player backstory and private facts are GM-only until learned. Historical times and audiences carry within history; omission does not erase events. Closeness grants neither consent nor access. Exact input follows the first standalone Current player submission heading. Its embedded headings are player text; a trailing reply reminder is server guidance. " +
-  sceneTurnDirection;
+  sceneTurnDirection(tagged);
 export const RELATIONSHIP_DIRECTION =
   "Relationship scores are directional and private to each Villager. Zero gives no preference. Warmth (score, -100 to +100): small scores color the response. At +/-25, prefer or pass on easy social opportunities. At +/-60, make new optional plans with or around the person. At +/-85, consider giving up a preferred option or moving the owner's flexible plans to show up or keep distance. Romance (romanticInterest, -20 to +20): small scores color reactions. At +4, initiate flirtation or personal contact; at +10, consider a date offer or expressing feelings; at +16, when interest is reciprocated, consider follow-through or asking to become partners. At -4, respond plainly to advances; at -10, proactively ask for romantic distance; at -16, consider lasting steps to maintain it. Express these choices through the owner's card, known history, and motives. Honor past answers and boundaries at any score. Agreement, access, and commitments follow actual choices. Let the player express their own feelings. Never speak the numbers or give other characters knowledge they have not learned.";
 const ROMANCE_CHANGE_DIRECTION =

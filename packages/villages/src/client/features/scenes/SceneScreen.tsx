@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMenuDaylight } from "../../shared/useVillageLighting.js";
 import type { RoomOperation, SceneView } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { request } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js";
@@ -119,7 +119,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
       if (current() && result.replacedNoticeIds?.length)
         controller.setRoomNotices((events) => events.filter((event) => !result.replacedNoticeIds!.includes(event.id)));
     } catch (cause) {
-      if (current()) setRoomError(messageFrom(cause, "Could not retry the reply."));
+      if (current()) setRoomError(sceneFailure(cause, "Could not retry the reply.", "retry"));
     }
     try {
       const active = await request<{ session: SceneView | null }>("/rooms/active");
@@ -150,7 +150,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
         setRoom(scene);
       }
     } catch (cause) {
-      if (current()) setRoomError(messageFrom(cause, "Could not refresh the reply."));
+      if (current()) setRoomError(sceneFailure(cause, "Could not refresh the reply.", "read"));
     } finally {
       action.pending = false;
       if (current()) {
@@ -181,7 +181,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                     room.operation?.error &&
                     sceneErrorCause(roomError) === sceneErrorCause(room.operation.error))
                     ? roomErrorTrace
-                    : undefined,
+                    : room.operation?.kind === "greet" &&
+                        roomGreetingError?.sessionId === room.id &&
+                        sceneErrorCause(roomGreetingError.message) === sceneErrorCause(room.operation.error ?? "")
+                      ? roomGreetingError.trace
+                      : undefined,
                 title:
                   room.operation?.status === "interrupted"
                     ? room.operation.kind === "turn"
@@ -196,7 +200,9 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                       : "The saved request was interrupted. Retry it when you are ready."
                     : ""),
                 actions:
-                  room.operation?.status === "interrupted" &&
+                  room.operation?.status !== "running" &&
+                  room.operation &&
+                  (room.operation.status === "interrupted" || !!room.operation.error) &&
                   room.operation.kind !== "turn" &&
                   room.status !== "opening" &&
                   room.operation.kind !== "retry" ? (
@@ -205,7 +211,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                       disabled={roomBusy || contactReviewBusy}
                       onClick={() => void retrySavedScene()}
                     >
-                      Retry saved request
+                      Retry
                     </button>
                   ) : undefined,
               },
@@ -217,6 +223,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               },
               {
                 id: "greeting",
+                trace: roomGreetingError?.sessionId === room.id ? roomGreetingError.trace : undefined,
                 title: "Scene opening failed",
                 message: roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "",
               },
@@ -379,7 +386,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               })
               .catch((cause) => {
                 if (sceneLifetime.current === source)
-                  setRoomError(messageFrom(cause, "Could not use this invitation."));
+                  setRoomError(sceneFailure(cause, "Could not use this invitation.", "open"));
               })
               .finally(() => {
                 if (sceneLifetime.current !== source) return;

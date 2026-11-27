@@ -1,5 +1,10 @@
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { coerceResponseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
+import {
+  sceneFailureDiagnostic,
+  type SceneFailureDiagnostic,
+  type SceneFailureMetadata,
+} from "../../../shared/contracts/scene-failure-diagnostic.js";
 
 /** Technical failures are distinct from a valid negative or uncertain interpretation. */
 export type WorkFailure = {
@@ -11,6 +16,7 @@ export type WorkFailure = {
     | "empty_output"
     | "output_limit"
     | "invalid_json"
+    | "invalid_reply"
     | "missing_result"
     | "duplicate_result"
     | "unsupported_outcome"
@@ -26,6 +32,7 @@ export type WorkFailure = {
   requestedOutputTokens?: number;
   checkIds?: string[];
   responseDiagnostics?: ResponseDiagnostics;
+  diagnostic?: SceneFailureDiagnostic;
 };
 export class WorkFailureError extends Error {
   constructor(public readonly failure: WorkFailure) {
@@ -69,6 +76,7 @@ export function coerceWorkFailure(value: unknown): WorkFailure | undefined {
     "empty_output",
     "output_limit",
     "invalid_json",
+    "invalid_reply",
     "missing_result",
     "duplicate_result",
     "unsupported_outcome",
@@ -80,6 +88,7 @@ export function coerceWorkFailure(value: unknown): WorkFailure | undefined {
   ];
   if (!causes.includes(String(raw.cause))) return undefined;
   const diagnostics = coerceResponseDiagnostics(raw.responseDiagnostics);
+  const diagnostic = sceneFailureDiagnostic(raw.diagnostic);
   return {
     cause: raw.cause as WorkFailure["cause"],
     ...(["configuration", "request"].includes(String(raw.connectionIssue))
@@ -101,5 +110,25 @@ export function coerceWorkFailure(value: unknown): WorkFailure | undefined {
         }
       : {}),
     ...(diagnostics ? { responseDiagnostics: diagnostics } : {}),
+    ...(diagnostic ? { diagnostic } : {}),
   };
+}
+
+export function sceneFailureMetadata(failure?: WorkFailure): SceneFailureMetadata | undefined {
+  if (!failure) return;
+  const diagnostic =
+    failure.diagnostic ||
+    failure.responseDiagnostics ||
+    failure.finishReason ||
+    failure.requestedOutputTokens !== undefined
+      ? sceneFailureDiagnostic({
+          checks: [],
+          rejected: 0,
+          finishReason: failure.finishReason,
+          requestedOutputTokens: failure.requestedOutputTokens,
+          ...failure.responseDiagnostics,
+          ...failure.diagnostic,
+        })
+      : undefined;
+  return { failureCause: failure.cause, failureStage: failure.stage, ...(diagnostic ? { diagnostic } : {}) };
 }

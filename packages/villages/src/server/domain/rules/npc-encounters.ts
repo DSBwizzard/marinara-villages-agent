@@ -1,12 +1,49 @@
 import type { VillageState } from "../models/world.js";
 import type { NpcPage, VillageNpcView } from "../../../shared/contracts/village.js";
-import { actorEpisodeViews } from "./episodes.js";
+import { actorEpisodeView, actorEpisodeViews } from "./episodes.js";
+import type { NpcIdentity } from "../models/places.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuitySourceUnit } from "./continuity.js";
 import { memoryHash } from "./memory-integrity.js";
 import { npcNameKey } from "./npc-index.js";
+import { DEFAULT_NPC_LABEL, playerHeardNpcSpeech, revealsNpcName } from "./npc-participation.js";
 import { villageWorldScope } from "./village-identity.js";
 import { badRequest, conflict } from "./errors.js";
+
+/** Recover a previously heard introduction when the saved public label still predates it. */
+export function savedNpcNameReveal(state: VillageState, npc: NpcIdentity) {
+  const player = continuityActor(state, "player");
+  if (!player) return undefined;
+  for (const episode of state.episodes.records) {
+    const admission = episode.commandReceipts.find((receipt) => receipt.admission?.npc.id === npc.id)?.admission;
+    const first =
+      admission &&
+      episode.segments.findIndex(
+        (line, index) =>
+          index > admission.segment &&
+          line.speakerId === npc.id &&
+          !line.contactHidden &&
+          line.heardBy.includes("player"),
+      );
+    const lines = episode.segments.filter((line, index) => {
+      if (line.role !== "assistant" || line.speakerId !== npc.id || !playerHeardNpcSpeech(line)) return false;
+      const openingQuote = /^["“]([^"”]+)["”](?:\s|$)/u.exec(line.content.trim())?.[1];
+      return openingQuote?.replace(/[.!]$/u, "") === npc.name || revealsNpcName(line, npc.name, index === first);
+    });
+    if (!lines.length) continue;
+    const view = actorEpisodeView(episode, state.continuity, player, state.episodes);
+    const heard = lines.find((line) =>
+      view?.segments.some(
+        (segment) =>
+          segment.id === line.id &&
+          segment.speakerId === npc.id &&
+          segment.channel === "words" &&
+          segment.text === line.content,
+      ),
+    );
+    if (heard) return { sceneId: episode.sceneId, lineId: heard.id };
+  }
+}
 
 /** Surviving Player encounters gate the authored NPC overview; private Memories remain separate. */
 export function npcEncounterIndex(state: VillageState) {
@@ -58,7 +95,8 @@ export function npcEncounterIndex(state: VillageState) {
       const npc = state.worldPlaces.npcs[id];
       if (!npc || (people.get(id)?.at ?? "") > episode.capturedAt) continue;
       const usefulRole = (role: string) =>
-        !!role.trim() && ![npcNameKey(npc.name), "encountered here"].includes(npcNameKey(role));
+        !!role.trim() &&
+        ![npcNameKey(npc.name), npcNameKey(DEFAULT_NPC_LABEL), "encountered here"].includes(npcNameKey(role));
       const role = usefulRole(npc.label)
         ? npc.label
         : (npc.associations.find((row) => row.placeId === episode.room?.placeId && usefulRole(row.role))?.role ?? "");
