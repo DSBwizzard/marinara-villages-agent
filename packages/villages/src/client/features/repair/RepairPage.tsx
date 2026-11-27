@@ -188,7 +188,6 @@ export function RepairPage({
   const [historyDetail, setHistoryDetail] = useState<string>();
   const [accountPage, setAccountPage] = useState(0);
   const [deleteSnapshot, setDeleteSnapshot] = useState<string>();
-  const pendingMemory = useRef<{ id: string; personId: string } | undefined>(undefined);
   const [reviewSide, setReviewSide] = useState<"before" | "after">("after");
   const [recoveryFilter, setRecoveryFilter] = useState("attention"),
     [retrying, setRetrying] = useState(""),
@@ -224,7 +223,6 @@ export function RepairPage({
   const isSnapshots = c.view === "checkpoints" || c.topic === "restore";
   const area = isHistory ? "history" : isSnapshots ? "world" : c.topic;
   const chooseArea = (next: string) => {
-    pendingMemory.current = undefined;
     setRecordQuery("");
     setListPage(0);
     setStep(0);
@@ -329,13 +327,6 @@ export function RepairPage({
     void c.load("places");
   };
   const selected = c.selected;
-  useEffect(() => {
-    const pending = pendingMemory.current;
-    if (pending && c.person?.id === pending.personId && !c.busy) {
-      pendingMemory.current = undefined;
-      void c.open(pending.id);
-    }
-  }, [c]);
   const editing = !!selected && !!c.draft && (c.view === "edit" || (c.view === "list" && !!selected.agendaDay));
   const mainPlaceDetails = !!targetPlace && !!selected && selected.id === mainPlaceRecord?.id;
   const isMemory = selected?.topic === "memories";
@@ -1154,10 +1145,7 @@ export function RepairPage({
                         name={person.name}
                         portrait={portraits[person.id]}
                         label={"Repair " + person.name}
-                        onOpen={() => {
-                          pendingMemory.current = { id: selected.id, personId: person.id };
-                          void c.choosePerson(person, "memories");
-                        }}
+                        onOpen={() => void c.choosePerson(person, "memories", selected.id)}
                       />
                     ) : null;
                   })}

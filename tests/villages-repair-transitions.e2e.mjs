@@ -11,7 +11,17 @@ await withBrowser(browser, async () => {
     for (const width of [1440, 390]) {
       const f = await repairBrowserFixture(browser, width, 900, { extraMemories: 1 }),
         { page } = f;
+      await page.evaluate(() => window.c.chooseTopic("all"));
+      await page.getByRole("button", { name: "The workshop key", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Whose memory?", exact: true })).toBeVisible();
+      const account = f.hold('record:["memory","nora"]');
       await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+      await account.started;
+      await expect(page.locator(".repair-record-list")).toHaveCount(0);
+      account.release();
+      await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue(
+        "Ellis lent me the workshop key.",
+      );
       const home = f.hold('record:["home","nora"]');
       await f.section("home");
       await home.started;
