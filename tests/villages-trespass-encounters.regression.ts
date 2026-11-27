@@ -564,7 +564,16 @@ for (const consent of ["yes", "request-only", "other-speaker", "private", "withd
   assert.equal(f.scene.trespassReaction, undefined);
 }
 
-for (const scenario of ["success", "off", "failure", "recover-pending", "recover-applied", "setting-disabled", "ban"]) {
+for (const scenario of [
+  "success",
+  "dependent-perspective",
+  "off",
+  "failure",
+  "recover-pending",
+  "recover-applied",
+  "setting-disabled",
+  "ban",
+]) {
   const host = await packagedSceneServer({
     configure(world) {
       world.spontaneousEvents = scenario !== "off";
@@ -625,8 +634,23 @@ for (const scenario of ["success", "off", "failure", "recover-pending", "recover
             speakerId: "mara",
             text: scenario === "ban" ? "You are banned from this room. Leave." : "What are you doing here?",
             ...(scenario === "ban" ? { requires: ["ban"] } : {}),
+            ...(scenario === "dependent-perspective" ? { requires: ["perspective"] } : {}),
           },
         ],
+        ...(["success", "dependent-perspective"].includes(scenario)
+          ? {
+              keep: [
+                {
+                  id: "perspective",
+                  class: "perspective",
+                  owner: "mara",
+                  text: "Mara is wary of the intrusion.",
+                  relationship: { warmth: -4 },
+                  source: [{ segment: "response" }],
+                },
+              ],
+            }
+          : {}),
         ...(scenario === "ban"
           ? {
               commands: [
@@ -714,6 +738,12 @@ for (const scenario of ["success", "off", "failure", "recover-pending", "recover
       assert.equal(common.accessView.decision.reason, "banned", "A witnessed authorized ban survives Conclude");
     } else if (scenario === "success") {
       assert.equal(response.statusCode, 200, response.body);
+      const acceptance = host.scene().submissions[0]!.acceptance;
+      assert.equal(acceptance.status, "applied");
+      assert.deepEqual(
+        acceptance.rejected.map(({ id }) => id),
+        ["perspective"],
+      );
       scene = response.json().session;
       assert.equal(scene.zoneId, "common");
       assert.equal(scene.trespassReactionId, undefined);

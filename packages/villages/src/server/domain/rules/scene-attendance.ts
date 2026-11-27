@@ -10,6 +10,8 @@ import { contactPath, physicalVenuePath, physicallyUsableZone, sceneAccessContex
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { conflict } from "./errors.js";
+import { openingPlayspace } from "./opening-playspace.js";
+import { gatheringCast, matchesOpeningGathering } from "./opening-project.js";
 import { venueResidentIds } from "./venue-model.js";
 import { chooseAgendaZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
@@ -98,7 +100,7 @@ export function captureSceneAttendance(
         const block = agendaAt(villager.agenda, moment.minuteOfDay, now);
         const zone =
           resolveVenueZone(venue, position.zoneId ?? "") ??
-          chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
+          chooseAgendaZone(venue, villager.characterId, block, block?.zoneId, village, {
             at: now,
           });
         return [
@@ -141,7 +143,23 @@ export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zon
 }
 
 export function projectLiveAttendance(village: VillageState, scene: VenueScene, venue: VillageVenue, now: Date) {
-  const sameRoutine = (id: string) => !!findNpc(village, id) || sameSceneRoutine(village, scene, id, now);
+  const foundingRoster =
+    matchesOpeningGathering(village, scene) &&
+    !scene.submissions.some((turn) => turn.id !== "greeting" && turn.acceptance.status === "applied")
+      ? village.opening!.residentIds
+      : [];
+  const gatheringIds = foundingRoster.filter((id) => {
+    const resident = village.villagers.find((person) => person.characterId === id);
+    const admitted = scene.continuity?.facts.villagers.find((person) => person.characterId === id);
+    return (
+      resident &&
+      Date.parse(resident.addedAt || scene.startedAt) <= Date.parse(scene.startedAt) &&
+      (!admitted || admitted.incarnation === resident.incarnation)
+    );
+  });
+  const sameRoutine = (id: string) =>
+    (!foundingRoster.includes(id) || gatheringIds.includes(id)) &&
+    (!!findNpc(village, id) || sameSceneRoutine(village, scene, id, now));
   const accompanying = (scene.accompanying ?? []).filter((row) => sameRoutine(row.characterId));
   const positions = new Map(
     accompanying.flatMap((row) => {
@@ -164,11 +182,33 @@ export function projectLiveAttendance(village: VillageState, scene: VenueScene, 
     }),
   );
   const attendance = captureSceneAttendance(village, venue.id, now, positions);
-  attendance.occupants.push(
-    ...(scene.sceneAttendance?.occupants ?? []).filter(
-      (person) => !!findNpc(village, person.characterId) && !scene.departedIds?.includes(person.characterId),
-    ),
-  );
+  const zoneId = scene.zoneId;
+  if (
+    scene.status === "opening" &&
+    zoneId &&
+    !scene.submissions.length &&
+    gatheringIds.length &&
+    openingPlayspace(village, gatheringIds, now).some((row) => row.venueId === venue.id && row.zoneIds.includes(zoneId))
+  ) {
+    // An unstarted gathering admits its own cast, including saves whose routine refresh already displaced it.
+    attendance.occupants = gatheringCast(village, zoneId).filter(
+      (person) => gatheringIds.includes(person.characterId) && !scene.departedIds?.includes(person.characterId),
+    );
+  } else {
+    // Keep the admitted positions until the first reply or an actual Agenda transition.
+    if (foundingRoster.length)
+      attendance.occupants = attendance.occupants.filter(
+        (person) => gatheringIds.includes(person.characterId) && !sameRoutine(person.characterId),
+      );
+    attendance.occupants.push(
+      ...(scene.sceneAttendance?.occupants ?? []).filter(
+        (person) =>
+          !scene.departedIds?.includes(person.characterId) &&
+          (!!findNpc(village, person.characterId) ||
+            (gatheringIds.includes(person.characterId) && sameRoutine(person.characterId))),
+      ),
+    );
+  }
   return { attendance, accompanying, departedIds: (scene.departedIds ?? []).filter(sameRoutine), sameRoutine };
 }
 /** Iterate escort dependencies using actual Scene positions, never background schedules. */

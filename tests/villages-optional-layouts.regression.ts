@@ -135,7 +135,7 @@ assert.throws(
   /distinct ID/,
 );
 const privateOnly = place("private");
-assert.equal(chooseAgendaZone(privateOnly, "a", "Sleep").id, "personal");
+assert.equal(chooseAgendaZone(privateOnly, "a", { activity: "Recharge", purpose: "rest" }).id, "personal");
 assert.equal(defaultVenueZoneId(privateOnly, "private", "a"), "personal");
 const selectionDraft = structuredClone(privateOnly);
 delete selectionDraft.access;
@@ -166,8 +166,8 @@ assert.equal(
   ),
   false,
 );
-assert.equal(chooseAgendaZone(place("exterior"), "a", "Sleep").id, "exterior");
-assert.equal(chooseAgendaZone(place("common"), "a", "Sleep").kind, "public");
+assert.equal(chooseAgendaZone(place("exterior"), "a", { activity: "Sleep" }).id, "exterior");
+assert.equal(chooseAgendaZone(place("common"), "a", { activity: "Sleep" }).kind, "public");
 const vacant = place("private", "residence", "");
 assert.equal(
   vacant.zones!.find((zone) => zone.kind === "personal")!.preparation?.status,

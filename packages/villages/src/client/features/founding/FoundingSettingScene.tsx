@@ -8,7 +8,6 @@ import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
 type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]>;
-const worldQuestion = "What World does your Village take place in?";
 const script: Record<SettingBeat, readonly string[]> = {
   welcome: [
     "Oh, hello! I’m Mari. I was hoping you’d stop by.",
@@ -20,7 +19,7 @@ const script: Record<SettingBeat, readonly string[]> = {
     "See these five layers? We’ll start at the top and work our way down. I promise there’s no quiz.",
     "The World is the big backdrop. If your Village belongs to a world you already know, tell me enough to get my bearings. You can leave it open if you’re still deciding.",
   ],
-  world: [`${worldQuestion} One sentence will do. If you haven’t decided, we can leave the horizon blurry.`],
+  world: ["What World does your Village take place in?"],
   lorebooks: [
     "Got Lorebooks? I’ll look up people and customs when I draft your setting. Villages can keep using those books for Scenes, new places, and Agendas.",
     "Which Lorebooks should I have on my desk?",
@@ -35,14 +34,6 @@ const script: Record<SettingBeat, readonly string[]> = {
     "Where should your first Map take us? Give that spot a name and tell me what we’d see when we get there.",
   ],
 };
-const expressions = {
-  welcome: ["wave", "happy", "happy", "neutral"],
-  "world-overview": ["presenting", "presenting"],
-  world: ["thoughtful"],
-  lorebooks: ["thoughtful", "happy"],
-  "village-overview": ["presenting", "neutral"],
-  village: ["happy-side", "happy-side", "presenting"],
-} as const;
 export function settingBeat(workspace: FoundingScreenController["setupWorkspace"]): SettingBeat {
   return workspace.settingBeat ?? (workspace.suggestionRequest?.draftSetting ? "village" : "welcome");
 }
@@ -86,12 +77,12 @@ export function FoundingSettingScene({
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
   const beat = settingBeat(setupWorkspace);
-  const [confirmReplace, setConfirmReplace] = useState(false);
+  const [replaceStep, setReplaceStep] = useState<"warning" | "confirm">();
   const [turn, setTurn] = useState<{ beat: SettingBeat; index: number }>(() => ({
     beat,
     index: beat === "village" && setupWorkspace.settingEditorOpen ? script[beat].length - 1 : 0,
   }));
-  const [popup, setPopup] = useState<"world" | "village">();
+  const [villagePopup, setVillagePopup] = useState(false);
   const lineRef = useRef<HTMLParagraphElement>(null);
   const draftButton = useRef<HTMLButtonElement>(null);
   const focusLine = () =>
@@ -99,16 +90,16 @@ export function FoundingSettingScene({
       lineRef.current?.parentElement?.scrollTo({ top: 0 });
       lineRef.current?.focus({ preventScroll: true });
     });
-  const closePopup = () => {
-    setPopup(undefined);
+  const closeVillagePopup = () => {
+    setVillagePopup(false);
     focusLine();
   };
   useEffect(() => {
     if (enteringScene) lineRef.current?.focus({ preventScroll: true });
   }, [enteringScene]);
   useEffect(() => {
-    if (confirmReplace) lineRef.current?.focus();
-  }, [confirmReplace]);
+    if (replaceStep) lineRef.current?.focus();
+  }, [replaceStep]);
   useEffect(() => {
     if (beat !== "village-overview" || !villageInvalid) return;
     setTurn({ beat, index: script[beat].length - 1 });
@@ -127,17 +118,11 @@ export function FoundingSettingScene({
       mobileMenu: undefined,
     }));
     setTurn({ beat: settingBeat, index: showLast ? script[settingBeat].length - 1 : 0 });
-    const openedPopup = phone
-      ? settingBeat === "world"
-        ? "world"
-        : settingBeat === "village-overview" && showLast
-          ? "village"
-          : undefined
-      : undefined;
-    setPopup(openedPopup);
+    const openVillage = phone && settingBeat === "village-overview" && showLast;
+    setVillagePopup(openVillage);
     onBeatChange();
     const openLorebooks = settingBeat === "lorebooks" && showLast;
-    if (!openedPopup && !openLorebooks && (!openEditor || !phone)) focusLine();
+    if (!(phone && settingBeat === "world") && !openVillage && !openLorebooks) focusLine();
   };
   const request = setupWorkspace.suggestionRequest;
   const pending = request && !request.failure;
@@ -153,13 +138,16 @@ export function FoundingSettingScene({
     !controller.draftSaveError &&
     !connectionProblem &&
     (!pending || waitingForMari);
-  const draftDialogue = confirmReplace
-    ? "Hang on, there’s already something here. If I draft it again, I’ll replace your first Map details. Want me to go ahead?"
-    : setupSuggestionsBusy && waitingForMari
-      ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
-      : phone && waitingForMari
-        ? "I still have your Map draft request. Want me to check on it?"
-        : undefined;
+  const draftDialogue =
+    replaceStep === "warning"
+      ? "Hang on, there’s already something here. If I draft it again, I’ll replace your first Map details."
+      : replaceStep === "confirm"
+        ? "Want me to go ahead?"
+        : setupSuggestionsBusy && waitingForMari
+          ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
+          : phone && waitingForMari
+            ? "I still have your Map draft request. Want me to check on it?"
+            : undefined;
   const lines = beat === "village" && draftDialogue ? [draftDialogue] : script[beat];
   const lineIndex = Math.min(
     lines.length - 1,
@@ -169,9 +157,16 @@ export function FoundingSettingScene({
         ? lines.length - 1
         : 0,
   );
-  const expression = expressions[beat][Math.min(lineIndex, expressions[beat].length - 1)]!;
-  useEffect(() => onExpressionChange(expression), [expression, onExpressionChange]);
   const lastLine = lineIndex === lines.length - 1;
+  const expression =
+    beat === "welcome" && lineIndex === 0
+      ? "wave"
+      : beat === "world-overview" || beat === "village-overview" || (beat === "village" && !lastLine)
+        ? "presenting"
+        : beat === "village" && lastLine && replaceStep !== "confirm" && (draftDialogue || error)
+          ? "thoughtful"
+          : "neutral";
+  useEffect(() => onExpressionChange(expression), [expression, onExpressionChange]);
   const namingVillage = beat === "village-overview" && lastLine;
   const finishVillage = () => {
     if (onValidateVillage()) moveTo("village");
@@ -197,10 +192,10 @@ export function FoundingSettingScene({
   };
   const submitBrief = () => {
     if (!canDraft) return;
-    setPopup(undefined);
+    setVillagePopup(false);
     if (phone) setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: false }));
     const { setupLocationName, setupSetting } = controller;
-    if (!waitingForMari && [setupLocationName, setupSetting].some((value) => value.trim())) setConfirmReplace(true);
+    if (!waitingForMari && [setupLocationName, setupSetting].some((value) => value.trim())) setReplaceStep("warning");
     else void draftSetupSetting("request");
   };
   const worldField = (
@@ -303,13 +298,7 @@ export function FoundingSettingScene({
   const draftLabel = waitingForMari ? (setupSuggestionsBusy ? "Drafting Map…" : "Resume Map draft") : "Suggest";
   const suggestReply =
     brief.trim() || waitingForMari ? (
-      <button
-        type="button"
-        className="villages-founding-draft-map"
-        ref={draftButton}
-        disabled={!canDraft}
-        onClick={submitBrief}
-      >
+      <button type="button" ref={draftButton} disabled={!canDraft} onClick={submitBrief}>
         {draftLabel}
       </button>
     ) : null;
@@ -317,7 +306,8 @@ export function FoundingSettingScene({
     setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: false }));
     focusLine();
   };
-  const inactive = phone && editorOpen;
+  const worldPopup = phone && beat === "world";
+  const inactive = phone && (editorOpen || worldPopup);
   return (
     <section
       className="villages-setting-guide"
@@ -326,9 +316,11 @@ export function FoundingSettingScene({
       inert={inactive || undefined}
     >
       {title}
-      <FoundingReader text={lines[lineIndex]!} lineRef={lineRef} hidden={!!title}>
-        {!inactive && !popup ? notices : null}
-        {!phone && beat === "village" && lastLine ? <section aria-label="Your first Map">{mapFields}</section> : null}
+      <FoundingReader text={lines[lineIndex]!} lineRef={lineRef} hidden={!!title || worldPopup} paginate={!replaceStep}>
+        {!inactive && !villagePopup ? notices : null}
+        {!phone && beat === "village" && lastLine && !replaceStep ? (
+          <section aria-label="Your first Map">{mapFields}</section>
+        ) : null}
         {!lastLine ? (
           <div className="villages-founding-replies">
             {backReply}
@@ -353,19 +345,16 @@ export function FoundingSettingScene({
               Next
             </button>
           </div>
-        ) : beat === "world" ? (
+        ) : beat === "world" && !phone ? (
           <>
-            {!phone ? worldField : null}
+            {worldField}
             <div className="villages-founding-replies">
               {backReply}
               <button
                 type="button"
                 className="villages-forging-primary"
                 data-reader-direction="next"
-                onClick={() => {
-                  if (phone) setPopup("world");
-                  else moveTo("lorebooks");
-                }}
+                onClick={() => moveTo("lorebooks")}
               >
                 Next
               </button>
@@ -398,7 +387,7 @@ export function FoundingSettingScene({
                 data-reader-direction="next"
                 onClick={() => {
                   if (beat === "world-overview") moveTo("world");
-                  else if (phone) setPopup("village");
+                  else if (phone) setVillagePopup(true);
                   else finishVillage();
                 }}
               >
@@ -406,17 +395,29 @@ export function FoundingSettingScene({
               </button>
             </div>
           </>
-        ) : confirmReplace ? (
+        ) : worldPopup ? null : replaceStep === "warning" ? (
           <div className="villages-founding-replies">
             <button
               type="button"
+              className="villages-forging-primary"
+              data-reader-direction="next"
+              onClick={() => setReplaceStep("confirm")}
+            >
+              Next
+            </button>
+          </div>
+        ) : replaceStep === "confirm" ? (
+          <div className="villages-founding-replies">
+            <button
+              type="button"
+              data-reader-direction="back"
               onClick={() => {
-                setConfirmReplace(false);
+                setReplaceStep(undefined);
                 if (phone) onEditSetting();
                 else requestAnimationFrame(() => draftButton.current?.focus());
               }}
             >
-              Keep my Map
+              Back
             </button>
             <button
               type="button"
@@ -424,7 +425,7 @@ export function FoundingSettingScene({
               data-reader-direction="next"
               disabled={!canDraft}
               onClick={() => {
-                setConfirmReplace(false);
+                setReplaceStep(undefined);
                 void draftSetupSetting("replace");
               }}
             >
@@ -446,9 +447,9 @@ export function FoundingSettingScene({
                   Next
                 </button>
               ) : null}
-              {!phone ? next : null}
               {dismiss}
               {!phone ? suggestReply : null}
+              {!phone ? next : null}
             </div>
           </>
         )}
@@ -461,22 +462,17 @@ export function FoundingSettingScene({
             <button type="button" disabled={controller.busy} onClick={closeEditor}>
               Back
             </button>
-            {next}
             {suggestReply}
+            {next}
           </footer>
         </FoundingDialog>
       ) : null}
-      {phone && popup === "world" && beat === "world" ? (
-        <FoundingDialog
-          title="The wider world"
-          className="villages-setting-fields-dialog"
-          scrollBody
-          onClose={closePopup}
-        >
+      {worldPopup ? (
+        <FoundingDialog title="The wider world" className="villages-setting-fields-dialog" scrollBody onClose={back}>
           <div className="villages-setting-fields">{worldField}</div>
           <footer>
             {notices}
-            <button type="button" onClick={closePopup}>
+            <button type="button" onClick={back}>
               Back
             </button>
             <button
@@ -490,12 +486,17 @@ export function FoundingSettingScene({
           </footer>
         </FoundingDialog>
       ) : null}
-      {phone && namingVillage && popup === "village" ? (
-        <FoundingDialog title="Your Village" className="villages-setting-fields-dialog" scrollBody onClose={closePopup}>
+      {phone && namingVillage && villagePopup ? (
+        <FoundingDialog
+          title="Your Village"
+          className="villages-setting-fields-dialog"
+          scrollBody
+          onClose={closeVillagePopup}
+        >
           <div className="villages-setting-fields">{villageFields}</div>
           <footer>
             {notices}
-            <button type="button" onClick={closePopup}>
+            <button type="button" onClick={closeVillagePopup}>
               Back
             </button>
             <button

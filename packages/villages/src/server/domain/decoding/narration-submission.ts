@@ -93,6 +93,7 @@ const saved = z
     message: z.string().max(4000),
     mode: z.enum(["chat", "contact", "leave"]),
     targetId: z.string().max(200),
+    rememberFor: id.optional(),
     requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
     at,
     acceptance: z
@@ -116,6 +117,8 @@ const saved = z
           return (
             row.format === 1 &&
             (row.visitorIntroductionFarewell === undefined || row.visitorIntroductionFarewell === true) &&
+            (row.terminalSceneRepair === undefined ||
+              (row.terminalSceneRepair === true && row.taggedSceneReply === true)) &&
             typeof row.setupAt === "string" &&
             Number.isFinite(Date.parse(row.capturedAt)) &&
             Number.isSafeInteger(row.sceneRevision) &&

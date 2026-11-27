@@ -53,6 +53,7 @@ export function CardFlipSprite({
     const commit = () => {
       image.src = url;
       image.dataset.facing = view === "front" ? "front" : mirrored ? "left" : "right";
+      image.toggleAttribute("data-mirrored", mirrored);
       shown.current = next;
     };
     const stop = () => {
@@ -124,6 +125,7 @@ export function CardFlipSprite({
       alt=""
       data-framing={framing}
       data-facing={initial.current.view === "front" ? "front" : initial.current.mirrored ? "left" : "right"}
+      data-mirrored={initial.current.mirrored ? "" : undefined}
       style={{ transformOrigin }}
       onError={(event) => errorHandler.current?.(event.currentTarget.getAttribute("src") ?? url)}
     />

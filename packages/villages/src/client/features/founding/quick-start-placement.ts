@@ -19,3 +19,11 @@ export function arrangeQuickStartVenues(venues: VillageVenue[]): VillageVenue[] 
     return { ...venue, presentation: { ...venue.presentation, ...spot } };
   });
 }
+
+export function appendFoundingVenue(venues: VillageVenue[], venue: VillageVenue): VillageVenue[] {
+  const placed = arrangeQuickStartVenues([
+    ...venues.filter((row) => row.presentation.x !== null && row.presentation.y !== null),
+    { ...venue, presentation: { ...venue.presentation, x: null, y: null } },
+  ]).at(-1)!;
+  return [...venues, placed];
+}

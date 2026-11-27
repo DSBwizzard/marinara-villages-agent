@@ -65,8 +65,8 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
       calls++;
       assert.equal(messages.at(-2).content, calls === 1 ? message : "Why?");
       const prompt = messages.map((row) => row.content).join("\n");
-      assert.equal(prompt.includes("Scoped native access authority"), invited);
-      assert.equal(prompt.includes("Access commands use supplied venue and zone IDs"), invited);
+      assert(prompt.includes("Scoped native access authority"));
+      assert(prompt.includes("Access commands use supplied venue and zone IDs"));
       if (calls === 2)
         assert(
           messages.some(

@@ -36,7 +36,15 @@ export type NarrationReadset = {
   sceneSpeechActions?: SceneSpeechAction[];
   strictSceneReply?: true;
   taggedSceneReply?: true;
+  authoritativeSceneBeats?: true;
+  terminalSceneRepair?: true;
   npcSpeakerNames?: Record<string, string>;
+  explicitNpcIntroduction?: true;
+  relaxedNarrationProse?: true;
+  explicitSceneEvidence?: true;
+  compactSceneDecisions?: true;
+  indexedAppointmentDestinations?: true;
+  validateAppointmentAvailability?: true;
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;
@@ -58,6 +66,7 @@ export type NarrationReadset = {
   circumstance: import("./narrative-model.js").NarrativeAdmission | null;
   repairs: { id: string; revision: number; entries: string[] }[];
   projects: import("../rules/project-interpretation.js").ProjectSpeechContext[];
+  visibleAccessZones?: string[];
   access: import("../rules/narration-access.js").NarrationAccessScope[];
   residence: ReturnType<typeof import("../rules/narration-residence.js").narrationResidenceContext>;
   places: ReturnType<typeof import("../rules/narration-place.js").narrationPlaceContext>;

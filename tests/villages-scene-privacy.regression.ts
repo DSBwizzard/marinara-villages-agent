@@ -28,6 +28,23 @@ const narration = (id: string, content: string) => ({
 });
 
 async function main() {
+  {
+    const content = '"Keep this here." She folds the slip. "Tell no one."';
+    const whisper = {
+      id: "mixed-whisper",
+      role: "assistant",
+      kind: "whisper",
+      delivery: "whisper",
+      speakerId: "visible",
+      name: "Visible",
+      at,
+      content,
+    };
+    assert.deepEqual(publicSceneResponse([{ ...whisper, heardBy: ["visible", "other"], targetId: "other" }]), []);
+    assert.deepEqual(publicSceneResponse([{ ...whisper, heardBy: ["visible", "player"], targetId: "player" }]), [
+      { ...whisper, targetId: "player" },
+    ]);
+  }
   for (const status of ["prepared", "running", "returned", "resolved"]) {
     const retired = {
       version: 4,
