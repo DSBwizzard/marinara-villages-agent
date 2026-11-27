@@ -174,6 +174,17 @@ const release = configureVillagesRuntime({
           row.data.subjectId === "feddy"
         )
           row.data.input.now = "";
+        if (
+          ["obsolete-wish", "obsolete-wish-dispatched"].includes(mode) &&
+          input.kind === "background-work" &&
+          row.data.kind === "wish" &&
+          row.data.subjectId === "aqua"
+        ) {
+          row.data.status = "obsolete";
+          row.data.input = null;
+          row.data.requests = Number(mode === "obsolete-wish-dispatched");
+          mode = "valid";
+        }
         rows.set(row.id, row);
         return row;
       },
@@ -182,6 +193,24 @@ const release = configureVillagesRuntime({
         if (!previous || previous.revision !== input.expectedRevision) return null;
         if (input.id === "villages-village" && conflicts-- > 0) return null;
         const row = { ...previous, ...structuredClone(input), revision: previous.revision + 1 };
+        if (
+          mode === "founding-context-drift" &&
+          input.id === "villages-village" &&
+          row.data.foundingPreparation?.tasks?.sneak?.routine?.status === "completed"
+        ) {
+          row.data.worldRules = "The community keeps a lantern lit at the station.";
+          mode = "valid";
+        }
+        if (
+          mode === "stale-wish-context" &&
+          input.id === "villages-village" &&
+          row.data.foundingPreparation?.currentTask === "wish" &&
+          row.data.foundingPreparation?.currentId === "aqua" &&
+          row.data.foundingPreparation?.stage === "lore"
+        ) {
+          row.data.worldRules = "The last person out closes the station before sunset.";
+          mode = "valid";
+        }
         if (
           holdRoutinePublication &&
           input.id === "villages-village" &&
@@ -432,6 +461,41 @@ async function main() {
       const description = observableRoomDescription(state, venue.id, zone.id, new Date().toISOString());
       assert(description.includes("PRIVATE CONTENT MUST STAY HIDDEN") && description.length <= 4000);
       assert.equal(zone.description, "");
+    }
+
+    install();
+    mode = "founding-context-drift";
+    await prepareFoundedVillage();
+    state = await readVillageState({ memories: true });
+    assert.equal(state.foundingPreparation?.status, "ready");
+    assert.equal(calls.filter((call) => call === "routine").length, 3);
+    assert.equal(calls.filter((call) => call === "wish").length, 3);
+
+    install();
+    mode = "stale-wish-context";
+    await prepareFoundedVillage();
+    state = await readVillageState({ memories: true });
+    assert.equal(state.foundingPreparation?.tasks?.aqua?.wish?.status, "failed");
+    assert.match(state.foundingPreparation?.tasks?.aqua?.wish?.error ?? "", /context changed/);
+    assert.equal(calls.filter((call) => call === "wish").length, 2);
+    await retryFoundedVillagePreparation({ actionId: "refresh-stale-wish" });
+    await prepareFoundedVillage();
+    assert.equal((await readVillageState()).foundingPreparation?.status, "ready");
+    assert.equal(calls.filter((call) => call === "wish").length, 3);
+
+    for (const dispatched of [false, true]) {
+      install();
+      mode = dispatched ? "obsolete-wish-dispatched" : "obsolete-wish";
+      await prepareFoundedVillage();
+      const prior = rows.get(foundingSlot("wish", "aqua")).data;
+      assert.equal(prior.status, "obsolete");
+      assert.equal(calls.filter((call) => call === "wish").length, 2);
+      await retryFoundedVillagePreparation({ actionId: "retry-obsolete-wish" });
+      await prepareFoundedVillage();
+      const after = rows.get(foundingSlot("wish", "aqua")).data;
+      assert.equal(after.status, dispatched ? "obsolete" : "completed");
+      assert.equal(after.instanceId === prior.instanceId, dispatched);
+      assert.equal(calls.filter((call) => call === "wish").length, dispatched ? 2 : 3);
     }
 
     install();
