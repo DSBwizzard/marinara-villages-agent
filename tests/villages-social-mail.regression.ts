@@ -181,7 +181,7 @@ async function fixture() {
     scope,
     send,
     apply,
-    input: () => readPersonalMailInput(queued[0].input),
+    input: (index = 0) => readPersonalMailInput(queued[index].input),
     get requests() {
       return requests;
     },
@@ -275,7 +275,23 @@ await runCase("social-mail/visitor", async () => {
           },
         ],
       },
-      reply: { text: replyQuote, visitPreference: { kind: "invite", requestQuote, replyQuote } },
+      reply: {
+        text: replyQuote,
+        visitPreference: { kind: "invite", requestQuote, replyQuote },
+        requires: ["shared-invitation"],
+        keep: [
+          {
+            id: "shared-invitation",
+            for: ["ada", "player"],
+            owner: "ada",
+            about: ["player"],
+            class: "perspective",
+            current: true,
+            text: replyQuote,
+            source: ["letter", "self"],
+          },
+        ],
+      },
     }),
     finishReason: "stop",
   });
@@ -284,8 +300,54 @@ await runCase("social-mail/visitor", async () => {
   const result = await f.service.handler.generate(input);
   const saved = await f.apply(input, result);
   assert.equal(saved.visitors?.[0].visitPreference?.kind, "invite");
+  const delivered = saved.mailbox.messages[input.incoming.id + ":reply"];
+  assert.equal(delivered.text, replyQuote);
+  assert.equal(delivered.readAt, undefined);
   assert.equal(continuityRelationships(saved, at)[0].scores[0].romanticInterest, 1);
   assert.deepEqual(await f.apply(input, result), saved, "recovery cannot extend the invitation");
+  const writerVersion = saved.continuity.versions.find((entry) => entry.text === replyQuote)!;
+  assert(writerVersion.sources.some((proof) => proof.kind === "self" && proof.actorId === "ada"));
+  const heads = (state: typeof saved) =>
+    Object.values(state.continuity.records.find(({ id }) => id === writerVersion.rootId)!.heads);
+  assert(!heads(saved).some(({ holder }) => holder.kind === "actor" && holder.id === "player"));
+  const replySummary = (await f.service.readMailbox({ scope: f.scope })).letters.find(
+    ({ message }) => message.id === delivered.id,
+  )!;
+  await f.service.readLetter(replySummary.thread.id, delivered.id, f.scope, replySummary.message.token);
+  const read = await f.read();
+  const playerHead = heads(read).find(({ holder }) => holder.kind === "actor" && holder.id === "player")!;
+  const playerVersion = read.continuity.versions.find(({ id }) => id === playerHead.versionId)!;
+  assert(!playerVersion.sources.some((proof) => proof.kind === "self"));
+  assert(playerVersion.sources.some((proof) => proof.kind === "written" && proof.excerpt === replyQuote));
+  const distanceRequest = "Please give me a week to myself.";
+  const distanceReply = "I will stay away this week.";
+  await f.send("misplaced-preference", distanceRequest);
+  f.answer({
+    content: JSON.stringify({
+      reply: { text: distanceReply },
+      replyVisitPreference: { kind: "space", requestQuote: "I invented this request.", replyQuote: distanceReply },
+    }),
+    finishReason: "stop",
+  });
+  const next = f.input(1);
+  const recoveredLetter = (await f.service.handler.generate(next)) as PersonalMailResult;
+  assert.equal(recoveredLetter.replyText, distanceReply);
+  assert.equal(recoveredLetter.visitPreference, undefined);
+  const invalid = await f.apply(next, recoveredLetter);
+  assert.deepEqual(invalid.visitors?.[0].visitPreference, saved.visitors?.[0].visitPreference);
+  await f.send("verified-misplaced-preference", distanceRequest);
+  f.answer({
+    content: JSON.stringify({
+      reply: { text: distanceReply },
+      replyVisitPreference: { kind: "space", requestQuote: distanceRequest, replyQuote: distanceReply },
+    }),
+    finishReason: "stop",
+  });
+  const verifiedInput = f.input(2);
+  const verifiedReply = (await f.service.handler.generate(verifiedInput)) as PersonalMailResult;
+  assert.equal(verifiedReply.visitPreference?.kind, "space");
+  const latest = await f.apply(verifiedInput, verifiedReply);
+  assert.equal(latest.visitors?.[0].visitPreference?.kind, "space");
   const roster = createResidentRoster({
     readVillageState: f.read,
     mutateVillageState: f.mutate,
@@ -299,9 +361,9 @@ await runCase("social-mail/visitor", async () => {
   assert.equal(promoted.villagers[0].incarnation, input.incarnation);
   assert.equal(promoted.startingHistory.reviewed.ada, input.incarnation);
   assert.equal(continuityRelationships(promoted, at)[0].scores[0].romanticInterest, 1);
-  assert.deepEqual(promoted.mailbox, saved.mailbox);
+  assert.deepEqual(promoted.mailbox, latest.mailbox);
   assert.equal((await f.service.readMailbox({ scope: f.scope })).letters[0].thread.residentName, "Ada");
-  assert.equal(f.requests, 1);
+  assert.equal(f.requests, 3);
 });
 
 await runCase("social-mail/one-request", async () => {
@@ -310,6 +372,8 @@ await runCase("social-mail/one-request", async () => {
     input = f.input();
   assert.equal(f.requests, 0);
   assert.equal(input.incoming.text, "  I appreciated your café garden. 🌼\n  ");
+  const letterText = "Ada walks each morning. The new route (looks promising!) runs by the garden.";
+  f.answer({ content: JSON.stringify({ reply: { text: letterText } }), finishReason: "stop" });
   const result = (await f.service.handler.generate(input)) as PersonalMailResult;
   assert.equal(f.requests, 1);
   const prompt = JSON.stringify(f.captured[0].messages);
@@ -337,7 +401,7 @@ await runCase("social-mail/one-request", async () => {
   );
   await f.service.readLetter(reply.thread.id, reply.message.id, f.scope, token);
   const opened = await f.service.getLetter(reply.thread.id, reply.message.id, f.scope, token);
-  assert.equal(opened.message.text, result.replyText);
+  assert.equal(opened.message.text, letterText);
   assert(opened.message.read);
   const state = await f.read();
   assert.equal(state.episodes.records.length, 4);
