@@ -14,4 +14,5 @@ export type BackgroundCompletion = ((
   metadata?: { id: string; kind: string; cause: string; attempt?: number };
   signal?: AbortSignal;
   beforeProviderDispatch?: () => void;
+  readSavedCheckpoint?: (key: string) => CapabilityLanguageModelCompletion | undefined;
 };

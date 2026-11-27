@@ -497,7 +497,7 @@ export async function runSceneCostFixtures(selected: readonly SceneCostCase[] = 
                   submissionId: randomUUID(),
                   message,
                   mode: "chat",
-                  targetId: "",
+                  targetId: id === "movement-privacy" ? "bryn" : "",
                   expectedSceneRevision: host.scene().sceneRevision,
                 },
           accepted = await host.app.inject({ method: "POST", url, payload });

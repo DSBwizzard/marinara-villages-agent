@@ -23,7 +23,11 @@ import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.
 import type { VillageState } from "../../domain/models/world.js";
 import { badGateway, badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
-import { completeOpeningGathering, matchesOpeningGathering } from "../../domain/rules/opening-project.js";
+import {
+  completeOpeningGathering,
+  gatheringCast,
+  matchesOpeningGathering,
+} from "../../domain/rules/opening-project.js";
 import { captureSceneAttendance, sameSceneRoutine, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { assertTodayAgendas } from "../../domain/rules/weekly-agenda.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
@@ -195,7 +199,7 @@ export function createSceneCommands({
     return state.seed === scene.villageSeed ? visibleSceneNotices(state, events) : [];
   }
   const requestFingerprint = (
-    input: Pick<VenueTurnInput, "mode" | "targetId" | "message" | "contact" | "trespassReaction">,
+    input: Pick<VenueTurnInput, "mode" | "targetId" | "message" | "contact" | "trespassReaction" | "rememberFor">,
   ) =>
     memoryHash([
       input.mode,
@@ -203,6 +207,7 @@ export function createSceneCommands({
       input.contact ?? null,
       input.message,
       ...(input.trespassReaction ? [input.trespassReaction] : []),
+      ...(input.rememberFor ? [{ rememberFor: input.rememberFor }] : []),
     ]);
   async function publishNarration(
     scene: VenueScene,
@@ -220,7 +225,7 @@ export function createSceneCommands({
       if (prior.requestFingerprint !== requestFingerprint(input))
         throw conflict("This submission ID belongs to different input.");
     } else {
-      const generated = await generate(scene, input.message, mode, signal, trace, undefined, fresh);
+      const generated = await generate(scene, input.message, mode, signal, trace, undefined, fresh, input.rememberFor);
       if (fresh) transient = generated;
       assertVenueOwnership();
       signal?.throwIfAborted();
@@ -240,6 +245,7 @@ export function createSceneCommands({
           message: input.message,
           mode: input.mode,
           targetId: input.targetId,
+          ...(input.rememberFor ? { rememberFor: input.rememberFor } : {}),
           requestFingerprint: requestFingerprint(input),
           at: generated.readset.capturedAt,
           acceptance: { status: "pending", rejected: [] },
@@ -922,15 +928,7 @@ export function createSceneCommands({
         visitorIntroductionVenue(village, place, sceneAttendance, now);
       if (introduction) id = visitorIntroductionId(village);
     }
-    if (gathering)
-      sceneAttendance.occupants = village.villagers
-        .filter((resident) => village.opening!.residentIds.includes(resident.characterId))
-        .map((resident) => ({
-          characterId: resident.characterId,
-          name: resident.cardSnapshot.name,
-          doing: "at the Community gathering",
-          zoneId: zone.id,
-        }));
+    if (gathering) sceneAttendance.occupants = gatheringCast(village, zone.id);
     if (
       !startingHistoryReady({
         villagers: village.villagers.filter((resident) =>
@@ -1275,6 +1273,7 @@ export function createSceneCommands({
     message: string;
     mode: "chat" | "leave" | "contact";
     contact?: ContactIntent;
+    rememberFor?: string;
     targetId: string;
     submissionId: string;
     expectedSceneRevision?: number;
@@ -1292,6 +1291,7 @@ export function createSceneCommands({
       mode: input.mode,
       targetId: input.targetId,
       ...(input.contact ? { contact: input.contact } : {}),
+      ...(input.rememberFor ? { rememberFor: input.rememberFor } : {}),
     };
   }
   async function abandonFailedRequest(
@@ -1534,9 +1534,9 @@ export function createSceneCommands({
       ? scene
       : zoneEventScene(scene, location!, {
           ...(input.trespassReaction ? { priorityIds: scene.trespassReaction?.witnesses } : {}),
-          message: input.message,
-          targetId: input.targetId,
+          targetId: input.rememberFor || input.targetId,
           zoneId: input.contact?.boundaryZoneId,
+          contactKind: input.contact?.kind,
         });
     if (input.trespassReaction && !prior) {
       const reaction = admitted.trespassReaction;

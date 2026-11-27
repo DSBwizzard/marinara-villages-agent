@@ -195,7 +195,7 @@ for (const retainZonePolicy of [false, true]) {
     }
     assert.deepEqual(zoneControllerIds(missing, target), []);
     assert.equal(contactCanEnter(world, missing, target.id, "player"), false);
-    assert.equal(chooseAgendaZone(missing, "jim", "Visiting", target.id, world).id, "exterior");
+    assert.equal(chooseAgendaZone(missing, "jim", { activity: "Visiting" }, target.id, world).id, "exterior");
   }
   assert.equal(
     canOccupyZone(

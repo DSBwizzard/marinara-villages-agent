@@ -7,6 +7,7 @@ import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { inspectedLoreUse } from "../../domain/rules/lore-context.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
+import { readSavedBackgroundCheckpoint } from "../../adapters/operations/background-context.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domain/models/world.js";
 import { scheduledAgendaActivity, unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
@@ -254,7 +255,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         ...(weekPlan ? { weekPlan } : {}),
         context: {
           ...context,
-          activityLabelFormat: 1,
+          activityLabelFormat: 2,
         },
       },
     });
@@ -281,9 +282,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       const onModel = async (modelName: string) => {
         await reportFoundingProgress(input.seed, { stage: "model", modelName }, input.characterId);
       };
+      const saved = input.weekPlan ? undefined : readSavedBackgroundCheckpoint("founding-routine-v2");
       const result = input.weekPlan
         ? (await weeklyAgenda.planner.generate(input.weekPlan, onModel)).starter
-        : await proposeCompactFounding(input.context, onModel);
+        : saved
+          ? parseCompactFoundingCompletion(saved, input.context)
+          : await proposeCompactFounding(input.context, onModel);
       await reportFoundingProgress(input.seed, { stage: "applying" }, input.characterId);
       return result;
     },

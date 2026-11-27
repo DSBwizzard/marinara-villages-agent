@@ -40,6 +40,7 @@ import { SceneHistory } from "./SceneHistory.js";
 import { splitVillagesParagraphs, classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
 import { groupSceneMoments, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { SceneAsides } from "./villages-scene-asides.js";
+import { isAttributedSceneDialogue, sceneDialogueNodes } from "./scene-dialogue.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { SceneActionIcon } from "./SceneActionIcon.js";
@@ -196,6 +197,7 @@ export function RoomPanel({
   sprites,
   onDraft,
   onSend,
+  onRemember,
   onRetryReply,
   retryPending,
   sendOnEnter,
@@ -248,6 +250,7 @@ export function RoomPanel({
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
   onSend: () => void;
+  onRemember?: (recipientId: string) => void;
   onRetryReply?: () => void;
   retryPending?: boolean;
   sendOnEnter: boolean;
@@ -535,7 +538,10 @@ export function RoomPanel({
     }
   }, [replyKey, checkpoint, ownsBookmark, sceneReading.anchor, sceneReading.enterAtEnd]);
   const reveal = at === 0 && ownsBookmark(checkpoint.current.bookmark) && !!checkpoint.current.bookmark?.reveal;
-  const readingPages = useReadingPages(step?.text ?? "", step?.key ?? replyKey, readingRef, sceneReading, { reveal });
+  const readingPages = useReadingPages(step?.text ?? "", step?.key ?? replyKey, readingRef, sceneReading, {
+    reveal,
+    parse: isAttributedSceneDialogue(step) ? sceneDialogueNodes : undefined,
+  });
   const canReadNext = readingPages.revealing || at < steps.length - 1 || readingPages.index < readingPages.count - 1;
   const introductionActive = !!room.visitorIntroduction && !ended && room.status === "active" && steps.length > 0;
   useLayoutEffect(() => {
@@ -613,7 +619,12 @@ export function RoomPanel({
   const agendaWaiting = useAgendaWaiting();
   const canRetryReply = canCompose && !canReadNext && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
   const canSend = canCompose && !historyOpen && !busy && !contactRecovery && !agendaWaiting;
-  const sendLabel = busy ? "Sending" : "Send";
+  const canRemind = canSend && !!draft.trim();
+  const retryingReminder =
+    room.operation?.input?.rememberFor &&
+    room.operation.input.message === draft &&
+    (room.operation.status !== "complete" || room.operation.error);
+  const sendLabel = busy ? "Sending" : retryingReminder ? "Send reminder" : "Send";
   const travel = room.travel;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
@@ -1102,7 +1113,9 @@ export function RoomPanel({
                   ) : null}
                 </p>
                 <p className={`${ELEMENT_TAG}-chat-vn-aside-text`} style={speechStyle(aside.speakerId)}>
-                  {renderVillagesMarkdown(aside.content, `aside-${index}-`)}
+                  {isAttributedSceneDialogue(aside)
+                    ? drawVillagesNodes(sceneDialogueNodes(aside.content), `aside-${index}-`)
+                    : renderVillagesMarkdown(aside.content, `aside-${index}-`)}
                 </p>
               </div>
             </div>
@@ -1405,6 +1418,35 @@ export function RoomPanel({
                 >
                   <SceneControlIcon name={busy ? "sending" : "send"} />
                 </button>
+                {onRemember && activeParticipants.length ? (
+                  <details className={`${ELEMENT_TAG}-scene-reminder`}>
+                    <summary
+                      aria-label="Whisper a reminder"
+                      aria-disabled={!canRemind}
+                      onClick={(event) => {
+                        if (!canRemind) event.preventDefault();
+                      }}
+                    >
+                      Remind
+                    </summary>
+                    {canRemind ? (
+                      <div className={`${ELEMENT_TAG}-room-actions-menu ${ELEMENT_TAG}-scene-reminder-targets`}>
+                        {activeParticipants.map(({ characterId, name }) => (
+                          <button
+                            key={characterId}
+                            type="button"
+                            onClick={(event) => {
+                              event.currentTarget.closest("details")?.removeAttribute("open");
+                              onRemember(characterId);
+                            }}
+                          >
+                            Remind {name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </details>
+                ) : null}
               </span>
               <button
                 type="button"

@@ -1,16 +1,22 @@
 import type { AgendaReservation } from "../models/agenda-reservation.js";
 import type { VillageAgendaBlock } from "../models/world.js";
-import { fixedRestAgendaBlock, flexibleAgendaBlock } from "./agenda-flexibility.js";
+import { fixedRestAgendaBlock, flexibleAgendaBlock, restingAgendaBlock } from "./agenda-flexibility.js";
+
+export type CapturedAgendaShape = "typed-fragments" | "untyped-joined";
 
 /** Reservations share one composition rule; their owners decide admission and cancellation. */
 export function composeAgenda(
   routine: readonly VillageAgendaBlock[],
   reservations: readonly AgendaReservation[],
+  capturedShape?: CapturedAgendaShape,
 ): VillageAgendaBlock[] {
   let blocks = routine.map((block) => ({ ...block }));
   for (const reservation of reservations) {
     const replaceable = (block: VillageAgendaBlock) =>
-      reservation.replaces === "flexible" ? flexibleAgendaBlock(block) : !block.essential && !block.commitmentId;
+      !(capturedShape === "typed-fragments"
+        ? restingAgendaBlock(block)
+        : capturedShape !== "untyped-joined" && fixedRestAgendaBlock(block)) &&
+      (reservation.replaces === "flexible" ? flexibleAgendaBlock(block) : !block.essential && !block.commitmentId);
     const work = reservation.source === "work";
     let covered = reservation.startMinute;
     for (const block of blocks.filter(
@@ -30,7 +36,7 @@ export function composeAgenda(
         continue;
       }
       if (block.startMinute < start) composed.push({ ...block, endMinute: start });
-      if (assigned?.endMinute === start && composed.at(-1) === assigned) {
+      if (capturedShape !== "typed-fragments" && assigned?.endMinute === start && composed.at(-1) === assigned) {
         assigned.endMinute = end;
       } else {
         assigned = {
@@ -39,6 +45,7 @@ export function composeAgenda(
           venueId: reservation.venueId,
           zoneId: reservation.zoneId,
           activity: reservation.activity,
+          ...(capturedShape === "untyped-joined" ? {} : { purpose: work ? "work" : "ordinary" }),
           ...(work ? {} : { commitmentId: reservation.id }),
           flexible: false,
         };

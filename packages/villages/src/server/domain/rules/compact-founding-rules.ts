@@ -56,7 +56,7 @@ export type CompactFoundingContext = {
   lore: readonly string[];
   wishes: readonly string[];
   characterId?: string;
-  activityLabelFormat?: 1;
+  activityLabelFormat?: 1 | 2;
   starterWeekStart?: string;
   starterRestFormat?: 1;
 };
@@ -90,7 +90,10 @@ function checkedPalette(value: unknown, { venues, activityLabelFormat }: Compact
         `Village activity ${index + 1} needs a numeric venue index from 0 to ${venues.length}.`,
       );
     return {
-      activity: activityLabelFormat === 1 ? generatedAgendaActivityLabel(activity) : activity,
+      activity: activityLabelFormat ? generatedAgendaActivityLabel(activity) : activity,
+      ...(row.purpose === "rest" || row.purpose === "work" || row.purpose === "ordinary"
+        ? { purpose: row.purpose }
+        : {}),
       ...(Array.isArray(row.weekdays) ? { weekdays: row.weekdays as number[] } : {}),
       duration: Math.max(
         ROUTINE_CONTRACT.minMinutes,
@@ -296,6 +299,7 @@ export function starterAgendaBase(payload: Record<string, unknown>, start: strin
           startMinute,
           endMinute,
           activity: label,
+          ...(restKind ? { purpose: "rest" as const } : {}),
           venueId: "",
           essential: true,
           flexible: false,

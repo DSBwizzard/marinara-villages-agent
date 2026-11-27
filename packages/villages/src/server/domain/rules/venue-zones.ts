@@ -1,6 +1,13 @@
 import { venueSleepers } from "./venue-model.js";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
-import type { VillageState, VillageVenue, VillageVenueZone, VillageZoneKind } from "../models/world.js";
+import { restingAgendaBlock } from "./agenda-flexibility.js";
+import type {
+  VillageAgendaBlock,
+  VillageState,
+  VillageVenue,
+  VillageVenueZone,
+  VillageZoneKind,
+} from "../models/world.js";
 import { conflict } from "./errors.js";
 import { evaluateZoneAccess, mayInvite, zoneManagers } from "./venue-access.js";
 
@@ -59,7 +66,7 @@ export function zoneClosed(
 export function chooseAgendaZone(
   venue: VillageVenue,
   actorId: string,
-  activity = "",
+  block: Pick<VillageAgendaBlock, "purpose" | "activity"> | null = null,
   requestedId = "",
   state?: Pick<VillageState, "projects" | "narrative">,
   accessContext?: import("./venue-access.js").AccessContext,
@@ -67,9 +74,10 @@ export function chooseAgendaZone(
   const eligible = venueZones(venue).filter(
     (zone) =>
       (!ordinaryUseRestricted(state?.narrative, (accessContext?.at ?? new Date()).toISOString(), venue.id, zone.id) ||
-        /repair|inspect|restore|clear|correct/iu.test(activity)) &&
+        block?.purpose === "repair") &&
       evaluateZoneAccess(venue, zone, actorId, {
         ...accessContext,
+        environment: accessContext?.environment ?? state?.narrative,
         unavailable: !!state && zoneClosed(state, venue, zone),
       }).allowed &&
       (!state || !zoneClosed(state, venue, zone)),
@@ -77,9 +85,9 @@ export function chooseAgendaZone(
   const requested = eligible.find((zone) => zone.id === requestedId);
   if (requested) return requested;
   const destinations = venue.destinations?.[actorId];
-  const assigned = /sleep|bed|dress|wash/i.test(activity)
+  const assigned = restingAgendaBlock(block)
     ? destinations?.sleep
-    : /work|repair|build|shift|help/i.test(activity)
+    : block?.purpose === "work" || block?.purpose === "repair"
       ? destinations?.work
       : destinations?.home;
   const designated = eligible.find((zone) => zone.id === assigned);

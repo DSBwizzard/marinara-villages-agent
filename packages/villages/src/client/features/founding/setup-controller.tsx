@@ -9,8 +9,10 @@ import { API_PATH } from "../../shared/constants.js";
 import type { FoundingState } from "./useFoundingState.js";
 import { removeDeviceDraft } from "../../shared/device-drafts.js";
 import { playerBackgroundProblem } from "./villages-player-background.js";
-import { arrangeQuickStartVenues } from "./quick-start-placement.js";
+import { appendFoundingVenue, arrangeQuickStartVenues } from "./quick-start-placement.js";
+import { FOUNDING_VENUE_LIMIT } from "../../../shared/helpers/founding-venues.js";
 import {
+  clearFoundingAssignments,
   quickStartIdentity,
   emptyFoundingVenue,
   newFoundingPlanSources,
@@ -114,6 +116,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupSuggestionsBusy: FoundingState["setSetupSuggestionsBusy"];
   readonly setSetupSuggestionsKey: FoundingState["setSetupSuggestionsKey"];
+  readonly setSetupMapReviewed?: FoundingState["setSetupMapReviewed"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
   readonly setupAuthoredFieldsRef: React.RefObject<Record<string, string[]>>;
   readonly setupBeginningSourceKey: string;
@@ -144,6 +147,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           plan: pending.plan,
           separateHomes: pending.separateHomes,
           venueId: pending.venueId,
+          addVenue: pending.addVenue,
           ...(pending.fullVenue ? { fullVenue: true, draftEntranceImage: pending.draftEntranceImage } : {}),
         }
       : (options ?? {});
@@ -165,6 +169,8 @@ export function createFoundingSuggestSetupVenues(ports: {
     } = ports;
 
     if (setupSuggestionsClaim.current || (!pending && !setupSetting.trim())) return;
+    const added = options.addVenue && options.venueId ? emptyFoundingVenue(options.venueId) : undefined;
+    if (added && !pending && setupVenues.length >= FOUNDING_VENUE_LIMIT) return;
     setupSuggestionsClaim.current = true;
     const replacing = !!options.plan || !!options.quickStart || !options.venueId;
     const identity = quickStartIdentity(setupVenues);
@@ -175,10 +181,11 @@ export function createFoundingSuggestSetupVenues(ports: {
     const baseline = JSON.stringify(setupVenues);
     setSetupSuggestionsBusy(true);
     setSetupProblem("");
+    let completedAdd = false;
     try {
       const stored = pending?.sourceInputs ? JSON.parse(pending.sourceInputs) : undefined;
-      const rows = replacing ? (stored?.sourceVenues ?? newFoundingPlanSources()) : setupVenues;
-      const target = options.venueId ? setupVenues.find((row) => row.id === options.venueId) : undefined;
+      const rows = replacing ? (stored?.sourceVenues ?? newFoundingPlanSources()) : added ? [added] : setupVenues;
+      const target = added ?? setupVenues.find((row) => row.id === options.venueId);
       if (!replacing && !target && !pending) throw new Error("Choose the Venue to redraft.");
       const bank = (venue: (typeof setupVenues)[number]) =>
         Array.from(
@@ -190,9 +197,10 @@ export function createFoundingSuggestSetupVenues(ports: {
         worldName: ports.setupWorldName,
         mode: replacing ? "draft-plan" : "draft-venue",
         replacePlan: replacing,
-        venueBrief: options.venueId
-          ? (ports.setupWorkspace.venueBriefs?.[options.venueId] ?? "")
-          : (ports.setupWorkspace.venueBrief ?? ""),
+        venueBrief:
+          options.venueBrief ??
+          (options.venueId ? ports.setupWorkspace.venueBriefs?.[options.venueId] : ports.setupWorkspace.venueBrief) ??
+          "",
         villageName: ports.setupName,
         context: ports.setupContext,
         openingVenueId: ports.setupContext?.openingVenueId,
@@ -228,7 +236,9 @@ export function createFoundingSuggestSetupVenues(ports: {
         options,
         input,
       );
+      completedAdd = !!added;
       const current = setupVenuesRef.current;
+      const currentTarget = added ?? current.find((row) => row.id === options.venueId);
       if (
         setupBeginningSourceKeyRef.current !== setupBeginningSourceKey ||
         JSON.stringify(current) !== baseline ||
@@ -236,13 +246,23 @@ export function createFoundingSuggestSetupVenues(ports: {
         (input.foundingCharacterIds && JSON.stringify(input.foundingCharacterIds) !== JSON.stringify(roster)) ||
         (!replacing &&
           JSON.stringify(input.targetVenue) !==
-            JSON.stringify(
-              current.find((row) => row.id === options.venueId) &&
-                foundingVenueDraftSource(current.find((row) => row.id === options.venueId)!),
-            ))
+            JSON.stringify(currentTarget && foundingVenueDraftSource(currentTarget)))
       )
         throw new Error("Founding choices changed. Your current draft stays unchanged; request a fresh draft.");
       const physical = result.venues.map(physicalFoundingProposal);
+      if (added) {
+        const [proposal] = physical;
+        if (physical.length !== 1 || proposal?.id !== added.id)
+          throw new Error("The new Venue draft doesn’t match this request.");
+        if (current.length >= FOUNDING_VENUE_LIMIT || current.some((venue) => venue.id === added.id))
+          throw new Error("Founding Venues changed. Add the Venue again when ready.");
+        const venue = clearFoundingAssignments(applyFoundingVenueDraft(added, proposal));
+        // Autosave records the added Venue and the cleared receipt in one draft snapshot.
+        ports.setSetupVenues(appendFoundingVenue(current, venue));
+        ports.setSetupMapReviewed?.(false);
+        ports.setSetupWorkspace((state) => ({ ...state, addVenueBrief: undefined, suggestionRequest: undefined }));
+        return venue.id;
+      }
       const reviewed = replacing
         ? arrangeQuickStartVenues(physical.map((plan) => applyFoundingVenueDraft(emptyFoundingVenue(plan.id), plan)))
         : current.map((row) =>
@@ -273,8 +293,16 @@ export function createFoundingSuggestSetupVenues(ports: {
       }));
       setSetupSuggestionsKey(setupBeginningSourceKey);
     } catch (cause) {
-      if (!signal?.aborted && !(cause instanceof Error && cause.name === "AbortError"))
-        setSetupProblem(messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself."));
+      if (!signal?.aborted && !(cause instanceof Error && cause.name === "AbortError")) {
+        const failure = messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself.");
+        if (completedAdd)
+          ports.setSetupWorkspace((state) =>
+            state.suggestionRequest?.addVenue && state.suggestionRequest.venueId === added?.id
+              ? { ...state, suggestionRequest: { ...state.suggestionRequest, failure } }
+              : state,
+          );
+        setSetupProblem(failure);
+      }
     } finally {
       setupSuggestionsClaim.current = false;
       setSetupSuggestionsBusy(false);

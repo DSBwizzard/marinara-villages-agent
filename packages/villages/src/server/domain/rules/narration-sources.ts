@@ -45,6 +45,7 @@ export type NarrationSourceContext = {
   seed: string;
   episodeId: string;
   input: string;
+  rememberFor?: string;
   actors: Actor[];
   subjects?: { id: string; incarnation: string }[];
   visitorTrips?: { characterId: string; arrivedAt: string; leavesAt: string }[];
@@ -218,6 +219,73 @@ export function readSceneNarrationReply(
   continuity: ContinuityCollection,
 ) {
   const visit = raw.visit;
+  if (readset.source.scene.visitorIntroduction && Array.isArray(raw.segments)) {
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value) => {
+        const row = asRecord(value);
+        if (!Object.hasOwn(row, "perceive")) return value;
+        // The tutorial's audience comes from the Scene, never from a model annotation.
+        const { perceive: _perceive, ...beat } = row;
+        return beat;
+      }),
+    };
+  }
+  if (Array.isArray(raw.segments) && raw.segments.some((value) => asRecord(value).offerAppointment === true)) {
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value) => {
+        const beat = asRecord(value);
+        return beat.kind === "dialogue" &&
+          beat.offerAppointment === true &&
+          !(readset.taggedSceneReply && beat.compactAppointment)
+          ? { ...beat, text: "I can make the time shown in my Agenda. Confirm it there if it works for you." }
+          : value;
+      }),
+    };
+  }
+  const recipient = readset.source.rememberFor;
+  if (recipient) {
+    const segments = raw.segments;
+    memoryRequire(
+      !raw.halt && !visit && (!Array.isArray(raw.commands) || raw.commands.length === 0),
+      "a reminder reply cannot change the Scene",
+    );
+    memoryRequire(
+      Array.isArray(segments) &&
+        segments.length > 0 &&
+        segments.every((value) => {
+          const row = asRecord(value);
+          return (
+            row.kind === "dialogue" &&
+            row.speakerId === recipient &&
+            !row.introduceName &&
+            !row.offerAppointment &&
+            !row.offerWork
+          );
+        }),
+      "only the reminder recipient can reply",
+    );
+    const keeps = Array.isArray(raw.keep) ? raw.keep : [];
+    if (!readset.codeRequestedMemory)
+      memoryRequire(
+        keeps.length === 1 && asRecord(keeps[0]).id === "remember-fact",
+        "a reminder reply can only save the explicit reminder",
+      );
+    // This capture already authorizes one exact private reminder. Extra notes and the prose that may depend on them
+    // carry no authority. Use a plain acknowledgment tied to the actual saved reminder.
+    const recover = readset.codeRequestedMemory && keeps.length > 0;
+    const privateReply = recover
+      ? [{ kind: "dialogue", speakerId: recipient, text: "I'll remember that.", requires: ["remember-fact"] }]
+      : segments;
+    raw = {
+      ...(recover ? {} : raw),
+      segments: privateReply.map((value) => {
+        const { presentation: _presentation, ...row } = asRecord(value);
+        return { ...row, delivery: "whisper", targetId: "player" };
+      }),
+    };
+  }
   const readReply = (payload: Record<string, unknown>) => {
     const movements: Record<string, unknown>[] = [];
     const automaticIds = new Set(
@@ -642,14 +710,21 @@ export function bindNarrationSource(
   };
   if ("input" in ref) {
     const span = exactInputSpan({ text: ref.input, occurrence: ref.occurrence }, context.input),
-      moment = inputMoment(ref, context);
+      moment = inputMoment(
+        context.rememberFor ? { ...ref, ground: { kind: "spoken", to: [context.rememberFor], at: "start" } } : ref,
+        context,
+      );
     source.unitId = "input";
     source.fingerprint = memoryHash(context.input);
     source.excerpt = span.text;
     source.range = { start: span.start, end: span.end };
     source.moment = moment;
     source.actorId = "player";
-    const ground = ref.ground;
+    const ground =
+      context.rememberFor && ref.ground?.kind === "spoken"
+        ? { ...ref.ground, to: [context.rememberFor], delivery: "whisper" as const, targetId: context.rememberFor }
+        : ref.ground;
+    if (context.rememberFor) memoryRequire(ground?.kind === "spoken", "the reminder was submitted as spoken words");
     if (ground?.kind === "spoken" || ground?.kind === "visible-action") {
       memoryRequire(moment, "perception needs its captured moment");
       const origin = position(context, "player", moment);

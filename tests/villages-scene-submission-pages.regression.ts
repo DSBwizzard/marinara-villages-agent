@@ -82,7 +82,7 @@ async function populate(fixture: ReturnType<typeof f>, count: number) {
   scene.continuity = captureSceneContinuity(world, scene, Date.parse(at));
   scene.submissions = Array.from({ length: count }, (_, index) => turn(index));
   const latest = scene.submissions.at(-1)!;
-  const scoped = zoneEventScene({ ...scene, submissions: [] }, venue, { message: latest.message });
+  const scoped = zoneEventScene({ ...scene, submissions: [] }, venue);
   const context = narrationContinuityContext(world, scoped, venue, latest.id, latest.message, at);
   const raw = {
     segments: [{ kind: "narration", text: "The hall is quiet." }],

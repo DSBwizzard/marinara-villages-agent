@@ -13,6 +13,7 @@ import { FoundingAccess } from "./FoundingAccess.js";
 import { useEffect, useLayoutEffect, useId, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
+import { FOUNDING_VENUE_LIMIT } from "../../../shared/helpers/founding-venues.js";
 import type { SetupVenueDraft, Portrait } from "../../shared/types.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { addFoundingZone } from "./founding-template.js";
@@ -30,6 +31,7 @@ import { foundingVenueIssues, type FoundingIssue } from "./villages-founding-wor
 export function QuickStartVenues({
   inlineVenue = false,
   mobile = false,
+  drawer = false,
   daylight = false,
   venues,
   locationName,
@@ -43,6 +45,7 @@ export function QuickStartVenues({
   problemAction,
   map,
   onSelect,
+  onReturnToMap,
   onPatch,
   openFromMap,
   onMapOpened,
@@ -53,11 +56,11 @@ export function QuickStartVenues({
   onRetrySaving,
   onCloseVenue,
   backLabel,
-  onRedraft,
   onRemove,
 }: {
   inlineVenue?: boolean;
   mobile?: boolean;
+  drawer?: boolean;
   daylight?: boolean;
   venues: SetupVenueDraft[];
   locationName: string;
@@ -71,6 +74,7 @@ export function QuickStartVenues({
   problemAction?: ReactNode;
   map?: ReactNode;
   onSelect(venue: SetupVenueDraft): void;
+  onReturnToMap?(): void;
   onPatch(venue: SetupVenueDraft): void;
   openFromMap?: { id: string };
   onMapOpened?(): void;
@@ -81,13 +85,11 @@ export function QuickStartVenues({
   onRetrySaving?(): void;
   onCloseVenue?(): void;
   backLabel?: string;
-  onRedraft?(venue: SetupVenueDraft): void;
-  onRemove?(venue: SetupVenueDraft): Promise<boolean> | boolean;
+  onRemove?(venue: SetupVenueDraft): void | Promise<void>;
 }) {
   const [arrangementPage, setArrangementPage] = useState<ArrangementPage | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [section, setSection] = useState<VenueSection>("about");
-  const [editingAbout, setEditingAbout] = useState(false);
   const [zoneDetails, setZoneDetails] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -111,7 +113,9 @@ export function QuickStartVenues({
   const open = editorOpen && !!selected;
   const inlineOpen = inlineVenue && open;
   const closeVenue = () => {
-    if (inlineOpen && selected) returnFocus.current = { id: selected.id, pin: mobile || openedFromPin.current };
+    if (inlineOpen && selected)
+      returnFocus.current = { id: selected.id, pin: !drawer && (mobile || openedFromPin.current) };
+    if (drawer) onReturnToMap?.();
     setEditorOpen(false);
     onCloseVenue?.();
   };
@@ -131,7 +135,6 @@ export function QuickStartVenues({
   const selectSection = (next: VenueSection) => {
     setArrangementPage(null);
     setSection(next);
-    setEditingAbout(false);
     setConnectionsOpen(false);
     setZoneDetails(false);
     setChoiceError("");
@@ -140,7 +143,6 @@ export function QuickStartVenues({
     const opener = document.activeElement;
     setArrangementPage(null);
     setZoneId(id);
-    setEditingAbout(false);
     setZoneDetails(true);
     setChoiceError("");
     requestAnimationFrame(() => {
@@ -181,7 +183,6 @@ export function QuickStartVenues({
     );
     setArrangementPage(field === "assignment" ? { kind: "home" } : null);
     setZoneDetails(field !== "sleep" && !!focusIssue.zoneId);
-    setEditingAbout(true);
     setEditorOpen(true);
   }, [focusIssue, inlineVenue]);
   useEffect(() => {
@@ -256,6 +257,39 @@ export function QuickStartVenues({
   };
   const cards = ordered.map((venue) => {
     const home = venue.occupancy.playerHome || !!venue.residentIds?.length;
+    if (drawer)
+      return (
+        <div className="villages-venue-drawer-item" key={venue.id}>
+          <button
+            type="button"
+            className="villages-venue-drawer-row"
+            data-venue-id={venue.id}
+            disabled={busy || imageBusy}
+            onClick={() => {
+              onSelect(venue);
+              selectSection("about");
+              setEditorOpen(true);
+            }}
+          >
+            <span className="villages-venue-drawer-icon">
+              <VillageIcon name={home ? "places" : "venue"} />
+            </span>
+            <strong className="villages-selected-name">{venue.name || "Venue"}</strong>
+          </button>
+          {onRemove && (
+            <button
+              type="button"
+              className="villages-venue-drawer-remove"
+              aria-label={`Remove ${venue.name || "Venue"}`}
+              title="Remove Venue"
+              disabled={busy || imageBusy}
+              onClick={() => void onRemove(venue)}
+            >
+              <VillageIcon name="trash" />
+            </button>
+          )}
+        </div>
+      );
     return (
       <div className="villages-founding-venue-row" key={venue.id}>
         <button
@@ -290,7 +324,7 @@ export function QuickStartVenues({
           </span>
           <span aria-hidden="true">›</span>
         </button>
-        {(onRedraft || onRemove) && (
+        {onRemove && (
           <details
             className="villages-founding-venue-options"
             onKeyDown={(event) => {
@@ -305,30 +339,16 @@ export function QuickStartVenues({
               ⋯
             </summary>
             <div>
-              {onRedraft && (
-                <button
-                  type="button"
-                  disabled={busy || imageBusy}
-                  onClick={(event) => {
-                    event.currentTarget.closest("details")?.removeAttribute("open");
-                    onRedraft(venue);
-                  }}
-                >
-                  Redraft Venue
-                </button>
-              )}
-              {onRemove && (
-                <button
-                  type="button"
-                  disabled={busy || imageBusy}
-                  onClick={(event) => {
-                    event.currentTarget.closest("details")?.removeAttribute("open");
-                    onRemove(venue);
-                  }}
-                >
-                  Remove Venue
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={busy || imageBusy}
+                onClick={(event) => {
+                  event.currentTarget.closest("details")?.removeAttribute("open");
+                  onRemove(venue);
+                }}
+              >
+                Remove Venue
+              </button>
             </div>
           </details>
         )}
@@ -444,9 +464,11 @@ export function QuickStartVenues({
                     ? `← ${selected.name || "Venue"}`
                     : onCloseVenue
                       ? backLabel || "← Review"
-                      : inlineVenue
-                        ? "← Map"
-                        : "← Venues"}
+                      : drawer
+                        ? "← Venues"
+                        : inlineVenue
+                          ? "← Map"
+                          : "← Venues"}
               </button>
             }
             tabs={{
@@ -458,60 +480,33 @@ export function QuickStartVenues({
           >
             {!arrangementPage && !zoneDetails && section === "about" ? (
               <section className="villages-manage" aria-label="About this venue">
-                <div className="villages-people-actions">
-                  {onRedraft && (
-                    <button type="button" disabled={busy || imageBusy} onClick={() => onRedraft(selected)}>
-                      Redraft Venue
-                    </button>
-                  )}
-                  {onRemove && (
-                    <button
-                      type="button"
-                      disabled={busy || imageBusy}
-                      onClick={async () => {
-                        if (await onRemove(selected)) closeVenue();
-                      }}
-                    >
-                      Remove Venue
-                    </button>
-                  )}
-                  <button type="button" disabled={busy || imageBusy} onClick={() => setEditingAbout(!editingAbout)}>
-                    {editingAbout ? "Done" : "Edit"}
-                  </button>
-                </div>
-                {editingAbout ? (
-                  <fieldset className="villages-manage-form" disabled={busy || imageBusy}>
-                    <label>
-                      Venue name
-                      <input
-                        autoComplete="off"
-                        aria-label="Venue Name"
-                        {...errorProps("name")}
-                        maxLength={60}
-                        value={selected.name}
-                        onChange={(e) => patch({ ...selected, name: e.target.value })}
-                      />
-                      {fieldError("name")}
-                    </label>
-                    <label>
-                      Description
-                      <textarea
-                        autoComplete="off"
-                        aria-label="Description"
-                        {...errorProps("form")}
-                        maxLength={2000}
-                        rows={2}
-                        value={selected.form ?? ""}
-                        onChange={(e) => patch({ ...selected, form: e.target.value })}
-                      />
-                      {fieldError("form")}
-                    </label>
-                  </fieldset>
-                ) : (
-                  <>
-                    <p>{selected.form}</p>
-                  </>
-                )}
+                <fieldset className="villages-manage-form" disabled={busy || imageBusy}>
+                  <label>
+                    Venue name
+                    <input
+                      autoComplete="off"
+                      aria-label="Venue Name"
+                      {...errorProps("name")}
+                      maxLength={60}
+                      value={selected.name}
+                      onChange={(e) => patch({ ...selected, name: e.target.value })}
+                    />
+                    {fieldError("name")}
+                  </label>
+                  <label>
+                    Description
+                    <textarea
+                      autoComplete="off"
+                      aria-label="Description"
+                      {...errorProps("form")}
+                      maxLength={2000}
+                      rows={2}
+                      value={selected.form ?? ""}
+                      onChange={(e) => patch({ ...selected, form: e.target.value })}
+                    />
+                    {fieldError("form")}
+                  </label>
+                </fieldset>
                 <VenueRunnersRow
                   ids={foundingAccess(selected).managerIds}
                   nameOf={(id) => actors.find((row) => row.id === id)?.name || id}
@@ -691,12 +686,24 @@ export function QuickStartVenues({
       aria-label="Venues"
       data-map-open={(!mobile && mapOpen) || undefined}
       data-venue-open={inlineOpen || undefined}
+      data-venue-drawer={drawer || undefined}
     >
+      {drawer && !open && (
+        <header className="villages-venue-drawer-header">
+          <div className="villages-venue-drawer-title">
+            <h2>Venues</h2>
+            <span>
+              {venues.length} of {FOUNDING_VENUE_LIMIT}
+            </span>
+          </div>
+          <div className="villages-venue-drawer-actions">{actions}</div>
+        </header>
+      )}
       {map ? (
         <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
           <div className="villages-quick-map-toolbar" hidden={mobile && inlineOpen}>
             <h2 title={locationName || "Starting location"}>{locationName || "Starting location"}</h2>
-            {mobile || actionsOnMap ? (
+            {drawer ? null : mobile || actionsOnMap ? (
               actions
             ) : (
               <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(false)}>
@@ -714,7 +721,18 @@ export function QuickStartVenues({
           ) : null}
         </section>
       ) : null}
-      {!mobile && !onCloseVenue ? (
+      {drawer ? (
+        <section className="villages-forging-card villages-quick-venue-list" aria-label="Venue list" hidden={open}>
+          <h3>Venue list</h3>
+          <div className="villages-venue-drawer-items">{cards}</div>
+          {!open && (saveError || problem) ? (
+            <p className="villages-venue-drawer-problem" role="alert">
+              {saveError || problem}
+            </p>
+          ) : null}
+          {!open && !saveError ? problemAction : null}
+        </section>
+      ) : !mobile && !onCloseVenue ? (
         <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues" hidden={open}>
           <header className="villages-venue-heading">
             <h2>Starting Venues</h2>

@@ -40,6 +40,8 @@ export const agendaEvidence = z
   })
   .strict();
 
+export const savedAgendaEvidence = agendaEvidence.extend({ confirmable: z.literal(true).optional() }).strict();
+
 export const agendaOptions = z.array(agendaEvidence.omit({ kind: true })).max(16);
 export const agendaVenues = z.array(z.object({ id, zones: z.array(id).max(8) }).strict()).max(10);
 
@@ -48,6 +50,8 @@ export const playerAppointment = z
     id,
     resident: z.object({ id, incarnation: id }).strict(),
     playerIncarnation: id,
+    termsVersionId: id.optional(),
+    cancelled: z.literal(true).optional(),
     time: agendaTime,
     activity: z.string().trim().min(1).max(240),
   })

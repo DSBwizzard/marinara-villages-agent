@@ -197,6 +197,7 @@ export function weeklyChoiceBlock(
       startMinute + (choice.maxMinutes ?? (choice.activity === AGENDA_NAP_ACTIVITY ? 60 : 1440)),
     ),
     flexible: true,
+    purpose: choice.nap || choice.activity === AGENDA_NAP_ACTIVITY ? "rest" : "ordinary",
     ...(choice.nap ? { restKind: "nap" as const } : {}),
   };
 }

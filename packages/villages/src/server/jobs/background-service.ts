@@ -716,6 +716,16 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         id,
         (previous) => {
           if (previous?.id === jobId(work)) {
+            if (
+              work.kind === "wish" &&
+              work.retryActionId &&
+              previous.retryActionId !== work.retryActionId &&
+              previous.status === "obsolete" &&
+              !activityDispatched(previous) &&
+              !uncertainAttempt(previous) &&
+              !previous.steps.length
+            )
+              return fresh(work, previous);
             if (work.finite && !previous.finite) previous.finite = true;
             return previous;
           }
@@ -931,6 +941,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     let cursor = 0;
     let lastIndex = -1;
     let invoked = false;
+    let replayed = false;
     let stage = "generation";
     let dispatched = false;
     let counted = false;
@@ -947,6 +958,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if (saved.fingerprint !== fingerprint)
           throw new Obsolete("The generation inputs changed; saved responses cannot be mixed.");
         runtimeDebug("background completion replay", { jobId: id, step: index, fingerprint });
+        replayed = true;
         return saved.response!;
       }
       const queuedAt = Date.now(),
@@ -1047,6 +1059,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           current.steps[index]!.timing = timing;
           return current;
         });
+        const claimedJob = job;
+        const claim = claimedJob.steps[index]?.responseClaim;
+        if (!claim) throw new Obsolete("The background request reservation changed before dispatch.");
         const assertActive = () => {
           if (stopped || owner !== runOwner || controller.signal.aborted)
             throw new Paused("Background generation stopped.");
@@ -1071,7 +1086,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             )
               throw new Obsolete("The weekly Agenda window has already started.");
             pendingCatchupDispatch.delete(id);
-            unsubmittedSteps.delete(job!.steps[index].responseClaim!.id);
+            if (job!.steps[index]?.responseClaim?.id !== claim.id)
+              throw new Obsolete("The background request reservation changed before dispatch.");
+            unsubmittedSteps.delete(claim.id);
             invoked = true;
             dispatched = true;
           };
@@ -1111,11 +1128,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         } catch (error) {
           if (error instanceof Paused || error instanceof Obsolete) throw error;
           const lateResponses = backgroundResponseStore(documents);
-          const physicalJob = job!;
           retainLateProviderResponse(error, (value) =>
-            lateResponses
-              .publish(physicalJob, index, value as Awaited<ReturnType<BackgroundCompletion>>)
-              .then(() => {}),
+            lateResponses.publish(claimedJob, index, value as Awaited<ReturnType<BackgroundCompletion>>).then(() => {}),
           );
           assertActive();
           const connectionIssue = connectionFailureKind(error, !!options.responseFormat);
@@ -1153,17 +1167,22 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           });
         }
         stage = "response-storage";
-        const savedResponse = await responses.publish(job!, index, response);
+        const savedResponse = await responses.publish(claimedJob, index, response);
         if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
         job = await updateJob((current) => {
-          if (current?.id !== job!.id || current.owner !== runOwner) throw new Obsolete("This job was replaced.");
+          if (
+            current?.id !== runJobId ||
+            current.owner !== runOwner ||
+            current.steps[index]?.responseClaim?.id !== claim.id
+          )
+            throw new Obsolete("This job was replaced.");
           current.steps[index] = {
             key: options.checkpointId,
             fingerprint,
             status: "completed",
             response: savedResponse.response,
             responseRef: savedResponse.ref,
-            responseClaim: current.steps[index].responseClaim,
+            responseClaim: claim,
             timing: {
               ...hostTiming,
               hostFinishedAt: new Date().toISOString(),
@@ -1188,6 +1207,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       });
     };
     complete.signal = controller.signal;
+    complete.readSavedCheckpoint = (key) => {
+      const index = job!.steps.findIndex((step) => step.key === key && step.status === "completed");
+      const saved = job!.steps[index]?.response;
+      if (!saved) return;
+      lastIndex = index;
+      replayed = true;
+      return saved;
+    };
     complete.metadata = {
       id: job.id,
       kind: job.kind,
@@ -1215,10 +1242,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if (!partialFailure) state.backgroundReceipts[id] = job!.id;
       });
       if (partialFailure) {
+        const consumed = lastIndex >= 0 ? lastIndex : job.steps.findLastIndex((step) => step.status === "completed");
         job = await updateJob((current) => ({
           ...current!,
           partialResult: true,
-          failedStep: lastIndex >= 0 ? lastIndex : null,
+          failedStep: consumed >= 0 ? consumed : null,
         }));
         throw new WorkFailureError(partialFailure);
       }
@@ -1284,7 +1312,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                 ? null
                 : paused ||
                     obsolete ||
-                    (!invoked && !current!.steps[lastIndex]?.lateResponse) ||
+                    (!invoked && !replayed && !current!.steps[lastIndex]?.lateResponse) ||
                     ["storage", "response-storage"].includes(stage)
                   ? current!.failedStep
                   : Math.max(0, lastIndex),

@@ -256,7 +256,8 @@ console.log(
   assert(!fact.includes(submitted));
   const prompt = await currentScenePrompt(world, card, "chat", "Quote what I said about moonflower tea.", scene);
   const interaction = scenePromptPacket(prompt, "interaction").interaction;
-  assert.equal(interaction.gmPrivateInput, submitted);
+  assert.equal(interaction.gmPrivateInput, undefined);
+  assert.equal(interaction.inputWithheld, true);
   assert.deepEqual(
     interaction.groundedInput.map(({ for: holder, text }: { for: string; text: string }) => [holder, text]).sort(),
     [

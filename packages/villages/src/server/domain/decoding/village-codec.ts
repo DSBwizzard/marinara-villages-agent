@@ -1,3 +1,4 @@
+import { readAgendaPurpose } from "../rules/agenda-flexibility.js";
 import { readResidenceAgreement } from "../rules/residence-agreement.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { emptyPlaceRegistry, findLocation, readPlaceRegistry } from "../rules/places.js";
@@ -394,6 +395,7 @@ function coerceAgenda(value: unknown, preserveCapturedAgenda: boolean): VillageA
               venueId: asTrimmedString(item.venueId),
               zoneId: asTrimmedString(item.zoneId) || undefined,
               activity: boundText(item.activity, MAX_AGENDA_ACTIVITY_LENGTH),
+              purpose: readAgendaPurpose(item.purpose),
             },
           ];
         })
@@ -1715,7 +1717,7 @@ export function coerceVillageState(
         state.venues.find((entry) => entry.id === block.venueId) ??
         state.venues.find((entry) => venueResidentIds(entry).includes(villager.characterId));
       if (venue && !venue.access)
-        block.zoneId = chooseAgendaZone(venue, villager.characterId, block.activity, block.zoneId, state).id;
+        block.zoneId = chooseAgendaZone(venue, villager.characterId, block, block.zoneId, state).id;
     }
   }
 

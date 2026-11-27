@@ -1,9 +1,10 @@
 import type { VillageAgenda, VillageAgendaBlock, VillageVenue } from "../models/world.js";
-import { composeAgenda } from "./agenda-composition.js";
+import { composeAgenda, type CapturedAgendaShape } from "./agenda-composition.js";
 import {
   fixedRestAgendaBlock,
   flexibleAgendaBlock,
   normalizeAgendaNap,
+  readAgendaPurpose,
   scheduledAgendaActivity,
 } from "./agenda-flexibility.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
@@ -24,6 +25,7 @@ const block = (startMinute: number, endMinute: number, venueId: string, activity
 const openDay = (): VillageAgendaBlock[] => [
   {
     ...block(0, 1440, "", "Taking care of their own affairs"),
+    purpose: "unplanned",
     flexible: true,
   },
 ];
@@ -96,6 +98,7 @@ export function completeAgendaWeek(
           return [
             {
               ...block(start as number, end as number, venueId, normalizeAgendaNap(activity)),
+              ...(readAgendaPurpose(row.purpose) ? { purpose: readAgendaPurpose(row.purpose) } : {}),
               ...(row.restKind === "sleep" || row.restKind === "other" || row.restKind === "nap"
                 ? { restKind: row.restKind }
                 : {}),
@@ -228,6 +231,7 @@ export function ordinaryAgendaBlocksFor(
     agenda.week?.[weekday] ??
     agenda.day.map((entry) => ({
       ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
+      ...(entry.purpose ? { purpose: entry.purpose } : {}),
       zoneId: entry.zoneId,
     }));
   return agenda.calendarVersion === 1 && (agenda.activeDay ? key > agenda.activeDay.dateKey : activating)
@@ -245,9 +249,18 @@ export function bookedAgendaDays(agenda: VillageAgenda, now: Date) {
   return Object.fromEntries([...dates].map((key) => [key, ordinaryAgendaBlocksFor(agenda, calendarAt(now, key, 720))]));
 }
 
-export function agendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaBlock[] {
-  return composeAgenda(
+export function agendaBlocksFor(
+  agenda: VillageAgenda,
+  at: Date,
+  capturedShape?: CapturedAgendaShape,
+): VillageAgendaBlock[] {
+  const blocks = composeAgenda(
     ordinaryAgendaBlocksFor(agenda, at),
     (agenda.reservations ?? []).filter((reservation) => reservation.dateKey === agendaDateKey(at)),
+    capturedShape,
+  );
+  if (capturedShape !== "untyped-joined") return blocks;
+  return blocks.map(({ purpose, ...row }) =>
+    purpose === "unplanned" && row.activity === "Taking care of their own affairs" ? row : { ...row, purpose },
   );
 }

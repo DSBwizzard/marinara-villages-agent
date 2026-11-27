@@ -36,6 +36,8 @@ export type MailPublication = MailContinuityPlan & {
   reading?: MailContinuityPlan;
 };
 
+export class MailProtectionChanged extends Error {}
+
 /** One letter stage, shared meanings and its native envelope publish in the existing Village CAS. */
 export function acceptMailContinuity(state: VillageState, publication: MailPublication, acceptedAt: string) {
   const { text, phase } = publication,
@@ -121,15 +123,15 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
           (unit) => !roomContext.provenance.includes(unit),
         ),
     );
-  memoryRequire(
+  const protectionCurrent =
     publication.admission.protectionFingerprint ===
-      continuityProtectionFingerprint(state.continuity, [
-        ...[mail.from, mail.to].map((party) => ({ kind: "actor" as const, ...party })),
-        ...references.filter((holder) => holder.id !== mail.from.id && holder.id !== mail.to.id),
-        ...(phase === "read" && !publication.keep.length ? [] : rooms),
-      ]),
-    "mail continuity protection changed",
-  );
+    continuityProtectionFingerprint(state.continuity, [
+      ...[mail.from, mail.to].map((party) => ({ kind: "actor" as const, ...party })),
+      ...references.filter((holder) => holder.id !== mail.from.id && holder.id !== mail.to.id),
+      ...(phase === "read" && !publication.keep.length ? [] : rooms),
+    ]);
+  if (!protectionCurrent && phase === "read") throw new MailProtectionChanged("mail continuity protection changed");
+  memoryRequire(protectionCurrent, "mail continuity protection changed");
   memoryRequire(
     references.every(
       (holder) =>
@@ -144,9 +146,15 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     const key = continuityHolderKey(roomContext.holder);
     memoryRequire(
       roomContext.holder.kind === "room" &&
-        ((phase === "read" && !publication.keep.length) ||
-          roomContext.fingerprint === continuityProtectionFingerprint(state.continuity, [roomContext.holder])) &&
         roomContext.provenance.every((unit) => publication.admission.provenance?.[key]?.includes(unit)),
+      "mail room context protection changed",
+    );
+    const roomProtectionCurrent =
+      roomContext.fingerprint === continuityProtectionFingerprint(state.continuity, [roomContext.holder]);
+    if (!roomProtectionCurrent && phase === "read" && publication.keep.length)
+      throw new MailProtectionChanged("mail room context protection changed");
+    memoryRequire(
+      roomProtectionCurrent || (phase === "read" && !publication.keep.length),
       "mail room context protection changed",
     );
     for (const unit of roomContext.provenance) {

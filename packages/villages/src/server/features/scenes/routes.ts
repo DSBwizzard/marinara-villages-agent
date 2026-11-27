@@ -287,11 +287,18 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       if (mode !== "chat" && mode !== "contact") throw badRequest("Unsupported Scene action.");
       if (mode === "contact" && request.body?.contact?.delivery === "device")
         throw badRequest("Device links are not supported by Contact.");
+      const rememberFor = request.body?.rememberFor;
+      if (
+        rememberFor !== undefined &&
+        (mode !== "chat" || typeof rememberFor !== "string" || !rememberFor || rememberFor.length > 200)
+      )
+        throw badRequest("Choose a recipient for the reminder.");
       return await sendVenueTurn({
         sessionId: readChatId(request.body?.sessionId),
         message: readMessage(request.body?.message),
         mode,
         targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
+        ...(typeof rememberFor === "string" ? { rememberFor } : {}),
         ...(mode === "contact"
           ? {
               contact: {
@@ -301,6 +308,7 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
                   typeof request.body?.contact?.boundaryZoneId === "string" ? request.body.contact.boundaryZoneId : "",
                 targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
                 quote: readMessage(request.body?.message),
+                ...(request.body?.contact?.delivery === "loud" ? { delivery: "loud" as const } : {}),
               },
             }
           : {}),
