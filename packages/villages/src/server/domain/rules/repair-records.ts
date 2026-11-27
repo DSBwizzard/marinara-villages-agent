@@ -809,7 +809,9 @@ export function repairPlaceDirectory(state: VillageState, at?: string): RepairBr
           items.push({
             id: record.id,
             title: record.title,
-            icon: ["access-extra", "hours-mode", "hours-period", "grant", "entry-refusal"].includes(recordKind)
+            icon: ["access-extra", "hours-mode", "hours-period", "grant", "new-grant", "entry-refusal"].includes(
+              recordKind,
+            )
               ? "access"
               : "details",
             summary: String(record.fields[0]?.value ?? "").slice(0, 120),

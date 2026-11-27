@@ -1044,6 +1044,17 @@ await runCase("repair-familiar/targets", async () => {
   }
   const places = await f.api.list("places", "", 0, undefined, undefined, true);
   assert(places.directory?.length);
+  const pending = [...places.directory!],
+    grants = [];
+  while (pending.length) {
+    const item = pending.pop()!;
+    pending.push(...(item.children ?? []));
+    if (item.id.startsWith('["new-grant",')) grants.push(item);
+  }
+  assert(
+    grants.length > 0 && grants.every((item) => item.icon === "access"),
+    "New permissions belong to Access & hours",
+  );
   assert.deepEqual(await f.read(), before, "browsing targets cannot mutate a Village");
   const venue = before.venues[0]!;
   const management = await f.api.inspect(repairId("management", venue.id));
