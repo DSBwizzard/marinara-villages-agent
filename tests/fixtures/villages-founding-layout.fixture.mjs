@@ -352,13 +352,16 @@ export async function verifyFoundingLayout(group) {
             });
           if (path.endsWith("/connections")) {
             if (method === "PUT") {
-              modelSelection = { ...modelSelection, ...route.request().postDataJSON() };
-              modelSelection.embeddingStatus =
-                modelSelection.embedding === "local"
-                  ? "preparing"
-                  : modelSelection.embedding?.startsWith("connection:")
-                    ? "ready"
-                    : undefined;
+              const patch = route.request().postDataJSON();
+              modelSelection = { ...modelSelection, ...patch };
+              if (patch.embedding !== undefined) {
+                modelSelection.embeddingStatus =
+                  patch.embedding === "local"
+                    ? "preparing"
+                    : patch.embedding.startsWith("connection:")
+                      ? "ready"
+                      : undefined;
+              }
             }
             if (method === "GET" && holdConnectionRead) {
               connectionReadHeld = true;

@@ -160,6 +160,10 @@ await withBrowser(browser, async () => {
         const recommendation = root.getByRole("dialog", { name: "Image connection", exact: true });
         if (await recommendation.isVisible())
           await recommendation.getByRole("button", { name: "Continue without images", exact: true }).click();
+        const embedding = root.getByRole("dialog", { name: "Embedding model", exact: true });
+        if (await embedding.isVisible()) {
+          await embedding.getByRole("button", { name: "Continue without embeddings", exact: true }).click();
+        }
       };
       for (const reply of ["START", "Next", "Next", "Next", "Next", "Next", "Next", "Next"])
         if (reply === "Next") await advance();
