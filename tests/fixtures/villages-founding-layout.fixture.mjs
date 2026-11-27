@@ -1162,6 +1162,8 @@ export async function verifyFoundingLayout(group) {
         await expect(line).toHaveText(/^The World is the big backdrop/);
         await expect(hierarchy).toBeVisible();
         await expect(presenting).toHaveAttribute("data-flipping", "false");
+        await finishPassage(scene);
+        const worldIntroEnd = await line.textContent();
         await page.evaluate(() => {
           const animate = Element.prototype.animate;
           window.mariFlips = [];
@@ -1253,6 +1255,14 @@ export async function verifyFoundingLayout(group) {
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `founding-world-form-${view.width}-${view.height}.png`),
           });
         await worldRules.fill("The sun never sets.");
+        if (phone) {
+          await worldPopup.getByRole("button", { name: "Back", exact: true }).click();
+          await expect(worldPopup).toHaveCount(0);
+          await expect(line).toHaveText(worldIntroEnd);
+          await nextLine();
+          await expect(worldPopup).toBeVisible();
+          await expect(worldRules).toHaveValue("The sun never sets.");
+        }
         if (draftWithLore) {
           await worldField.fill(worldBrief);
           await expect
@@ -1266,7 +1276,7 @@ export async function verifyFoundingLayout(group) {
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
           await expect(currentStar).toHaveAttribute("aria-label", "Setting");
-          if (phone) await nextLine();
+          if (phone) await expect(worldPopup).toBeVisible();
           await expect(worldField).toHaveValue(worldBrief);
         }
         if (phone) await worldPopup.getByRole("button", { name: "Next", exact: true }).click();
@@ -2066,7 +2076,10 @@ export async function verifyFoundingLayout(group) {
         await expect(root.locator("[data-explanation]")).toHaveCount(1);
         if (phone)
           await expect(root.locator(".villages-setting-dialogue:visible")).not.toHaveAttribute("data-reader-next-page");
-        await finishPassage(root, -1);
+        await expect(root.getByText(/^Put your places on the Map/)).toBeVisible();
+        await retreat();
+        await expect(root.getByText(/^Got a place in mind/)).toBeVisible();
+        await retreat();
         await expect(root.getByText(venueIntroOpening)).toBeVisible();
         await expect(work).toHaveCount(0);
         await retreat();
@@ -2980,6 +2993,11 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-setting-${view.width}-${view.height}.png`),
           });
+        await advance();
+        await expect(root).toHaveAttribute("data-review-stage", "map");
+        await expect(overview).toHaveCount(0);
+        await retreat();
+        await expect(overview).toHaveAttribute("data-page", "setting");
         await advance();
         await expect(root).toHaveAttribute("data-review-stage", "map");
         await expect(overview).toHaveCount(0);

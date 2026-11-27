@@ -8,7 +8,6 @@ import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
 type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]>;
-const worldQuestion = "What World does your Village take place in?";
 const script: Record<SettingBeat, readonly string[]> = {
   welcome: [
     "Oh, hello! I’m Mari. I was hoping you’d stop by.",
@@ -20,7 +19,7 @@ const script: Record<SettingBeat, readonly string[]> = {
     "See these five layers? We’ll start at the top and work our way down. I promise there’s no quiz.",
     "The World is the big backdrop. If your Village belongs to a world you already know, tell me enough to get my bearings. You can leave it open if you’re still deciding.",
   ],
-  world: [`${worldQuestion} One sentence will do. If you haven’t decided, we can leave the horizon blurry.`],
+  world: ["What World does your Village take place in?"],
   lorebooks: [
     "Got Lorebooks? I’ll look up people and customs when I draft your setting. Villages can keep using those books for Scenes, new places, and Agendas.",
     "Which Lorebooks should I have on my desk?",
@@ -91,7 +90,7 @@ export function FoundingSettingScene({
     beat,
     index: beat === "village" && setupWorkspace.settingEditorOpen ? script[beat].length - 1 : 0,
   }));
-  const [popup, setPopup] = useState<"world" | "village">();
+  const [villagePopup, setVillagePopup] = useState(false);
   const lineRef = useRef<HTMLParagraphElement>(null);
   const draftButton = useRef<HTMLButtonElement>(null);
   const focusLine = () =>
@@ -99,8 +98,8 @@ export function FoundingSettingScene({
       lineRef.current?.parentElement?.scrollTo({ top: 0 });
       lineRef.current?.focus({ preventScroll: true });
     });
-  const closePopup = () => {
-    setPopup(undefined);
+  const closeVillagePopup = () => {
+    setVillagePopup(false);
     focusLine();
   };
   useEffect(() => {
@@ -127,17 +126,11 @@ export function FoundingSettingScene({
       mobileMenu: undefined,
     }));
     setTurn({ beat: settingBeat, index: showLast ? script[settingBeat].length - 1 : 0 });
-    const openedPopup = phone
-      ? settingBeat === "world"
-        ? "world"
-        : settingBeat === "village-overview" && showLast
-          ? "village"
-          : undefined
-      : undefined;
-    setPopup(openedPopup);
+    const openVillage = phone && settingBeat === "village-overview" && showLast;
+    setVillagePopup(openVillage);
     onBeatChange();
     const openLorebooks = settingBeat === "lorebooks" && showLast;
-    if (!openedPopup && !openLorebooks && (!openEditor || !phone)) focusLine();
+    if (!(phone && settingBeat === "world") && !openVillage && !openLorebooks) focusLine();
   };
   const request = setupWorkspace.suggestionRequest;
   const pending = request && !request.failure;
@@ -197,7 +190,7 @@ export function FoundingSettingScene({
   };
   const submitBrief = () => {
     if (!canDraft) return;
-    setPopup(undefined);
+    setVillagePopup(false);
     if (phone) setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: false }));
     const { setupLocationName, setupSetting } = controller;
     if (!waitingForMari && [setupLocationName, setupSetting].some((value) => value.trim())) setConfirmReplace(true);
@@ -311,7 +304,8 @@ export function FoundingSettingScene({
     setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: false }));
     focusLine();
   };
-  const inactive = phone && editorOpen;
+  const worldPopup = phone && beat === "world";
+  const inactive = phone && (editorOpen || worldPopup);
   return (
     <section
       className="villages-setting-guide"
@@ -320,8 +314,8 @@ export function FoundingSettingScene({
       inert={inactive || undefined}
     >
       {title}
-      <FoundingReader text={lines[lineIndex]!} lineRef={lineRef} hidden={!!title}>
-        {!inactive && !popup ? notices : null}
+      <FoundingReader text={lines[lineIndex]!} lineRef={lineRef} hidden={!!title || worldPopup}>
+        {!inactive && !villagePopup ? notices : null}
         {!phone && beat === "village" && lastLine ? <section aria-label="Your first Map">{mapFields}</section> : null}
         {!lastLine ? (
           <div className="villages-founding-replies">
@@ -347,19 +341,16 @@ export function FoundingSettingScene({
               Next
             </button>
           </div>
-        ) : beat === "world" ? (
+        ) : beat === "world" && !phone ? (
           <>
-            {!phone ? worldField : null}
+            {worldField}
             <div className="villages-founding-replies">
               {backReply}
               <button
                 type="button"
                 className="villages-forging-primary"
                 data-reader-direction="next"
-                onClick={() => {
-                  if (phone) setPopup("world");
-                  else moveTo("lorebooks");
-                }}
+                onClick={() => moveTo("lorebooks")}
               >
                 Next
               </button>
@@ -392,7 +383,7 @@ export function FoundingSettingScene({
                 data-reader-direction="next"
                 onClick={() => {
                   if (beat === "world-overview") moveTo("world");
-                  else if (phone) setPopup("village");
+                  else if (phone) setVillagePopup(true);
                   else finishVillage();
                 }}
               >
@@ -400,7 +391,7 @@ export function FoundingSettingScene({
               </button>
             </div>
           </>
-        ) : confirmReplace ? (
+        ) : worldPopup ? null : confirmReplace ? (
           <div className="villages-founding-replies">
             <button
               type="button"
@@ -460,17 +451,12 @@ export function FoundingSettingScene({
           </footer>
         </FoundingDialog>
       ) : null}
-      {phone && popup === "world" && beat === "world" ? (
-        <FoundingDialog
-          title="The wider world"
-          className="villages-setting-fields-dialog"
-          scrollBody
-          onClose={closePopup}
-        >
+      {worldPopup ? (
+        <FoundingDialog title="The wider world" className="villages-setting-fields-dialog" scrollBody onClose={back}>
           <div className="villages-setting-fields">{worldField}</div>
           <footer>
             {notices}
-            <button type="button" onClick={closePopup}>
+            <button type="button" onClick={back}>
               Back
             </button>
             <button
@@ -484,12 +470,17 @@ export function FoundingSettingScene({
           </footer>
         </FoundingDialog>
       ) : null}
-      {phone && namingVillage && popup === "village" ? (
-        <FoundingDialog title="Your Village" className="villages-setting-fields-dialog" scrollBody onClose={closePopup}>
+      {phone && namingVillage && villagePopup ? (
+        <FoundingDialog
+          title="Your Village"
+          className="villages-setting-fields-dialog"
+          scrollBody
+          onClose={closeVillagePopup}
+        >
           <div className="villages-setting-fields">{villageFields}</div>
           <footer>
             {notices}
-            <button type="button" onClick={closePopup}>
+            <button type="button" onClick={closeVillagePopup}>
               Back
             </button>
             <button

@@ -1234,7 +1234,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     const closeChapterMenu = () => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: undefined }));
     const backToChapterGuide = () => {
       rememberMariPosition();
-      setVenueIntroIndex(setupStep === FOUNDING_STEP.Venues ? 0 : null);
+      setVenueIntroIndex(setupStep === FOUNDING_STEP.Venues ? VENUE_INTRO.length - 1 : null);
       closeChapterMenu();
     };
     const canCloseChapterMenu = !busy && !setupEditorOpen;
