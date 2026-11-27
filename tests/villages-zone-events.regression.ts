@@ -117,9 +117,23 @@ for (const message of [
   "Hello, Near!",
   "I ask Near what is cooking.",
   "I call out to Near.",
+  'I call, "Near, can I come in?"',
 ]) {
-  assert.deepEqual(zoneEventScene(base, venue, { message }).contactGeneration!.remoteIds, ["near"]);
+  const context = zoneEventScene(base, venue, { message });
+  assert.deepEqual(context.contactGeneration!.remoteIds, ["near"]);
+  assert.deepEqual(context.contactGeneration!.doorwayVoiceIds, ["near"]);
 }
+const privateRoom = structuredClone(venue);
+privateRoom.zones!.find((zone) => zone.id === "hall")!.kind = "restricted";
+const privateScene = {
+  ...base,
+  sceneAttendance: { ...base.sceneAttendance!, layout: captureSceneLayout(privateRoom) },
+};
+assert.deepEqual(
+  zoneEventScene(privateScene, privateRoom, { message: 'I call, "Near, can I come in?"' }).contactGeneration!
+    .doorwayVoiceIds,
+  undefined,
+);
 assert.deepEqual(
   zoneEventScene(base, venue, { message: "I tell Near's sister about the soup." }).contactGeneration!.remoteIds,
   [],

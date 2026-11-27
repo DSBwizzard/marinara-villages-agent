@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 import type { NpcIdentity } from "../models/places.js";
-import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
+import type { VenueLine, VenueScene, VenueReplyLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { badGateway } from "./errors.js";
 import { findLocation, findNpc, readNpc } from "./places.js";
@@ -12,23 +12,54 @@ export type NpcAdmission = { localKey: string; npc: NpcIdentity; segment: number
 export const npcAdmissionFields = {
   localKey: z.string().regex(/^new:[a-z0-9-]{1,60}$/),
   existingId: z.string().min(1).max(160).optional(),
+  returning: z.literal(true).optional(),
   name: z.string().trim().min(1).max(100).optional(),
   label: z.string().trim().min(1).max(100).optional(),
   appearance: z.string().trim().min(1).max(1000).optional(),
   characterization: z.string().trim().min(1).max(1000).optional(),
 };
 export type NpcAdmissionRequest = z.infer<z.ZodObject<typeof npcAdmissionFields>>;
+export const DEFAULT_NPC_LABEL = "Stranger";
+const escapeNpcName = (name: string) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export function npcNameInText(text: string, name: string): boolean {
+  return new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${escapeNpcName(name)}(?![\\p{L}\\p{M}\\p{N}])`, "u").test(text);
+}
+
+export function playerHeardNpcSpeech(line: Pick<VenueLine, "kind" | "heardBy" | "contactHidden">): boolean {
+  return (
+    (line.kind === "dialogue" || line.kind === "whisper" || line.kind === "side") &&
+    !line.contactHidden &&
+    line.heardBy.includes("player")
+  );
+}
+
+export function revealsNpcName(
+  line: Pick<VenueLine, "kind" | "heardBy" | "contactHidden" | "content">,
+  name: string,
+  firstAtAdmission: boolean,
+  speakerLabel?: unknown,
+  allowSpokenName = true,
+): boolean {
+  if (!playerHeardNpcSpeech(line)) return false;
+  if (speakerLabel === name) return true;
+  if (!allowSpokenName) return false;
+  const namePattern = escapeNpcName(name);
+  const introduction = "(?:[Ii](?:['’]m| am)|[Mm]y name is|[Yy]ou can call me|[Cc]all me)\\s+";
+  const text = line.content.trim();
+  return (
+    new RegExp(`(?:^|[.!?]\\s+)${introduction}${namePattern}(?=[.!?](?:\\s|$)|[,–—]|$)`, "u").test(text) ||
+    (firstAtAdmission && new RegExp(`^${namePattern}(?:[.!](?:\\s|$)|$)`, "u").test(text))
+  );
+}
+
 export function witnessedNpcName(source: ContinuityEvidence, actorId: string, name: string): boolean {
   if (!name.trim() || name !== name.trim() || name.length > 100 || /[\r\n]/.test(name)) return false;
-  const pattern = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return (
     source.kind === "speech" &&
     source.actorId === actorId &&
     source.perceptions.some(
-      (row) =>
-        row.actorId === "player" &&
-        row.channel === "words" &&
-        new RegExp(`(?<![\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`, "u").test(row.text),
+      (row) => row.actorId === "player" && row.channel === "words" && npcNameInText(row.text, name),
     )
   );
 }
@@ -63,21 +94,18 @@ export function prepareNpcAdmission(
     );
     npc = structuredClone(captured);
   } else {
-    memoryRequire(
-      request.name && request.label && request.appearance && request.characterization,
-      "an improvised NPC needs a compact complete identity and appearance",
-    );
+    memoryRequire(request.name, "a new NPC needs a name");
     assertDistinctNpcName(state, request.name);
-    assertDistinctNpcName(state, request.label);
+    if (request.label) assertDistinctNpcName(state, request.label);
     const id = "npc:" + memoryHash([state.seed, scene.id, operationId, request.localKey]);
     memoryRequire(!state.worldPlaces.npcs[id], "replay the accepted NPC introduction");
     npc = readNpc({
       id,
       revision: 1,
       name: request.name,
-      label: request.label,
+      label: request.label ?? DEFAULT_NPC_LABEL,
       appearance: request.appearance,
-      characterization: request.characterization,
+      characterization: request.characterization ?? "",
       mapId: findLocation(state, scene.placeId)?.presentation.mapId,
       listed: false,
       facts: [],

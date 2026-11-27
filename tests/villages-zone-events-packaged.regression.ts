@@ -25,6 +25,7 @@ import {
 } from "../packages/villages/src/server/features/scenes/scene-terminal.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { sceneFixtureText } from "./helpers/tagged-scene.fixture.js";
 import {
   authorSceneFixture,
   authorVillageFixture,
@@ -244,7 +245,7 @@ const model = {
   maxContext: 64000,
   maxOutputTokens: 4096,
   fitContext: (messages: any[], options: any) => ({ messages, ...options, trimmed: false }),
-  async chatComplete(messages: { role: string; content: string }[]) {
+  async chatComplete(messages: { role: string; content: string }[], options?: { responseFormat?: unknown }) {
     completions++;
     assert.match(messages[0].content, /GM of Villages/);
     const prompt = messages.map(({ content }) => content).join("\n");
@@ -255,10 +256,19 @@ const model = {
       assert.match(prompt, /Contact context: .*"boundaryZoneId":"kitchen"/u);
       assert.doesNotMatch(prompt, /"kind":"knock"|doorway contact/iu);
     }
+    if (prompt.includes("The place can initiate this even when nobody is present.")) {
+      assert.match(messages.at(-1)!.content, /Use Narration: text/);
+      assert.doesNotMatch(messages.at(-1)!.content, /one JSON object/);
+      assert.equal(options?.responseFormat, undefined);
+    }
     assert(answer, "Only an explicitly supplied synthetic response may dispatch");
     const selected = answer;
     answer = undefined;
-    return { ...selected, usage: { inputTokens: 10, outputTokens: 10 } };
+    return {
+      ...selected,
+      content: sceneFixtureText(messages, selected.content),
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
   },
 };
 const runtime = {
@@ -560,11 +570,17 @@ try {
   const readyEntrance = (await request("/rooms/active")).session;
   assert.equal(readyEntrance.visitEventOpening, true);
   assert.deepEqual(readyEntrance.activeIds, []);
-  provide({ segments: [{ id: "wind", kind: "narration", text: "A gust rattles the shutters." }] });
+  answer = {
+    content: "A gust rattles the shutters.",
+    finishReason: "stop",
+  };
   const greetedEntrance = (await request("/rooms/greet", { sessionId: placeArrival.id })).session;
   assert.equal(greetedEntrance.status, "active");
   assert.equal(completions, beforeDisabled + 1);
   assert.match(JSON.stringify(greetedEntrance.lines), /gust rattles the shutters/);
+  assert.equal(greetedEntrance.zoneId, "exterior");
+  await request("/rooms/greet", { sessionId: placeArrival.id });
+  assert.equal(completions, beforeDisabled + 1, "the saved opening never dispatches again");
 
   await restart(baseline);
   const validKeep = {
@@ -593,14 +609,16 @@ try {
     segments: [{ id: "news", kind: "dialogue", speakerId: "aqua", text: validKeep.text, requires: ["discard"] }],
     keep: [rejectedKeep],
   });
-  await request("/rooms/turn", held, 500);
-  assert.equal(turnOf(held.submissionId)?.acceptance.status, "held");
-  assert.equal(turnOf(held.submissionId)?.narration?.readset.source.input, held.message);
+  const rejected = await request("/rooms/turn", held, 502);
+  assert.equal(rejected.error, "The reply could not be saved.");
+  assert.equal(turnOf(held.submissionId)?.acceptance.status, "abandoned");
+  assert.equal(turnOf(held.submissionId)?.message, held.message);
+  assert.equal(turnOf(held.submissionId)?.narration, undefined);
   assert.equal(episodeOf(held.submissionId), undefined);
   await restart();
   await request(roomUrl + "/changes/replay", {});
-  assert.equal(turnOf(held.submissionId)?.acceptance.status, "held");
-  assert.equal(completions, beforeHeld + 1, "A held reply survives restart and replay without another purchase");
+  assert.equal(turnOf(held.submissionId)?.acceptance.status, "abandoned");
+  assert.equal(completions, beforeHeld + 1, "Restart and refresh do not buy another reply");
   const replacement = { ...submit("replacement"), replaceOfOperationId: held.submissionId };
   await request("/rooms/turn", { ...replacement, retryOfAttemptId: "wrong-attempt" }, 409);
   assert.equal(completions, beforeHeld + 1);
@@ -772,13 +790,26 @@ try {
       await request("/rooms/turn", payload, 500);
       assert.equal(fault, undefined, "The intended storage boundary was exercised");
       assert.equal(completions, before + 1);
-      assert.equal(!!episodeOf(id), owner === "world" && time === "after");
+      const committed = owner === "world" && time === "after";
+      assert.equal(!!episodeOf(id), committed);
       await restart();
-      await request("/rooms/turn", { ...payload, retryOfAttemptId: savedScene().operation?.attemptId });
-      assert.equal(completions, before + 1, "Storage recovery reuses the purchased response");
+      assert.equal(completions, before + 1, "Restart does not buy another reply");
+      const saved = savedScene();
+      const acceptedId = committed ? id : id + "-retry";
+      if (!committed) provide({ segments: [{ kind: "narration", text }] });
+      await request("/rooms/turn", {
+        ...payload,
+        expectedSceneRevision: saved.sceneRevision,
+        retryOfAttemptId: saved.operation?.attemptId,
+        ...(committed ? {} : { submissionId: acceptedId, replaceOfOperationId: id }),
+      });
+      assert.equal(completions, before + (committed ? 1 : 2), "Only a lost reply needs a new completion");
       assert.equal(savedScene().lines.filter((line) => line.content === text).length, 1);
-      assert.equal(savedScene().submissions.filter((entry) => entry.id === id).length, 1);
-      assert.equal(storedVillage(records).episodes.records.filter((entry) => entry.submissionId === id).length, 1);
+      assert.equal(savedScene().submissions.filter((entry) => entry.id === acceptedId).length, 1);
+      assert.equal(
+        storedVillage(records).episodes.records.filter((entry) => entry.submissionId === acceptedId).length,
+        1,
+      );
     }
   }
 } finally {

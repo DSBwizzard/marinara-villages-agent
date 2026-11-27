@@ -13,6 +13,7 @@ import { seedVillageFixtureDocuments, fixtureSceneState } from "../helpers/villa
 import { initializeRoomContinuity } from "../../packages/villages/src/server/domain/rules/native-continuity.js";
 import { captureSceneContinuity } from "../../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { agendaFixture } from "../helpers/agenda.fixture.js";
+import { sceneFixtureText } from "../helpers/tagged-scene.fixture.js";
 
 export async function packagedSceneServer(
   options: {
@@ -185,7 +186,7 @@ export async function packagedSceneServer(
       estimatedTokensBefore: 1000,
       estimatedTokensAfter: 1000,
     }),
-    chatComplete: async (messages: any[]) => {
+    chatComplete: async (messages: any[], _options?: unknown) => {
       calls++;
       assert.match(messages[0].content, /GM of Villages/, "Only the current GM writer may dispatch");
       return {
@@ -197,6 +198,13 @@ export async function packagedSceneServer(
       };
     },
   };
+  const resolveModel = async () => ({
+    ...model,
+    async chatComplete(messages: any[], options?: unknown) {
+      const response = await model.chatComplete(messages, options);
+      return { ...response, content: sceneFixtureText(messages, response.content) };
+    },
+  });
   const runtime = {
     persistence: { documents },
     resources: {
@@ -207,7 +215,7 @@ export async function packagedSceneServer(
       listLorebooks: async () => [],
       listEligibleLorebookEntries: async () => [],
     },
-    languageModels: { resolve: async () => model, resolveForRequest: async () => model },
+    languageModels: { resolve: resolveModel, resolveForRequest: resolveModel },
     json: { parseJsonish: JSON.parse },
     logger: { info() {}, warn() {}, error() {}, debug() {}, debugOverride() {} },
     getAgentConfig: async () => ({ settings: {} }),

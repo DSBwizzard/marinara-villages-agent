@@ -67,13 +67,14 @@ export function selectNpcCandidates(
     authority = new Set(scope.authorityIds ?? []),
     named = namedNpcIds(registry, scope.query ?? "", index),
     candidates = new Set([...local, ...authority, ...(index.maps.get(scope.mapId ?? "") ?? [])]);
-  const scores = new Map<string, number>();
+  const scores = new Map<string, number>(),
+    excludedIds = new Set(excluded);
   for (const term of new Set(recallTerms(scope.query ?? "")))
     for (const id of index.terms.get(term) ?? []) scores.set(id, (scores.get(id) ?? 0) + 1);
   return [...candidates]
     .flatMap((id) => {
       const npc = registry.npcs[id];
-      return npc && !npc.disabled && !excluded.includes(id) ? [npc] : [];
+      return npc && !npc.disabled && !excludedIds.has(id) ? [npc] : [];
     })
     .sort(
       (a, b) =>

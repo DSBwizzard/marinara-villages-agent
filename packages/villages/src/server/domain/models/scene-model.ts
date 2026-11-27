@@ -46,6 +46,8 @@ export type VenueSubmission = {
   requestFingerprint: string;
   /** The existing Scene outbox owns the purchased fit until its episode is published. */
   narration?: Omit<import("../rules/narration-acceptance.js").NarrationPublication, "native">;
+  /** Identifies a canonical Episode awaiting publication without storing the model reply. */
+  replyCommit?: { episodeId: string; digest: string; setupAt: string };
   acceptance: { status: "pending" | "held" | "applied" | "abandoned"; rejected: { id: string; reason: string }[] };
   episodeId?: string;
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
@@ -130,6 +132,7 @@ export type VenueScene = {
     instruction: string;
     localIds: string[];
     remoteIds: string[];
+    doorwayVoiceIds?: string[];
     /** Selected writers only; physical attendance and witnesses remain independent. */
     actorIds?: string[];
   };
