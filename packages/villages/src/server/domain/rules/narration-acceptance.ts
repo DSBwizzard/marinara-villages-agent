@@ -573,9 +573,15 @@ export function acceptNarrationContinuity(
           "requires",
         ].includes(key),
       );
+    const reactionPerspective =
+      readset.automaticTrespass &&
+      note.class === "perspective" &&
+      Object.hasOwn(note, "relationship") &&
+      note.for !== "room" &&
+      Object.keys(note).every((key) => actorNoteFields.has(key));
     const effect: SceneEffectResult = {
       ...header,
-      independent: openingOfferEcho || optionalNote || optionalAnswer || header.independent,
+      independent: openingOfferEcho || optionalNote || optionalAnswer || reactionPerspective || header.independent,
     };
     try {
       memoryRequire(
