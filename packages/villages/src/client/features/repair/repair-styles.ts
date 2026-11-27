@@ -323,7 +323,9 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-chrome>strong>img{width:24px;height:24px}
 .villages-repair .repair-chrome>button{padding-inline:5px}
 .villages-repair .repair-card{padding:8px;gap:8px}
-.villages-repair .repair-editor:has(.repair-field[data-score]) .repair-fields{gap:10px}
+.villages-repair .repair-card:has(.repair-field[data-score]){gap:6px;padding-block:6px}
+.villages-repair .repair-editor:has(.repair-field[data-score]) .repair-fields{gap:6px}
+.villages-repair .repair-field[data-score]{row-gap:3px}
 .villages-repair .repair-editor{gap:8px}
 }
 `;

@@ -64,7 +64,7 @@ export function relationshipRepairRecords(state: VillageState, personId?: string
               ? [
                   {
                     key: "answer",
-                    label: "Current answer",
+                    label: "Perspective Note",
                     type: "text" as const,
                     multiline: false,
                     value: currentRelationshipAnswerState(state, actor, target)?.relationshipAnswer ?? "",
@@ -108,7 +108,7 @@ export function applyRelationshipRepair(
     (answer !== undefined &&
       (subjectId !== "player" || typeof answer !== "string" || (answer !== "" && !isRelationshipAnswer(answer))))
   )
-    throw badRequest("Use whole-number scores and one sentence of up to 15 words for the answer.");
+    throw badRequest("Use whole-number scores and one sentence of up to 15 words for the Perspective Note.");
   const key = relationshipKey(actor, subject),
     prior = latestRelationshipScores(state.continuity).get(key),
     priorRomance = latestRomanticInterests(state.continuity).get(key),
