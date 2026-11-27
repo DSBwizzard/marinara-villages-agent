@@ -6,6 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -24,6 +25,7 @@ import {
   mobileGestureMoved,
   mobileMapBox,
   mobileMapGesture,
+  mobileMaximumZoom,
   type MobileMapView,
   mobilePhotoScale,
 } from "./villages-mobile-map";
@@ -177,7 +179,7 @@ export function MapStage({
   mobile,
   exploration = false,
   navigationControlsWhilePlacing = false,
-  navigationControlsOnMobile = false,
+  navigationSlider = false,
   navigationFit = "cover",
   navigationView,
   onNavigationView,
@@ -228,7 +230,7 @@ export function MapStage({
   mobile?: boolean;
   exploration?: boolean;
   navigationControlsWhilePlacing?: boolean;
-  navigationControlsOnMobile?: boolean;
+  navigationSlider?: boolean;
   navigationFit?: "cover" | "contain";
   navigationView?: MobileMapView | null;
   onNavigationView?(next: MobileMapView | null): void;
@@ -309,22 +311,56 @@ export function MapStage({
       src && failedSrc !== src ? (decoded?.src === src ? decoded : null) : (shape ?? { width: 1280, height: 720 }),
     [src, decoded, shape, failedSrc],
   );
-  const minimumNavigationZoom =
-    navigationFit === "contain" ? 1 : mobileImage && frame ? mobileCoverZoom(mobileImage, frame) : 1;
-  const mobileInitial: MobileMapView = {
-    zoom: minimumNavigationZoom,
-    centerX: 0.5,
-    centerY: 0.5,
-  };
-  const mobileCurrent = (exploration ? navigationView : mobileView) ?? mobileInitial;
+  const coverNavigationZoom = mobileImage && frame ? mobileCoverZoom(mobileImage, frame) : 1;
+  const minimumNavigationZoom = navigationSlider || navigationFit === "contain" ? 1 : coverNavigationZoom;
+  const maximumNavigationZoom = mobileMaximumZoom(coverNavigationZoom);
+  const initialNavigationZoom = navigationFit === "contain" ? 1 : coverNavigationZoom;
+  const savedCamera = exploration ? navigationView : mobileView;
+  const mobileCurrent = useMemo(() => {
+    if (!savedCamera) return { zoom: initialNavigationZoom, centerX: 0.5, centerY: 0.5 };
+    return navigationSlider && savedCamera.zoom > maximumNavigationZoom
+      ? { ...savedCamera, zoom: maximumNavigationZoom }
+      : savedCamera;
+  }, [initialNavigationZoom, maximumNavigationZoom, navigationSlider, savedCamera]);
+  const sliderValue = Math.round(
+    (100 * (mobileCurrent.zoom - minimumNavigationZoom)) / (maximumNavigationZoom - minimumNavigationZoom),
+  );
   useLayoutEffect(() => {
-    if (exploration) mobileViewRef.current = navigationView ?? null;
-  }, [exploration, navigationView]);
+    if (exploration) mobileViewRef.current = navigationView ? mobileCurrent : null;
+  }, [exploration, mobileCurrent, navigationView]);
   const updateMobileView = (next: MobileMapView | null) => {
     mobileViewRef.current = next;
     setMobileView(next);
     if (exploration) onNavigationView?.(next);
   };
+  const navigateWheel = useEffectEvent((event: WheelEvent) => {
+    if (!mobileImage || !frame || !frameRef.current || inert || pointersRef.current.size) return;
+    if (event.target instanceof Element && event.target.closest(`.${ELEMENT_TAG}-doors`)) return;
+    const mode = event.deltaMode;
+    const line = mode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+    const dx = event.deltaX * (mode === WheelEvent.DOM_DELTA_PAGE ? frame.width : line);
+    const dy = event.deltaY * (mode === WheelEvent.DOM_DELTA_PAGE ? frame.height : line);
+    const current = mobileViewRef.current ?? mobileCurrent;
+    event.preventDefault();
+    // Desktop browsers represent trackpad pinch as a control-modified wheel event.
+    if (event.ctrlKey) {
+      const rect = frameRef.current.getBoundingClientRect();
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      const factor = Math.exp(-clamp(dy, -500, 500) / 300);
+      updateMobileView(mobileMapGesture(mobileImage, frame, current, point, point, factor, minimumNavigationZoom));
+      return;
+    }
+    updateMobileView(
+      mobileMapGesture(mobileImage, frame, current, { x: 0, y: 0 }, { x: -dx, y: -dy }, 1, minimumNavigationZoom),
+    );
+  });
+  useEffect(() => {
+    const canvas = frameRef.current;
+    if (!navigationSlider || !canvas) return;
+    const onWheel = (event: WheelEvent) => navigateWheel(event);
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+  }, [navigationSlider]);
   const picture = useMemo(
     () =>
       mobile || exploration
@@ -659,10 +695,11 @@ export function MapStage({
     }
   };
 
-  const changeNavigationZoom = (factor: number) => {
+  const changeNavigationZoom = (nextZoom: number) => {
     if (!mobileImage || !frame) return;
     const center = { x: frame.width / 2, y: frame.height / 2 };
-    const current = { ...mobileCurrent, zoom: Math.max(mobileCurrent.zoom, minimumNavigationZoom) };
+    const current = mobileViewRef.current ?? mobileCurrent;
+    const factor = nextZoom / Math.max(current.zoom, minimumNavigationZoom);
     updateMobileView(mobileMapGesture(mobileImage, frame, current, center, center, factor, minimumNavigationZoom));
   };
   const resetNavigation = () => {
@@ -963,7 +1000,7 @@ export function MapStage({
                             compactPhotos
                               ? 0.36
                               : mobile
-                                ? mobilePhotoScale(mobileCurrent.zoom, mobileInitial.zoom)
+                                ? mobilePhotoScale(mobileCurrent.zoom, initialNavigationZoom)
                                 : DESKTOP_PHOTO_SCALE,
                             pin.selected === true,
                           ) +
@@ -1055,18 +1092,45 @@ export function MapStage({
         : null}
 
       {exploration && (!placing || navigationControlsWhilePlacing) ? (
-        (!mobile || navigationControlsOnMobile) && (
-          <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
-            <button type="button" aria-label="Zoom out" onClick={() => changeNavigationZoom(1 / 1.25)}>
-              −
-            </button>
-            <button type="button" aria-label="Reset map view" onClick={resetNavigation}>
-              Reset
-            </button>
-            <button type="button" aria-label="Zoom in" onClick={() => changeNavigationZoom(1.25)}>
-              +
-            </button>
-          </div>
+        navigationSlider ? (
+          <input
+            className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-zoom-slider`}
+            type="range"
+            min={0}
+            max={100}
+            value={sliderValue}
+            style={{ "--map-zoom-position": `${sliderValue}%` } as CSSProperties}
+            aria-label="Map zoom"
+            aria-orientation="vertical"
+            aria-valuetext={sliderValue === 0 ? "Full map" : `${Math.round(mobileCurrent.zoom * 100)}%`}
+            disabled={!mobileImage || !frame}
+            onChange={(event) => {
+              const fraction = event.currentTarget.valueAsNumber / 100;
+              changeNavigationZoom(minimumNavigationZoom + fraction * (maximumNavigationZoom - minimumNavigationZoom));
+            }}
+          />
+        ) : (
+          !mobile && (
+            <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
+              <button
+                type="button"
+                aria-label="Zoom out"
+                onClick={() => changeNavigationZoom(mobileCurrent.zoom / 1.25)}
+              >
+                −
+              </button>
+              <button type="button" aria-label="Reset map view" onClick={resetNavigation}>
+                Reset
+              </button>
+              <button
+                type="button"
+                aria-label="Zoom in"
+                onClick={() => changeNavigationZoom(mobileCurrent.zoom * 1.25)}
+              >
+                +
+              </button>
+            </div>
+          )
         )
       ) : framing && zoom && live.fit === "cover" ? (
         <div className={`${ELEMENT_TAG}-zoom`}>

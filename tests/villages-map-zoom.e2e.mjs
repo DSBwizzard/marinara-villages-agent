@@ -18,7 +18,7 @@ function Harness(){const [view,setView]=useState(null),[lighting,setLighting]=us
 window.setLighting=setLighting;
 return <MapStage src={window.mapImage} alt="Map" pins={[]} placing={false} view={defaultView('contain')}
 shape={{width:1376,height:768}} compact={false} fitToRoom={false} mobile={window.phone}
-exploration navigationFit="contain" navigationControlsOnMobile navigationView={view} onNavigationView={setView} lighting={lighting}/>;}
+exploration navigationSlider navigationView={view} onNavigationView={setView} lighting={lighting}/>;}
 createRoot(document.getElementById('root')).render(<Harness/>);`,
   },
   bundle: true,
@@ -49,9 +49,10 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
         await page.addScriptTag({ content: bundle.outputFiles[0].text });
         const stage = page.locator("[data-navigation-zoom]");
         const image = page.getByRole("img", { name: "Map", exact: true });
+        const slider = page.getByRole("slider", { name: "Map zoom", exact: true });
         await expect(stage).toHaveAttribute("data-picture-width", /\d/);
-        for (const action of ["Zoom in", "Zoom in", "Zoom out", "Reset map view", "Zoom in", "Zoom out"]) {
-          await page.getByRole("button", { name: action, exact: true }).click();
+        for (const action of ["20", "40", "30", "0", "50", "30"]) {
+          await slider.fill(action);
           const result = await stage.evaluate(async (element) => {
             const image = element.querySelector("img");
             const samples = [];
@@ -83,6 +84,56 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
           assert.ok(
             result.animations.every((property) => property === "filter"),
             "Only lighting may animate the map image",
+          );
+        }
+        const bounds = await stage.boundingBox();
+        const control = await slider.boundingBox();
+        assert.equal(control.x + control.width, bounds.x + bounds.width - 16);
+        assert.equal(control.y + control.height, bounds.y + bounds.height - 16);
+        await slider.press("Home");
+        await expect(slider).toHaveAttribute("aria-valuetext", "Full map");
+        await expect(stage).toHaveAttribute("data-navigation-zoom", "1");
+        const fit = await image.boundingBox();
+        assert.ok(fit.width <= bounds.width + 0.5 && fit.height <= bounds.height + 0.5);
+        if (width === 1366 && !animatedAccent) {
+          const x = control.x + control.width / 2;
+          const y = control.y + control.height / 2;
+          await page.mouse.click(x, y);
+          await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(35);
+          const beforeSliderDrag = Number(await slider.inputValue());
+          await page.mouse.move(x, y);
+          await page.mouse.down();
+          await page.mouse.move(x, y - 28, { steps: 4 });
+          await page.mouse.up();
+          await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(beforeSliderDrag);
+
+          const point = { x: bounds.x + bounds.width / 2 - 90, y: bounds.y + bounds.height / 2 - 50 };
+          await page.mouse.move(point.x, point.y);
+          const beforePan = await image.boundingBox();
+          const zoomBeforePan = await stage.getAttribute("data-navigation-zoom");
+          await page.mouse.wheel(35, 45);
+          await expect.poll(async () => (await image.boundingBox()).x).toBeCloseTo(beforePan.x - 35, 0);
+          await expect.poll(async () => (await image.boundingBox()).y).toBeCloseTo(beforePan.y - 45, 0);
+          await expect(stage).toHaveAttribute("data-navigation-zoom", zoomBeforePan);
+
+          const beforePinch = await image.boundingBox();
+          const sliderBeforePinch = Number(await slider.inputValue());
+          const cdp = await page.context().newCDPSession(page);
+          await cdp.send("Input.synthesizePinchGesture", {
+            ...point,
+            scaleFactor: 1.25,
+            gestureSourceType: "mouse",
+          });
+          await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(sliderBeforePinch);
+          const afterPinch = await image.boundingBox();
+          assert.ok(afterPinch.width > beforePinch.width);
+          assert.ok(
+            Math.abs((point.x - afterPinch.x) / afterPinch.width - (point.x - beforePinch.x) / beforePinch.width) <
+              0.002,
+          );
+          assert.ok(
+            Math.abs((point.y - afterPinch.y) / afterPinch.height - (point.y - beforePinch.y) / beforePinch.height) <
+              0.002,
           );
         }
         await page.evaluate(() => window.setLighting("night"));

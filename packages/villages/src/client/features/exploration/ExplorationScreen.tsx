@@ -457,7 +457,6 @@ export function ExplorationScreen({
               <div className={`${ELEMENT_TAG}-home-map-viewport`}>
                 <MapStage
                   inert={!!arrival}
-                  navigationControlsOnMobile={navigatorOpen}
                   key={selectedMap?.id}
                   lighting={lighting}
                   src={townMapImage || null}
@@ -527,6 +526,7 @@ export function ExplorationScreen({
                   }}
                   mobile={mobile}
                   exploration
+                  navigationSlider
                   navigationView={navigationView}
                   onNavigationView={setNavigationView}
                   keyboardPlacementId={markerDraft?.selected}

@@ -18,6 +18,10 @@ export function mobileCoverZoom(image: MobileMapSize, frame: MobileMapSize): num
   return Math.max(frame.width / (image.width * contain), frame.height / (image.height * contain));
 }
 
+export function mobileMaximumZoom(coverZoom: number): number {
+  return Math.max(4, coverZoom * 2);
+}
+
 export function mobileMapBox(
   image: MobileMapSize,
   frame: MobileMapSize,
@@ -52,7 +56,7 @@ export function mobileMapGesture(
   const before = mobileMapBox(image, frame, start, minimumZoom);
   if (!before.width || !before.height) return start;
   const startZoom = Math.max(start.zoom, minimumZoom);
-  const zoom = clamp(startZoom * factor, minimumZoom, Math.max(4, mobileCoverZoom(image, frame) * 2));
+  const zoom = clamp(startZoom * factor, minimumZoom, mobileMaximumZoom(mobileCoverZoom(image, frame)));
   const scale = zoom / startZoom;
   const width = before.width * scale;
   const height = before.height * scale;
@@ -70,7 +74,7 @@ export function mobileMapGesture(
 /** Keep photographs compact at the frame-filling overview and grow them as the map zooms in. */
 export function mobilePhotoScale(zoom: number, initialZoom: number): number {
   const cover = Math.max(1, initialZoom);
-  const maximum = Math.max(4, cover * 2);
+  const maximum = mobileMaximumZoom(cover);
   return 0.32 + 1.03 * ((clamp(zoom, cover, maximum) - cover) / (maximum - cover));
 }
 

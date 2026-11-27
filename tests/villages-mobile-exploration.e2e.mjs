@@ -318,11 +318,9 @@ await withBrowser(browser, async () => {
       page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(home).toHaveAttribute("data-mobile", String(mobile));
     await expect(art).toHaveAttribute("src", mapImage);
-    for (const name of ["Zoom out", "Reset map view", "Zoom in"]) {
-      const control = home.getByRole("button", { name, exact: true });
-      if (mobile) await expect(control).toHaveCount(0);
-      else await expect(control).toBeVisible();
-    }
+    const slider = home.getByRole("slider", { name: "Map zoom", exact: true });
+    await expect(slider).toBeVisible();
+    await expect(slider).toHaveAttribute("aria-orientation", "vertical");
     await expect(home.locator("." + P + "-pin-photo-card")).toHaveCount(0);
     await expect(home.locator('[data-kind="person"]')).toHaveCount(0);
     const cover = async () => {
@@ -542,9 +540,10 @@ await withBrowser(browser, async () => {
     await worksite.getByRole("button", { name: "← Locations", exact: true }).click();
     await navigator.getByRole("searchbox").fill("");
     await closePlaces();
-    if (!mobile) await home.getByRole("button", { name: "Reset map view" }).click();
+    if (!mobile) await canvas.press("Home");
     await settleLayout();
     const initial = await geometry();
+    const zoomBefore = Number(await slider.inputValue());
     if (mobile) {
       const frame = await canvas.boundingBox();
       const px = frame.x + frame.width * 0.5,
@@ -559,11 +558,12 @@ await withBrowser(browser, async () => {
       ]);
       await touch("touchEnd", []);
     } else {
-      await home.getByRole("button", { name: "Zoom in", exact: true }).click();
+      await slider.fill(String(Math.min(100, zoomBefore + 20)));
     }
     await expect
       .poll(async () => (await geometry()).width, { message: `pinch or zoom at ${width}x${height}` })
       .toBeGreaterThan(initial.width);
+    await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(zoomBefore);
     await select("Village Market");
     // A new selection after zooming must become the next drag's starting view.
     const before = await geometry(),
