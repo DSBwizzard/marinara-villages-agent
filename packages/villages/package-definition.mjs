@@ -61,6 +61,7 @@ export const villagesDefinition = {
   assetPaths: [
     ...letterFontAssets,
     "villages-icon.png",
+    "repair-icon.png",
     "icon-licenses.txt",
     ...menuArtAssets,
     sceneSprite,

@@ -617,7 +617,16 @@ export function RepairPage({
         >
           ← Return to village
         </button>
-        <strong>REPAIR</strong>
+        <strong>
+          <img
+            src="/api/capability-packages/villages/assets/repair-icon.png"
+            alt=""
+            aria-hidden="true"
+            width="36"
+            height="36"
+          />
+          REPAIR
+        </strong>
         <span>{c.index?.villageName}</span>
         <AreaChoice area={area} disabled={c.saving} onChange={chooseArea} compact />
         <form

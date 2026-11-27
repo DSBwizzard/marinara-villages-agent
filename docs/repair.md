@@ -2,6 +2,8 @@
 
 REPAIR selects targets with the familiar People portraits, Location rows and Zone controls, using charcoal surfaces and a warm accent. People uses a 2×2 grid with nearby pagination. Every page has ← Return to village. There is no Main menu button or top-right target selector.
 
+REPAIR content aligns with the left edge of the shell, including wide windows. The doctor’s bag icon sits immediately before the REPAIR title with a transparent background. The shared layout keeps the same small outer gutter across directories and editors.
+
 Locations and Venues use approved notebook layout A. Opening one selects Details and opens its actual editor. A persistent left-hand list exposes Details, People & roles, Zones, Access & hours, Conditions and Artwork where supported. People & roles groups managers, residents and workers. Zones use the same notebook with their scoped controls. A compact selector replaces the left-hand list on phones. Native Zone rows retain REPAIR’s charcoal styling. Long fields and additional controls remain paged; source values and drafts retain their existing guards.
 
 The selected target stays visible while short, named steps expose its controls. Collection and text pagination keep desktop and phone pages within the viewport without page or panel scrolling. Reference fields offer saved, valid choices and dependent Zones. Authored prose stays text. Read-only source material, receipts, derived reservations and storage revisions are not editable truth.
