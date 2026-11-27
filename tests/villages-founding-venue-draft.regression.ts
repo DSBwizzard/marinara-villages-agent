@@ -100,8 +100,8 @@ const same = applyFoundingVenueDraft(drafted, {
   dayNight: false,
   zones: plan.zones!.map((z) => ({ ...z, dayNight: !z.dayNight })),
 });
-assert.equal(same.dayNight, drafted.dayNight, "unchanged Entrance prose keeps its existing automatic choice");
-assert.equal(same.spaces![0].dayNight, drafted.spaces![0].dayNight, "unchanged Zone prose keeps its automatic choice");
+assert.equal(same.dayNight, false, "the reviewed Entrance lighting choice applies with unchanged prose");
+assert.equal(same.spaces![0].dayNight, !drafted.spaces![0].dayNight, "Zone lighting follows the typed draft choice");
 assert.throws(
   () => parseFoundingVenueDraft({ venues: [{ ...raw, dayNight: "yes" }] }, source, ["new-kitchen"], now),
   /daylight decision/,
