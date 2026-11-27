@@ -105,8 +105,7 @@ for (const fault of ["before", "after"] as const) {
     const repair = createRepairService({
       gate: fixture.gate,
       repository: createVillageRepository(() => fixture.gate.documents),
-      resumeProject: async () => {},
-      cancelProject: async () => {},
+
       replaySaved: async () => {},
     });
     const checkpoint = await repair.createCheckpoint("Original exact submission context", "original");
@@ -256,8 +255,7 @@ for (const committed of [false, true]) {
     const repair = createRepairService({
       gate: fixture.gate,
       repository,
-      resumeProject: async () => {},
-      cancelProject: async () => {},
+
       replaySaved: async () => {},
     });
     const record = await repair.inspect(repairId("narrative-claim", "held"));

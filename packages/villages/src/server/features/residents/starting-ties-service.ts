@@ -1,3 +1,4 @@
+import { readPlayerIdentity } from "../../domain/rules/player-identity.js";
 import { z } from "zod";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -62,9 +63,9 @@ function source(state: VillageState) {
     actors,
     pending,
     establishedPairs: [...new Set(pairs)].sort(),
-    playerName: state.playerPersonaName || state.playerName,
+    playerName: readPlayerIdentity(state).name,
     playerBackground: state.playerBackground,
-    playerIdentity: state.playerPersonaIdentity,
+    playerIdentity: readPlayerIdentity(state).description,
     selectedLorebookIds: state.selectedLorebookIds,
     clarifications: state.startingHistory.clarifications,
   };

@@ -457,22 +457,31 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
       const firstRevision = Math.min(...initial.map((version) => version.createdRevision));
       const first = initial.filter((version) => version.createdRevision === firstRevision);
       memoryRequire(
-        first.some((version) => {
-          const episode = byEpisode.get(owners.get(version.id)!);
-          return (
-            episode &&
-            version.id === continuityVersionId(episode.seed, version.operationId, owner) &&
-            episode.actors.some((actor) => actor.id === owner.id && actor.incarnation === owner.incarnation) &&
-            (version.sources.some((source) => source.actorId === owner.id || source.kind === "native") ||
-              (first.length === 1 &&
-                (version.relationshipScore !== undefined ||
-                  version.romanticInterest !== undefined ||
-                  version.perceptionChanged) &&
-                version.sources.every((source) => perceivedContinuitySource(source, owner.id)) &&
-                version.sources.some((source) => source.episodeId === episode.id && isRelationshipEvent(source)))) &&
-            record.heads[key]
-          );
-        }),
+        (!initial.length &&
+          continuity.versions.some(
+            (version) =>
+              version.rootId === record.id &&
+              version.administrative &&
+              continuityHolderKey(version.administrative.holder) === key &&
+              record.heads[key] &&
+              continuity.receipts[version.operationId]?.versions.includes(version.id),
+          )) ||
+          first.some((version) => {
+            const episode = byEpisode.get(owners.get(version.id)!);
+            return (
+              episode &&
+              version.id === continuityVersionId(episode.seed, version.operationId, owner) &&
+              episode.actors.some((actor) => actor.id === owner.id && actor.incarnation === owner.incarnation) &&
+              (version.sources.some((source) => source.actorId === owner.id || source.kind === "native") ||
+                (first.length === 1 &&
+                  (version.relationshipScore !== undefined ||
+                    version.romanticInterest !== undefined ||
+                    version.perceptionChanged) &&
+                  version.sources.every((source) => perceivedContinuitySource(source, owner.id)) &&
+                  version.sources.some((source) => source.episodeId === episode.id && isRelationshipEvent(source)))) &&
+              record.heads[key]
+            );
+          }),
         "continuity owner lost its initial evidence",
       );
     }

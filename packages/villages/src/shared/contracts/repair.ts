@@ -32,15 +32,17 @@ export type RepairField = {
   key: string;
   label: string;
   value: RepairValue;
-  type: "text" | "number" | "choice" | "boolean" | "clock" | "date" | "days";
+  type: "text" | "number" | "choice" | "boolean" | "clock" | "date" | "datetime" | "days";
   options?: { value: string; label: string; parent?: string }[];
   dependsOn?: string;
   multiline?: boolean;
   group?: string;
+  readOnly?: boolean;
   min?: number;
   max?: number;
 };
 export type RepairRecord = {
+  artwork?: { locationId: string; zoneId: string; imageUrl?: string; canGenerate: boolean };
   id: string;
   topic: RepairTopic;
   title: string;
@@ -48,11 +50,21 @@ export type RepairRecord = {
   fields: RepairField[];
   source: string[];
   actions: { id: string; label: string }[];
-  people?: { id: string; name: string; text?: string; forgotten?: boolean }[];
+  people?: {
+    id: string;
+    name: string;
+    text?: string;
+    forgotten?: boolean;
+    memoryClass?: string;
+    current?: boolean;
+    status?: string;
+    subjects?: string[];
+  }[];
   related: { id: string; title: string }[];
   revision?: number;
   token?: string;
   creating?: boolean;
+  template?: boolean;
   agendaDay?: string;
   agenda?: RepairAgendaDay;
   subjects?: string[];

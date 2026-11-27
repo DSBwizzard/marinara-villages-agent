@@ -1,3 +1,4 @@
+import { readPlayerIdentity } from "./player-identity.js";
 import type {
   MemoryLibrary,
   MemoryListEntry,
@@ -48,6 +49,7 @@ export function continuityContextRevision(state: VillageState, actorId: string) 
   return memoryHash([
     state.seed,
     holder,
+    Object.values(state.continuity.relationshipBaselines ?? {}).filter((row) => row.owner.id === actorId),
     state.continuity.records.flatMap((record) =>
       key && record.heads[key] ? [[record.id, record.heads[key], record.protection[key] ?? null]] : [],
     ),
@@ -148,7 +150,7 @@ const person = (state: VillageState, id: string) => ({
   id,
   name:
     id === "player"
-      ? state.playerName || "You"
+      ? readPlayerIdentity(state).name || "You"
       : (findCardCharacter(state, id)?.cardSnapshot.name ?? findNpc(state, id)?.label ?? "Former resident"),
 });
 function projections(
@@ -227,7 +229,10 @@ function sourceSpeaker(state: VillageState, source: ContinuityEvidence) {
 }
 
 function relationshipAnswers(state: VillageState, residentIds?: readonly string[], includePending = false) {
-  const answers = new Map<string, ContinuityVersion>();
+  const answers = new Map<
+    string,
+    Pick<ContinuityVersion, "createdRevision" | "relationshipAnswer" | "relationshipAnswerScore" | "at">
+  >();
   const roots = new Map(state.continuity.records.map((record) => [record.id, record]));
   const player = continuityActor(state, "player")!;
   const blockedByHolder = new Map<string, ReadonlySet<string>>();
@@ -261,7 +266,24 @@ function relationshipAnswers(state: VillageState, residentIds?: readonly string[
     const key = relationshipKey(owner, version.about[0]);
     if ((answers.get(key)?.createdRevision ?? 0) < version.createdRevision) answers.set(key, version);
   }
+  for (const [key, baseline] of Object.entries(state.continuity.relationshipBaselines ?? {})) {
+    if (!baseline.answer || (residentIds && !residentIds.includes(baseline.owner.id))) continue;
+    if ((answers.get(key)?.createdRevision ?? 0) < baseline.answer.createdRevision)
+      answers.set(key, {
+        ...baseline.answer,
+        relationshipAnswer: baseline.answer.text,
+        relationshipAnswerScore: baseline.answer.score,
+      });
+  }
   return answers;
+}
+
+export function currentRelationshipAnswerState(
+  state: VillageState,
+  owner: { id: string; incarnation: string },
+  subject: { id: string; incarnation: string },
+) {
+  return relationshipAnswers(state).get(relationshipKey(owner, subject));
 }
 
 function relationshipSceneParticipants(state: VillageState, sceneId: string) {
@@ -412,7 +434,7 @@ export function dueRelationshipAnswers(
     const score = scores.get(key);
     if ((answer?.createdRevision ?? 0) > admittedRevision || (score?.createdRevision ?? 0) > admittedRevision)
       return [];
-    if (!answer) return [actor];
+    if (!answer?.relationshipAnswer) return [actor];
     const roots = new Set(
       state.continuity.records
         .filter((record) => record.owner?.id === actor.id && record.owner.incarnation === actor.incarnation)
@@ -480,8 +502,8 @@ export function continuityRelationships(state: VillageState, at: string): Relati
           const answer = answers.get(key)?.relationshipAnswer;
           return {
             person:
-              other.id === "player" && state.playerPersonaName
-                ? { id: other.id, name: state.playerPersonaName }
+              other.id === "player" && readPlayerIdentity(state).name
+                ? { id: other.id, name: readPlayerIdentity(state).name }
                 : person(state, other.id),
             score: scores.get(key)?.relationshipScore ?? 0,
             romanticInterest: interests.get(key)?.romanticInterest ?? 0,

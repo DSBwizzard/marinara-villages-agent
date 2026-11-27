@@ -86,12 +86,6 @@ async function fixture() {
     createRepairService({
       gate,
       repository: repo,
-      resumeProject: async () => {
-        throw Error("No Project command in this fixture");
-      },
-      cancelProject: async () => {
-        throw Error("No Project command in this fixture");
-      },
       replaySaved: async () => {},
     });
   let api = makeService();
@@ -164,7 +158,9 @@ await runCase("repair/agenda", async () => {
     state.venues.push(hall);
   });
   const person = (await f.api.index()).people.find((row) => row.id === "aqua")!;
-  const dates = (await f.api.list("people", "", 0, person.id, "agenda")).records;
+  const agendaRecords = (await f.api.list("people", "", 0, person.id, "agenda")).records;
+  assert.ok(agendaRecords.some((record) => JSON.parse(record.id)[0] === "routine"));
+  const dates = agendaRecords.filter((record) => record.agendaDay);
   assert.equal(person.hasAgenda, true);
   assert.equal(dates.length, 7);
   assert.equal(dates[0]!.agenda?.today, true);
@@ -220,8 +216,8 @@ await runCase("repair/agenda", async () => {
   assert.ok(
     addToday.changes.some(
       (change) =>
-        change.before.includes("00:00–24:00 · Count the lanterns") &&
-        change.after.includes("13:00–14:00 · Refill the lanterns · hall · Entrance (1)"),
+        change.before.includes("00:00–24:00, Count the lanterns") &&
+        change.after.includes("13:00–14:00, Refill the lanterns, hall, Entrance (1)"),
     ),
   );
   await f.api.apply(addToday.id, addToday.token);
@@ -257,7 +253,7 @@ await runCase("repair/agenda", async () => {
   });
   const move = await f.prepare(edit(todayRecord.id, { "zone:1": "common" }, "move-existing"));
   assert.ok(
-    move.changes.some((row) => row.before.includes("hall · Entrance (1)") && row.after.includes("hall · Entrance (2)")),
+    move.changes.some((row) => row.before.includes("hall, Entrance (1)") && row.after.includes("hall, Entrance (2)")),
   );
   await f.api.apply(move.id, move.token);
   assert.equal((await f.read()).villagers[0]!.agenda!.activeDay!.blocks[1]!.zoneId, "common");
@@ -599,7 +595,7 @@ await runCase("repair/visitors", async () => {
   await f.api.apply(style.id, style.token);
   assert.equal((await f.read()).visitors![0]!.letterFontId, font);
   const visits = await f.api.inspect(repairId("visitor", "guest"), "guest");
-  assert.ok(visits.source.some((line) => line.startsWith("Visit ")));
+  assert.ok(visits.fields.some((field) => field.key === "arrivedAt" && field.type === "datetime"));
   const off = await f.prepare(edit(visits.id, { visitsEnabled: false }, "visitor-off"));
   assert.ok(off.affected.some((line) => line.includes("current visit ends")));
   await f.api.apply(off.id, off.token);

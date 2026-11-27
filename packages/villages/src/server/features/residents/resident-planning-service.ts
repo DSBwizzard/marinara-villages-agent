@@ -110,7 +110,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       village: state.name,
       setting: villageCurrentSetting(state),
       playerBackground: state.playerBackground,
-      playerPersonaName: state.playerPersonaName,
+      playerPersonaName: readPlayerIdentity(state).name,
       moment,
       environment: { weather: moment.weather },
       residents: opportunity.actorIds.map((id) => {

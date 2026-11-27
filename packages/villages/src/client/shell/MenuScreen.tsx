@@ -129,7 +129,18 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
         onRetryPreparation={retryPreparation}
         jobs={snapshot?.backgroundWork}
         onRetryWork={controller.retryWork}
-        onBack={() => rawOpenMenu("index")}
+        artwork={{
+          drawPlaceImage: controller.drawPlaceImage,
+          keepPlaceImage: controller.keepPlaceImage,
+          dropPlaceImage: controller.dropPlaceImage,
+          placeBusyId: controller.placeBusyId,
+          problem:
+            controller.placeProblem?.id === controller.repairController.selected?.artwork?.locationId
+              ? controller.placeProblem?.text
+              : undefined,
+        }}
+        onCharacterTools={(id) => controller.openPerson({ actorId: id, section: "tools", returnTo: "menu" })}
+        onBack={rawGoHome}
         onScene={room && room.status !== "closed" ? () => setScreen("room") : undefined}
       />
     );

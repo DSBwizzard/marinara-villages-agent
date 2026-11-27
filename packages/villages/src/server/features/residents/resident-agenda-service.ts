@@ -1,3 +1,4 @@
+import { readPlayerIdentity } from "../../domain/rules/player-identity.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { continuityPreparationContext, continuityContextRevision } from "../../domain/rules/continuity-library.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
@@ -116,7 +117,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         worldRules: village.worldRules,
       },
       playerBackground: village.playerBackground,
-      playerPersonaName: village.playerPersonaName,
+      playerPersonaName: readPlayerIdentity(village).name,
       village: village.name,
       setting: [agendaSetting, village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : ""]
         .filter(Boolean)
@@ -282,6 +283,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         ),
       },
       repairedDays: previous?.repairedDays,
+      repairedWeek: previous?.repairedWeek,
       reservations: previous?.reservations ?? [],
       activeDay: dayHasRolled ? undefined : previous?.activeDay,
       personalizationAttemptDate: agendaDateKey(now),

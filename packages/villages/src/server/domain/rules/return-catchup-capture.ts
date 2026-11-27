@@ -23,6 +23,7 @@ export function captureReturnContext(state: VillageState, at: Date): ReturnCatch
       playerPersonaId: state.playerPersonaId,
       playerPersonaName: state.playerPersonaName,
       playerPersonaIdentity: state.playerPersonaIdentity,
+      ...(state.playerIdentityRepair ? { playerIdentityRepair: state.playerIdentityRepair } : {}),
       playerPersonaMissing: state.playerPersonaMissing,
       villagers: state.villagers,
       venues: state.venues,

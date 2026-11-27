@@ -1,4 +1,4 @@
-import type { VillagePlaceView, VillagePlayerIdentity, VillageState, VillageVillager } from "../models/world.js";
+import type { VillagePlaceView, VillageState, VillageVillager } from "../models/world.js";
 import { findLocation } from "./places.js";
 import { agendaAt } from "./agenda-plan.js";
 import { badRequest, conflict } from "./errors.js";
@@ -8,17 +8,8 @@ import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue
 import { evaluateZoneAccess } from "./venue-access.js";
 import { deriveVillageMoment } from "./village-clock.js";
 
-export function readPlayerIdentity(village: VillageState): VillagePlayerIdentity {
-  if (village.playerPersonaId.length === 0) {
-    return { name: "", description: "", personaId: "", missing: false };
-  }
-  return {
-    name: village.playerPersonaName,
-    description: village.playerPersonaIdentity,
-    personaId: village.playerPersonaId,
-    missing: village.playerPersonaMissing,
-  };
-}
+export { readPlayerIdentity } from "./player-identity.js";
+
 function preferredVillagerPlace(
   village: VillageState,
   villager: VillageVillager,

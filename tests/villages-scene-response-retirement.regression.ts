@@ -41,8 +41,7 @@ async function fixture() {
   const repair = createRepairService({
     gate: f.gate,
     repository: world,
-    resumeProject: async () => {},
-    cancelProject: async () => {},
+
     replaySaved: async () => {},
   });
   const receipts = createSceneResponseReceipts(f.gate.documents),

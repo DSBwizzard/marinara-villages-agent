@@ -293,8 +293,7 @@ try {
   const repair = createRepairService({
     gate: f.gate,
     repository: createVillageRepository(() => f.gate.documents),
-    resumeProject: async () => {},
-    cancelProject: async () => {},
+
     replaySaved: async () => {},
     continueSaved: async () => {},
   });

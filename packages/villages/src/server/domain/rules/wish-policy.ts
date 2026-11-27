@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 import type { VillageAgenda } from "../models/world.js";
 export function routineRevision(agenda: VillageAgenda): string {
   return createHash("sha256")
-    .update(JSON.stringify(agenda.week ?? null))
+    .update(
+      JSON.stringify(
+        agenda.repairedWeek ? { week: agenda.week ?? null, repairedWeek: agenda.repairedWeek } : (agenda.week ?? null),
+      ),
+    )
     .digest("hex");
 }
 

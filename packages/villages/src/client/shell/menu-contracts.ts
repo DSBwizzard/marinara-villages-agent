@@ -34,6 +34,12 @@ import type { ProjectsController } from "../features/projects/useProjectsControl
 
 /** Menu assembly inputs; feature pages own their narrower contracts. */
 export type MenuScreenController = {
+  readonly placeProblem: { id: string; text: string } | null;
+  readonly openPerson: ReturnType<typeof import("./navigation-controller.js").useNavigationOpenPerson>;
+  readonly drawPlaceImage: import("../shared/ZoneImageControls.js").ZoneArtworkCommands["drawPlaceImage"];
+  readonly keepPlaceImage: import("../shared/ZoneImageControls.js").ZoneArtworkCommands["keepPlaceImage"];
+  readonly dropPlaceImage: import("../shared/ZoneImageControls.js").ZoneArtworkCommands["dropPlaceImage"];
+  readonly placeBusyId: import("../shared/ZoneImageControls.js").ZoneArtworkCommands["placeBusyId"];
   readonly repairController: import("../features/repair/useRepairController.js").RepairController;
   readonly housingVenueId: string;
   readonly setHousingVenueId: (id: string) => void;

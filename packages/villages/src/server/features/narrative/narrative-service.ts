@@ -195,7 +195,11 @@ export function createNarrative(ports: Ports) {
       returnCaptureRevision(live.returnCatchup.capture) !== returnCaptureRevision(capture)
     )
       throw new ReturnOpportunityUnavailable("The historical world opportunity changed.");
-    const historical = cloneVillageContext({ ...live, ...capture.world });
+    const historical = cloneVillageContext({
+      ...live,
+      ...capture.world,
+      playerIdentityRepair: capture.world.playerIdentityRepair,
+    });
     const grant = admitNarrative(historical, opportunity.startsAt, "world:" + batchId + ":" + opportunity.id, "world", {
       venueId: opportunity.venueId,
       zoneId: opportunity.zoneId!,

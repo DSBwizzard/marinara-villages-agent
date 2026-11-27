@@ -219,12 +219,7 @@ try {
   const repair = createRepairService({
     gate,
     repository,
-    resumeProject: async () => {
-      throw new Error("No projects in fixture");
-    },
-    cancelProject: async () => {
-      throw new Error("No projects in fixture");
-    },
+
     replaySaved: async () => {},
     continueSaved: async () => {},
   });

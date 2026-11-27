@@ -1,3 +1,4 @@
+import { readPlayerIdentity } from "./village-projections.js";
 import { contactPosition } from "./venue-contact.js";
 import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -250,7 +251,7 @@ function authority(scene: VenueScene) {
     ...(facts
       ? {
           capturedContext: true,
-          playerName: facts.playerPersonaName || facts.playerName || "You",
+          playerName: readPlayerIdentity(facts).name || facts.playerName || "You",
           currentTime: (() => {
             const moment = deriveVillageMoment({
               foundedAt: facts.foundedAt,

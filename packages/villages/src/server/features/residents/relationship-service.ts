@@ -1,3 +1,4 @@
+import { readPlayerIdentity } from "../../domain/rules/player-identity.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { continuityRelationships, inspectContinuityRelationships } from "../../domain/rules/continuity-library.js";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
@@ -23,7 +24,7 @@ export function createRelationships(ports: RelationshipPorts) {
       at = ports.now().toISOString();
     const name = (id: string) =>
       id === "player"
-        ? village.playerPersonaName || village.playerName || "Player"
+        ? readPlayerIdentity(village).name || "Player"
         : (findCardCharacter(village, id)?.cardSnapshot.name ?? "Former resident");
     return {
       processing: ((await ports.backgroundWorkSummaries?.()) ?? [])

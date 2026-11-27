@@ -121,8 +121,7 @@ async function fixture() {
   const api = createRepairService({
     gate,
     repository: repo,
-    resumeProject: async () => {},
-    cancelProject: async () => {},
+
     replaySaved: async () => {},
   });
   await repo.mutateAuthority(

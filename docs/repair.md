@@ -1,34 +1,44 @@
-# REPAIR implementation scope
+# REPAIR
 
-REPAIR uses the normal People, Locations and Zone controls to select a target, themed with REPAIR's charcoal surfaces and warm accent. The selected target appears on the left with a return button. There is no top-right target selector. Every supported person uses the same section navigation; saved capabilities determine which records appear.
+REPAIR selects targets with the familiar People portraits, Location rows and Zone controls, using charcoal surfaces and a warm accent. People uses a 2×2 grid with nearby pagination. Every page has ← Return to village. There is no Main menu button or top-right target selector.
 
-The guided editor uses short named steps, fixed Previous / Discard / Review changes / Next controls, and a guarded Before / After review. Collection pagination and text pagination keep controls reachable without page or panel scrolling. Text pages preserve whitespace and Unicode. Reference fields use existing IDs and valid choices; dependent Zone choices follow their selected Location. Draft identity includes the world, person, record, activity occurrence and action. Late responses cannot replace another target's draft.
+The selected target stays visible while short, named steps expose its controls. Collection and text pagination keep desktop and phone pages within the viewport without page or panel scrolling. Reference fields offer saved, valid choices and dependent Zones. Authored prose stays text. Read-only source material, receipts, derived reservations and storage revisions are not editable truth.
 
-## Delivered interface foundation
+## People
 
-- People reuses portrait buttons, category tabs and search. Locations reuses map filters, search, category tabs and destination rows. Zones reuse the native room rows.
-- Person sections include Relationships, Memories, Wishes, Home & work, Agenda for people with saved Agendas, and Character. They expose existing applicable native records for the selected person.
-- Memory layout B puts a searchable list beside one person's account. Original conversation evidence stays read-only. Modify, Forget, Restore memory, Add memory and Add person use native continuity transactions. Adding a person copies the explicitly selected account as information, retaining the source and the other accounts.
-- Home uses valid native private-room assignments. Work edits native schedules, activity, destination and guest invitation settings. Agreed plans edit or remove the current native appointment directly. Their original evidence remains intact; old admitted offers cannot recreate a canceled repaired booking.
-- Location and Zone Conditions stay scoped to that target. Zone details and supported Venue manager assignments update their authoritative records.
-- Recover work contains routine preparation, background recovery and existing saved-work actions. Existing request identity, retry accounting and provider admission rules remain authoritative.
-- Repair history uses the compact When / Action / Target / Change layout, with details on demand and no Undo controls. Manual Village snapshots have their own World page, with deletion and an explicit reviewed replacement acknowledgment for restoration.
+All eligible residents receive Relationships, Memories, Wishes, Home & work, Agenda and Character. Visitors and supporting people expose their native capabilities without creating new gameplay systems for unsupported roles.
 
-These closely coupled changes form one preview foundation: the shared shell needs consistent target identities, typed fields, draft routing and native owner commands to make its controls real. They preserve the existing server review, simulation, revision and application fences. Existing recovery journals and safety snapshots remain compatibility behavior, rather than a new player workflow.
+- Relationships show the game's shared warmth bars and signed heart charts, including half hearts, with sliders and exact integer controls. Each direction is explicit. Native warmth is −100 to 100; romantic interest is −20 to 20. Administration writes a pair baseline bound to both incarnations, preserves consumed daily allowances and rejects older admitted score work. The player has inbound feelings, rather than invented outbound numeric feelings. Supporting NPCs retain their native qualitative records.
+- Memories use approved layout B: a searchable list beside one person's account. Modify, Forget, Restore memory, Add memory and Add person are real native operations. Type, subjects, current state and eligible private ownership use typed controls. Replacements preserve old subject incarnations, selected private facets, closure and follow settings. Other accounts and immutable original evidence remain separate. Ownership correction creates a new administrative account and shows its recipient and content in the review.
+- Wishes and unilateral commitments support Add, Fulfill, Withdraw, End and Reopen where applicable. Mutual offers, agreed bookings and relationship-source metadata retain their native ownership rules. They use their dedicated editors.
+- Home supports the player and residents, shared households and sleeping arrangements, valid home/sleep Zones, removal and pending move resolution. Native role cleanup and route checks update together. Work edits activity, shift, destination, access route and guest invitations. Pending proposals can be applied administratively or canceled without manufacturing speaker approval.
+- Agenda reuses the full native day planner. Select an ordinary activity, agreed appointment, shared-time plan, work shift or Project reservation to open its authoritative editor directly. Ordinary items support dated/repeating-weekday correction and removal. Native rest, access, capacity, conflicts and reservations stay authoritative. Routine summary and source appear together; returning to the saved underlying routine removes recurring corrections while preserving protected dated work.
+- Character edits the Village-owned name, summary, identity label, card/admission context and letter style. A Persona correction stays local to the Village and remains separate from the Engine library. Captured Scenes and catch-up work retain their captured identity. Character tools link directly to the existing Appearance, signature and library controls.
 
-## Remaining audit delivery slices
+## Locations and World
 
-The full approved audit extends beyond this interface foundation. Deliver and validate these native capabilities independently, using this same target-first interface:
+Locations and Zones expose details, scope control, members, inviters, effective access decisions, bans, exceptions, accompaniment, visiting hours and native next-visit/standing permissions. Household and bedroom rules remain explicit. Managers are not universal access overrides.
 
-1. Exact directed relationship scores between any supported people, including the player, with explicit direction and native score ranges.
-2. Broader home, shared-home, sleeping and Visitor arrangements beyond existing resident private-room assignments. Visitor agendas need their own supported native contract.
-3. Complete Zone access, hours, connections and artwork controls, retaining capacity, access and provider boundaries.
-4. Full Wish, social-plan and Project corrections beyond existing continuity and lifecycle commands.
-5. World conditions, weather and other native World controls, including valid creation and expiry semantics.
-6. User-scheduled whole-Village snapshots and retention controls. Existing manual capture/restore does not implement scheduling.
+Zone editors expose identity, kind, purpose, room details, owner/controller choices, bidirectional connections and add/archive operations. Occupied rooms, active Scenes, capacity, Project dependencies and Entrance remain guarded. Room details support add/remove, visibility, expiry and ordering. Artwork uses native upload/generate/remove/view controls, automatic/day-night settings and existing visual-context settings. Explicit image generation keeps its native provider admission; browsing and administrative edits make no provider calls.
 
-Repair history remains a record of corrections. Players correct an issue through another REPAIR action. Whole-Village restoration is separate and deliberate. Do not add a player-facing per-entry Undo or checkpoint-first workflow.
+Circumstances support creation, whole-Village or multiple Zone targets and status correction. Local Conditions remain local when opened from a Location or Zone. Restrictions, remedies, expiry and clear/reopen affect the actual mechanics. Linked enduring room prose and its physical restriction change in the same review. Weather supports the first override, native weather choices, Village-local start/end times and clearing. Unchanged instants retain their original precision and DST identity.
 
-## Acceptance
+Projects expose supported saved design, lead, timing and administrative authority, plus Start, Pause, Resume, Cancel and Finish now. These use native placement, worksite, room, access, capacity and focus rules. Overrides remain separate from real agreements. Completion creates no fictional witnesses, releases reservations and preserves replay/revision guards. An incomplete draft can receive a title correction without requiring unrelated design/lead choices. A stale renovation must be corrected or canceled before completion.
 
-Verify desktop and phone layouts, keyboard access, long text, large collections and empty states. Exercise native command persistence and reload, correct account/target isolation, stale reviews, late responses, safe retries and rejected invalid references. Keep the original Scene evidence and provider/spending guards intact. Significant changes need an isolated saved-8500 preview and user acceptance before staging.
+Recover work contains routine preparation, background failures and existing saved-work actions. Native request identities, explicit pauses, retry accounting and unknown-outcome holds remain authoritative. Debug has no duplicate player-facing background retry panel.
+
+## History and Village snapshots
+
+Repair history uses approved layout B: compact When / Action / Target / Change rows, with details on demand. It has no Undo controls. A later REPAIR action performs a correction.
+
+Whole-Village snapshots have a separate World page, manual capture, deletion and deliberate reviewed restoration. Scheduled capture is a separate dependent change of the existing snapshot service.
+
+Snapshots are optional wide-scale rollback. Individual corrections remain the normal workflow. Existing interrupted-save journals and safety-copy compatibility remain internal safeguards, not another player journey.
+
+## Validation and delivery
+
+The server simulates concrete effects before review and publishes them through the existing revision-checked repair transaction. Draft identity includes the world, person, record, action and activity occurrence. Typed reference tokens bind relevant actor incarnations. Late responses, invalid choices and stale reviews preserve the draft and block application.
+
+Affected provider-free tests cover persisted reload, native score allowances, repeating schedules, household/access effects, private facets and owner corrections, old Scene identity, Visitor stays, physical conditions, Project completion/replay and snapshot recovery. Browser checks render production-shaped fields at desktop and phone sizes, including compact phones, and reject scrolling or clipped controls. Package and CI verification remain separate from mocked UI evidence. Deliberate generation is not exercised against paid providers.
+
+The shared target/editor and native correction changes form one cohesive REPAIR delivery. Scheduled capture is an independently reviewable extension of the existing snapshot service. The combined isolated saved-8500 preview demonstrates both. User acceptance is required before staging merge; a preview does not update 8500.

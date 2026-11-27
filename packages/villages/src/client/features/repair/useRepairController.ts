@@ -254,11 +254,15 @@ export function useRepairController(
     setView("history");
     return act(() => readIndex());
   };
-  const fetchRecord = async (id: string, ticket: number, pick: AgendaPick | undefined) => {
+  const fetchRecord = async (id: string, ticket: number, pick: AgendaPick | undefined, resetDraft = false) => {
     if (!current(ticket)) return;
     const record = await request<RepairRecord>(
       `/repair/record?id=${encodeURIComponent(id)}${person ? `&personId=${encodeURIComponent(person.id)}` : ""}`,
     );
+    if (pick)
+      record.actions = record.actions.filter((action) =>
+        pick.index === "new" ? action.id === "add-activity" : action.id !== "add-activity",
+      );
     if (!current(ticket)) return;
     if (pick && record.token !== pick.token) {
       await fetchRecords(topic, 0, "", person, section, ticket);
@@ -278,7 +282,7 @@ export function useRepairController(
       values = Object.fromEntries(editorFields(record, pick).map((f) => [f.key, f.value]));
     setDraftActions((prior) => ({ ...prior, [recordKey(id, pick)]: action }));
     setDrafts((prior) =>
-      prior[key]
+      prior[key] && !resetDraft
         ? prior
         : {
             ...prior,
@@ -332,7 +336,8 @@ export function useRepairController(
     draft.action === "correct" &&
     !selected.creating &&
     selected.people?.some((p) => p.text !== undefined)
-      ? selected.people.some(
+      ? hasFieldChanges ||
+        selected.people.some(
           (person) =>
             draft.knowers.includes(person.id) &&
             (person.forgotten ||
@@ -522,6 +527,8 @@ export function useRepairController(
     showHub,
     showHistory,
     open,
+    refreshSelected: () =>
+      selected ? act((ticket) => fetchRecord(selected.id, ticket, agendaPick, true)) : Promise.resolve(),
     closeAgendaEditor,
     update,
     discard,

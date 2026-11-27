@@ -1,3 +1,4 @@
+import { readPlayerIdentity } from "./player-identity.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { badRequest } from "./errors.js";
 import { MAX_IMAGE_PROMPT_LENGTH } from "./image-generation-rules.js";
@@ -78,7 +79,9 @@ export function sceneryCharacterContext(village: VillageState, venue: VillageVen
   if (!ownerId && !(venue.imageContext?.useAssignedVillagerContext ?? village.personalizeVenueImagesByDefault))
     return "";
   if (ownerId === "player")
-    return [village.playerName, village.playerDescription.slice(0, 900)].filter(Boolean).join("; ");
+    return [readPlayerIdentity(village).name, readPlayerIdentity(village).description.slice(0, 900)]
+      .filter(Boolean)
+      .join("; ");
   const ids = ownerId ? [ownerId] : [...(venue.residentIds ?? []), ...(venue.workerIds ?? [])];
   return sceneryCardsContext(
     village.villagers
@@ -107,7 +110,9 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, at: 
     village.worldRules,
     village.worldName,
     village.selectedLorebookIds,
-    personality && ownerId === "player" ? [village.playerPersonaId, village.playerName, village.playerDescription] : [],
+    personality && ownerId === "player"
+      ? [village.playerPersonaId, readPlayerIdentity(village).name, readPlayerIdentity(village).description]
+      : [],
     personality
       ? village.villagers
           .filter((person) => ids.includes(person.characterId))

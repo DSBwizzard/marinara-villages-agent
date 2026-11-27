@@ -11,6 +11,7 @@ export type VillageAgenda = {
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   /** Preserve dated corrections when the Agenda is regenerated. */
   repairedDays?: string[];
+  repairedWeek?: Record<string, VillageAgendaBlock[]>;
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
   /** Derived from feature authority on hydration; never an independently editable booking. */
@@ -410,6 +411,7 @@ export type VillageProjectChange = {
   detail: string;
 };
 export type VillageProjectLifecycle = {
+  repair?: { operationId: string; at: string; scope: string; builder: { id: string; incarnation: string } };
   phase: VillageProjectPhase;
   revision: number;
   targetVenueId: string;
@@ -554,6 +556,7 @@ export type ReturnCatchupCapture = {
     | "playerPersonaId"
     | "playerPersonaName"
     | "playerPersonaIdentity"
+    | "playerIdentityRepair"
     | "playerPersonaMissing"
     | "villagers"
     | "venues"
@@ -700,6 +703,7 @@ export type VillageState = {
    * a hand-edited record cannot smuggle a name past the Persona's own.
    */
   playerName: string;
+  playerIdentityRepair?: { personaId: string; name: string; identity: string; revision: string };
   playerDescription: string;
   /**
    * The Persona the player chose as who they are here, or "" for none.

@@ -72,6 +72,14 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-pages{display:flex;align-items:center;justify-content:flex-end;gap:10px;font-size:13px;margin-top:auto;flex:none}
 .villages-repair .repair-pages>span{margin-right:auto;color:var(--repair-muted)}
 .villages-repair .repair-pages button{font-size:13px}
+.villages-repair .repair-people-directory{max-width:460px}
+.villages-repair .repair-people-directory .${P}-directory-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.villages-repair .repair-people-directory button.${P}-directory-card{width:100%;min-height:0;padding:10px;gap:8px}
+.villages-repair .repair-people-directory .${P}-directory-card .${P}-avatar{width:var(--repair-portrait-size);height:var(--repair-portrait-size)}
+.villages-repair .repair-people-directory .repair-pages{margin-top:0;justify-content:flex-start;gap:8px}
+.villages-repair .repair-people-directory[data-compact=true]{gap:8px}
+.villages-repair .repair-people-directory[data-compact=true] button.${P}-directory-card{flex-direction:row;padding:6px;gap:6px;min-height:64px}
+.villages-repair .repair-people-directory[data-compact=true] .${P}-directory-text{font-size:13px}
 .villages-repair .repair-editor{display:grid;grid-template-columns:245px minmax(0,815px);gap:37px;min-height:0;padding:6px 10px 0;flex:1;align-items:start}
 .villages-repair .repair-steps{display:flex;flex-direction:column;gap:8px;align-items:stretch}
 .villages-repair .repair-steps>button{display:flex;align-items:center;gap:12px;border:0;min-height:53px;padding:10px 14px;font-size:14px;text-align:left;color:var(--repair-muted)}
@@ -144,7 +152,7 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-chrome{min-height:54px;padding:5px 14px;gap:12px}
 .villages-repair .repair-chrome>span,.villages-repair .repair-chrome form{display:none}
 .villages-repair .repair-chrome>strong{border:0;padding:0;font-size:17px}
-.villages-repair .repair-chrome>button{margin-left:auto}
+.villages-repair .repair-chrome>button{padding:5px 0;font-size:12px}
 .villages-repair .repair-area-tabs{display:none}
 .villages-repair .repair-mobile-area{display:block;padding:8px 14px;background:#1f2326;border-bottom:1px solid var(--repair-line)}
 .villages-repair .repair-content{padding:12px 14px;max-width:none}

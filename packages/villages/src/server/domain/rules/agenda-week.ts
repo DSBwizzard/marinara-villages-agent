@@ -106,6 +106,7 @@ export function ordinaryAgendaBlocksFor(agenda: VillageAgenda, at: Date): Villag
   return agenda.activeDay?.dateKey === key
     ? agenda.activeDay.blocks
     : (agenda.plannedDays?.[key] ??
+        agenda.repairedWeek?.[weekday] ??
         (agenda.calendarVersion && agenda.routineProfile?.baseWeek ? agenda.week?.[weekday] : undefined) ??
         (agenda.routineProfile
           ? routineDay(agenda.routineProfile, agenda.generatedAt || agenda.routineSummary, at, influence, {

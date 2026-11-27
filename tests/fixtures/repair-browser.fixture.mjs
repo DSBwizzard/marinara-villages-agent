@@ -6,7 +6,7 @@ const code = await build({
   stdin: {
     loader: "tsx",
     resolveDir: process.cwd(),
-    contents: `import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';syncVillagesStyles();import {createRoot} from 'react-dom/client';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async(kind)=>{window.appliedKind=kind;return window.repairRefresh ? await window.repairRefresh : null;});window.c=c;return <RepairPage controller={c} jobs={window.fixtureJobs||[]} onRetryWork={async job=>{window.retryJobs.push(job.id)}} onBack={()=>{window.leftRepair=true}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
+    contents: `import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';syncVillagesStyles();import {createRoot} from 'react-dom/client';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async(kind)=>{window.appliedKind=kind;return window.repairRefresh ? await window.repairRefresh : null;});window.c=c;return <RepairPage controller={c} jobs={window.fixtureJobs||[]} onRetryWork={async job=>{window.retryJobs.push(job.id)}} onCharacterTools={id=>{window.characterTools=id}} artwork={{placeBusyId:"",drawPlaceImage:async()=>{},keepPlaceImage:async()=>{},dropPlaceImage:async()=>{}}} onBack={()=>{window.leftRepair=true}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
   },
   bundle: true,
   write: false,
@@ -18,6 +18,7 @@ const people = [
   { id: "player", name: "Your Persona" },
   { id: "nora", name: "Nora", hasAgenda: true },
   { id: "ellis", name: "Ellis", hasAgenda: true },
+  { id: "mira", name: "Mira" },
   { id: "guest", name: "Visitor", visitor: true },
   { id: "npc", name: "Shopkeeper", npc: true },
 ];
@@ -304,6 +305,23 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
     ],
   };
   const recordFor = (id, person) => {
+    if (id?.startsWith('["relationship",'))
+      return {
+        id,
+        token: "relationship-native",
+        topic: "people",
+        title: "Nora → You",
+        summary: "Relationship scores",
+        fields: [
+          { key: "warmth", label: "Warmth", type: "number", min: -100, max: 100, value: 42 },
+          { key: "romance", label: "Romantic interest", type: "number", min: -20, max: 20, value: 3 },
+        ],
+        actions: [{ id: "correct", label: "Modify" }],
+        related: [],
+        source: [],
+      };
+    const native = options.records?.find((record) => record.id === id);
+    if (native) return structuredClone(native);
     const found = [world, letter, visitor, detail, appointment, ...agenda, ...localMemories].find(
       (record) => record.id === id,
     );
@@ -373,14 +391,16 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
             ? [world, ...localMemories]
             : section === "agenda"
               ? agenda
-              : section === "details"
-                ? [person === "guest" ? visitor : letter]
-                : section === "home"
-                  ? [
-                      recordFor(JSON.stringify(["home", person]), person),
-                      recordFor(JSON.stringify(["work", person, "house"]), person),
-                    ]
-                  : localMemories.filter((record) => record.people.some((entry) => entry.id === person));
+              : section === "relationships"
+                ? [recordFor('["relationship","nora","player"]', person)]
+                : section === "details"
+                  ? [person === "guest" ? visitor : letter]
+                  : section === "home"
+                    ? [
+                        recordFor(JSON.stringify(["home", person]), person),
+                        recordFor(JSON.stringify(["work", person, "house"]), person),
+                      ]
+                    : localMemories.filter((record) => record.people.some((entry) => entry.id === person));
       const query = (url.searchParams.get("query") ?? "").toLowerCase();
       records = records.filter((record) => JSON.stringify(record).toLowerCase().includes(query));
       const state = url.searchParams.get("memoryState");

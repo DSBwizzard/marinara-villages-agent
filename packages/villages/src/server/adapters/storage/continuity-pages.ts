@@ -27,6 +27,7 @@ const trees = [
   "records",
   "versions",
   "receipts",
+  "relationshipBaselines",
   "episodes",
   "places",
   "npcs",
@@ -52,6 +53,7 @@ export function encodeContinuityPages(value: ContinuityPayload, world: string, p
     records: value.continuity.records.map((row) => [row.id, row]),
     versions: value.continuity.versions.map((row) => [row.id, row]),
     receipts: Object.entries(value.continuity.receipts),
+    relationshipBaselines: Object.entries(value.continuity.relationshipBaselines ?? {}),
     episodes: value.episodes.records.map((row) => [row.id, row]),
     places: Object.entries(places.places),
     npcs: Object.entries(places.npcs),
@@ -92,7 +94,7 @@ export async function traceContinuityPages(
 ) {
   const manifest = readContinuityPageManifest(raw);
   return tracer.traceTrees(
-    trees.map((key) => manifest[key]),
+    trees.map((key) => (key === "relationshipBaselines" ? (manifest[key] ?? null) : manifest[key])),
     world,
   );
 }
@@ -103,7 +105,7 @@ function* decoder(manifest: unknown, world: string, seed: string) {
     layout = {} as ContinuityPageLayout;
   for (const key of trees)
     layout[key] = yield* reader.tree(
-      raw[key],
+      key === "relationshipBaselines" ? (raw[key] ?? null) : raw[key],
       key === "episodes" ? { count: raw.episodeRevision, items: 1 } : undefined,
     );
   const objects = (key: "records" | "versions" | "episodes") =>
@@ -122,6 +124,9 @@ function* decoder(manifest: unknown, world: string, seed: string) {
         records: objects("records"),
         versions: objects("versions"),
         receipts: Object.fromEntries(reader.rows(layout.receipts)),
+        ...(layout.relationshipBaselines.root
+          ? { relationshipBaselines: Object.fromEntries(reader.rows(layout.relationshipBaselines)) }
+          : {}),
       },
       seed,
     ),

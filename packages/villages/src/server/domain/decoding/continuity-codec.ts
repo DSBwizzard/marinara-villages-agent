@@ -6,6 +6,7 @@ import {
   continuityVersionId,
   continuityOfferSource,
   ownedContinuityClass,
+  relationshipKey,
   CONTINUITY_TEXT_BYTES,
   ROOM_CONTINUITY_TEXT_BYTES,
 } from "../rules/continuity.js";
@@ -78,6 +79,21 @@ export const continuityEvidenceSchema = z
 const closed = z.object({ reason: z.enum(["fulfilled", "withdrawn", "ended"]) }).strict();
 const completeNativeMeaning = (value: Pick<ContinuityVersion, "text" | "sources">) =>
   value.sources.length === 1 && value.sources[0].kind === "native" && value.sources[0].excerpt === value.text;
+const romanticDaySchema = z
+  .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), gained: z.boolean() })
+  .strict()
+  .optional();
+const relationshipDaySchema = z
+  .object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    start: z.number().int().min(-100).max(100),
+    gained: z.number().int().min(0).max(10),
+    lost: z.number().int().min(0).max(6),
+    breach: z.number().int().min(0).max(10),
+    adjustment: z.number().int().min(-210).max(216).optional(),
+  })
+  .strict()
+  .optional();
 const version = z
   .object({
     id,
@@ -88,20 +104,8 @@ const version = z
     agenda: agendaEvidence.optional(),
     relationshipScore: z.number().int().min(-100).max(100).optional(),
     romanticInterest: z.number().int().min(-20).max(20).optional(),
-    romanticDay: z
-      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), gained: z.boolean() })
-      .strict()
-      .optional(),
-    relationshipDay: z
-      .object({
-        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        start: z.number().int().min(-100).max(100),
-        gained: z.number().int().min(0).max(10),
-        lost: z.number().int().min(0).max(6),
-        breach: z.number().int().min(0).max(10),
-      })
-      .strict()
-      .optional(),
+    romanticDay: romanticDaySchema,
+    relationshipDay: relationshipDaySchema,
     relationshipAnswer: text(320)
       .refine((value) => !/[\r\n]/.test(value))
       .optional(),
@@ -120,7 +124,7 @@ const version = z
     sources: z.array(continuityEvidenceSchema).max(8),
     at,
     operationId: text(210),
-    administrative: z.object({ holder: continuityHolderSchema, at }).strict().optional(),
+    administrative: z.object({ holder: continuityHolderSchema, at, subjectsFrom: id.optional() }).strict().optional(),
     offerEvents: ids.optional(),
     closed: closed.optional(),
     room: z
@@ -193,6 +197,33 @@ const collection = z
     records: z.array(record),
     versions: z.array(z.unknown()),
     receipts: z.record(z.string(), z.object({ fingerprint: digest, roots: ids, versions: ids }).strict()),
+    relationshipBaselines: z
+      .record(
+        z.string(),
+        z
+          .object({
+            owner: actorReference,
+            subject: actorReference,
+            operationId: id,
+            at,
+            createdRevision: revision.min(1),
+            relationshipScore: z.number().int().min(-100).max(100),
+            romanticInterest: z.number().int().min(-20).max(20),
+            relationshipDay: relationshipDaySchema,
+            romanticDay: romanticDaySchema,
+            answer: z
+              .object({
+                text: z.string().max(320),
+                at,
+                createdRevision: revision.min(1),
+                score: z.number().int().min(-100).max(100),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 const validated = new WeakMap<object, string | undefined>();
@@ -205,6 +236,25 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
   const value = collection.parse(raw) as ContinuityCollection;
   memoryObject(raw);
   const prior = raw as ContinuityCollection;
+  for (const [key, baseline] of Object.entries(value.relationshipBaselines ?? {})) {
+    memoryRequire(
+      key === relationshipKey(baseline.owner, baseline.subject) &&
+        baseline.owner.id !== "player" &&
+        baseline.owner.id !== baseline.subject.id &&
+        baseline.createdRevision <= value.revision,
+      "invalid administrative relationship baseline",
+    );
+    if (baseline.answer)
+      memoryRequire(baseline.answer.createdRevision <= baseline.createdRevision, "future repaired relationship answer");
+    if (baseline.relationshipDay) {
+      const { start, gained, lost, breach, adjustment = 0 } = baseline.relationshipDay;
+      memoryRequire(
+        baseline.relationshipScore === start + gained - lost - breach + adjustment &&
+          gained <= Math.ceil((100 - Math.max(0, start)) / 10),
+        "invalid repaired relationship day",
+      );
+    }
+  }
   value.records = value.records.map((row, i) => (isImmutableMemoryValue(prior.records[i]) ? prior.records[i] : row));
   value.versions = prior.versions.map((row) => {
     if (isImmutableMemoryValue(row) && validatedVersions.has(row)) return row;
@@ -270,7 +320,7 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
       if (entry.relationshipDay) {
         const { start, gained, lost, breach } = entry.relationshipDay;
         memoryRequire(
-          entry.relationshipScore === start + gained - lost - breach &&
+          entry.relationshipScore === start + gained - lost - breach + (entry.relationshipDay.adjustment ?? 0) &&
             gained <= Math.ceil((100 - Math.max(0, start)) / 10),
           "invalid saved relationship day",
         );
@@ -303,16 +353,37 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
           entry.id === "continuity-version-" + memoryHash([root.id, entry.operationId, key]).slice(0, 32),
         "administrative version lost its holder or receipt",
       );
-      if (entry.about.length || entry.offerEvents?.length)
+      const createdAdministratively =
+        entry.createdRevision ===
+        Math.min(
+          ...value.versions.filter((prior) => prior.rootId === entry.rootId).map((prior) => prior.createdRevision),
+        );
+      if (entry.administrative.subjectsFrom)
+        memoryRequire(
+          value.versions.some(
+            (prior) =>
+              prior.id === entry.administrative!.subjectsFrom &&
+              prior.rootId === entry.rootId &&
+              prior.createdRevision < entry.createdRevision &&
+              prior.class === entry.class &&
+              memoryHash(prior.about) === memoryHash(entry.about) &&
+              (prior.administrative
+                ? continuityHolderKey(prior.administrative.holder) === key
+                : prior.id ===
+                  continuityVersionId(prior.sources[0]!.seed, prior.operationId, entry.administrative!.holder)),
+          ),
+          "administrative correction lost its existing subject identities",
+        );
+      if ((entry.about.length || entry.offerEvents?.length) && !createdAdministratively)
         memoryRequire(
           value.versions.some(
             (prior) =>
               prior.rootId === entry.rootId &&
               prior.createdRevision < entry.createdRevision &&
-              prior.text === entry.text &&
+              (prior.text === entry.text || entry.administrative?.subjectsFrom === prior.id) &&
               prior.class === entry.class &&
               memoryHash(prior.about) === memoryHash(entry.about) &&
-              memoryHash(prior.offerEvents ?? []) === memoryHash(entry.offerEvents ?? []) &&
+              (!entry.offerEvents?.length || memoryHash(prior.offerEvents ?? []) === memoryHash(entry.offerEvents)) &&
               (prior.administrative
                 ? continuityHolderKey(prior.administrative.holder) === key
                 : prior.id ===

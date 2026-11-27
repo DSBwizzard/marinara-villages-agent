@@ -23,7 +23,41 @@ await withBrowser(browser, async () => {
         await page.screenshot({ path: `.build-tmp/repair-captures/${width}-${state}.png` });
       };
       await capture("people");
+      const cards = page.locator('.repair-people-directory [class$="-directory-card"]');
+      await expect(cards).toHaveCount(4);
+      const bounds = await cards.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const r = node.getBoundingClientRect();
+          return { x: r.x, y: r.y };
+        }),
+      );
+      expect(bounds[0].y).toBe(bounds[1].y);
+      expect(bounds[2].y).toBe(bounds[3].y);
+      expect(bounds[2].y).toBeGreaterThan(bounds[0].y);
+      await expect(page.getByRole("button", { name: "Main menu", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "← Return to village", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+      await f.section("relationships");
+      await page.getByRole("button", { name: "Nora → You", exact: true }).click();
+      await expect(page.getByRole("meter", { name: "Warmth toward the selected person" })).toHaveAttribute(
+        "aria-valuenow",
+        "42",
+      );
+      await capture("relationships");
+      await page.getByRole("spinbutton", { name: "Warmth", exact: true }).fill("-42");
+      await expect(page.getByRole("meter", { name: "Warmth toward the selected person" })).toHaveAttribute(
+        "aria-valuenow",
+        "-42",
+      );
+      for (
+        let step = 0;
+        step < 3 && !(await page.getByRole("meter", { name: "Romantic interest toward the selected person" }).count());
+        step++
+      )
+        await page.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(page.locator('.villages-romantic-hearts [data-fill="full"]')).toHaveCount(1);
+      await expect(page.locator('.villages-romantic-hearts [data-fill="half"]')).toHaveCount(1);
+      await capture("hearts");
       await f.section("home");
       await expect(page.getByRole("combobox", { name: "Home", exact: true })).toBeVisible();
       await capture("home");

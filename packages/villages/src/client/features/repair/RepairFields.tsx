@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RepairField, RepairValue } from "../../../shared/contracts/repair.js";
+import { WarmthMeter, RomanticInterest } from "../../shared/RelationshipMeters.js";
 
 export function useRepairSpace() {
   const ref = useRef<HTMLDivElement>(null);
@@ -225,7 +226,13 @@ export function RepairFieldControl({
       <label htmlFor={id} className={hideLabel ? "repair-sr" : undefined}>
         {field.label}
       </label>
-      {field.type === "days" ? (
+      {field.readOnly ? (
+        field.multiline ? (
+          <PagedText id={id} label={field.label} value={String(value)} readOnly rows={rows} />
+        ) : (
+          <output id={id}>{field.options?.find((option) => option.value === value)?.label ?? String(value)}</output>
+        )
+      ) : field.type === "days" ? (
         <div className="repair-weekdays" role="group" aria-label={field.label}>
           {field.options?.map((option) => (
             <label key={option.value}>
@@ -251,11 +258,11 @@ export function RepairFieldControl({
             </label>
           ))}
         </div>
-      ) : field.type === "date" ? (
+      ) : field.type === "date" || field.type === "datetime" ? (
         <input
           autoComplete="off"
           id={id}
-          type="date"
+          type={field.type === "date" ? "date" : "datetime-local"}
           value={String(value)}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
@@ -289,18 +296,38 @@ export function RepairFieldControl({
           onChange={(event) => onChange(event.target.checked)}
         />
       ) : field.type === "number" ? (
-        <input
-          autoComplete="off"
-          id={id}
-          type="number"
-          min={field.min}
-          max={field.max}
-          step="any"
-          value={String(value)}
-          disabled={disabled}
-          aria-invalid={!!error}
-          onChange={(event) => onChange(event.target.value === "" ? "" : Number(event.target.value))}
-        />
+        <>
+          {field.key === "warmth" ? (
+            <WarmthMeter score={Number(value)} target="the selected person" />
+          ) : field.key === "romance" ? (
+            <RomanticInterest score={Number(value)} target="the selected person" />
+          ) : null}
+          {["warmth", "romance"].includes(field.key) ? (
+            <input
+              autoComplete="off"
+              type="range"
+              min={field.min}
+              max={field.max}
+              step={1}
+              value={Number(value)}
+              disabled={disabled}
+              aria-label={`Adjust ${field.label}`}
+              onChange={(e) => onChange(Number(e.target.value))}
+            />
+          ) : null}
+          <input
+            autoComplete="off"
+            id={id}
+            type="number"
+            min={field.min}
+            max={field.max}
+            step={["warmth", "romance"].includes(field.key) ? 1 : "any"}
+            value={String(value)}
+            disabled={disabled}
+            aria-invalid={!!error}
+            onChange={(event) => onChange(event.target.value === "" ? "" : Number(event.target.value))}
+          />
+        </>
       ) : field.type === "clock" ? (
         <div className="repair-clock">
           <input

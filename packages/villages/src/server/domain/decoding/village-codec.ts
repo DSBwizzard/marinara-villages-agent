@@ -406,6 +406,12 @@ function coerceAgenda(value: unknown, preserveCapturedAgenda: boolean): VillageA
   const fallback = workingAgendaWeek();
   if (raw.calendarVersion === 1) agenda.calendarVersion = 1;
   agenda.week = completeAgendaWeek(raw.week, fallback);
+  if (raw.repairedWeek)
+    agenda.repairedWeek = Object.fromEntries(
+      Object.keys(agenda.week)
+        .filter((day) => Array.isArray(asRecord(raw.repairedWeek)[day]))
+        .map((day) => [day, completeAgendaWeek(raw.repairedWeek, agenda.week!)[day]!]),
+    );
   agenda.plannedDays = Object.fromEntries(
     Object.entries(asRecord(raw.plannedDays))
       .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key))
@@ -1066,6 +1072,29 @@ function coerceProjects(value: unknown): VillageProject[] {
         : {}),
     };
     project.lifecycle = {
+      ...(flow.repair !== undefined
+        ? {
+            repair: (() => {
+              const repair = asRecord(flow.repair),
+                builder = asRecord(repair.builder);
+              if (
+                !asTrimmedString(repair.operationId) ||
+                !asIsoString(repair.at) ||
+                typeof repair.scope !== "string" ||
+                repair.scope.length > 100000 ||
+                !asTrimmedString(builder.id) ||
+                !asTrimmedString(builder.incarnation)
+              )
+                throw new Error("Invalid administrative Project correction.");
+              return {
+                operationId: asTrimmedString(repair.operationId),
+                at: String(repair.at),
+                scope: repair.scope,
+                builder: { id: String(builder.id), incarnation: String(builder.incarnation) },
+              };
+            })(),
+          }
+        : {}),
       phase: raw.status as NonNullable<VillageProject["lifecycle"]>["phase"],
       revision: Number(flow.revision),
       targetVenueId: asTrimmedString(flow.targetVenueId),
@@ -1221,6 +1250,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
             "playerPersonaId",
             "playerPersonaName",
             "playerPersonaIdentity",
+            "playerIdentityRepair",
             "playerPersonaMissing",
             "villagers",
             "venues",
@@ -1636,6 +1666,32 @@ export function coerceVillageState(
     // player" with something other than the Persona.
     playerName: "",
     playerDescription: "",
+    ...(raw.playerIdentityRepair === undefined
+      ? {}
+      : (() => {
+          const value = asRecord(raw.playerIdentityRepair);
+          memoryRequire(
+            typeof value.personaId === "string" &&
+              value.personaId.length <= 200 &&
+              typeof value.name === "string" &&
+              value.name.length <= 100 &&
+              typeof value.identity === "string" &&
+              value.identity.length <= 4000 &&
+              typeof value.revision === "string" &&
+              value.revision.length > 0 &&
+              value.revision.length <= 160,
+            "invalid Village Persona correction",
+          );
+          return {
+            playerIdentityRepair: {
+              personaId: value.personaId,
+              name: value.name,
+              identity: value.identity,
+              revision: value.revision,
+            },
+          };
+        })()),
+
     // Bounded but never validated here: whether the Persona still exists is a
     // question about the library, which storage cannot answer. An id into a
     // deleted Persona is kept and its copy survives it, so a library that is

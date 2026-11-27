@@ -50,7 +50,13 @@ export const relationshipKey = (owner: ActorIdentity, subject: ActorIdentity) =>
 
 function latestRelationshipVersions(collection: ContinuityCollection, field: "relationshipScore" | "romanticInterest") {
   const owners = new Map(collection.records.map((record) => [record.id, record.owner]));
-  const latest = new Map<string, ContinuityVersion>();
+  const latest = new Map<
+    string,
+    Pick<
+      ContinuityVersion,
+      "createdRevision" | "relationshipScore" | "romanticInterest" | "relationshipDay" | "romanticDay"
+    >
+  >();
   for (const version of collection.versions) {
     if (version[field] === undefined) continue;
     const owner = owners.get(version.rootId);
@@ -58,6 +64,8 @@ function latestRelationshipVersions(collection: ContinuityCollection, field: "re
     const key = relationshipKey(owner, version.about[0]);
     if ((latest.get(key)?.createdRevision ?? 0) < version.createdRevision) latest.set(key, version);
   }
+  for (const [key, baseline] of Object.entries(collection.relationshipBaselines ?? {}))
+    if ((latest.get(key)?.createdRevision ?? 0) < baseline.createdRevision) latest.set(key, baseline);
   return latest;
 }
 
@@ -657,6 +665,11 @@ export function applyContinuityWrite(
         write.current === true,
       "relationship change needs a current villager-owned perspective about one person",
     );
+    const baseline = collection.relationshipBaselines?.[relationshipKey(owner, subject)];
+    memoryRequire(
+      !baseline || (context.continuityRevision !== undefined && baseline.createdRevision <= context.continuityRevision),
+      "relationship changed in REPAIR after admission",
+    );
     const experienced = sources.filter(isRelationshipEvent);
     const { impact, romance, perception } = write.relationship;
     ownerAnswer = write.holders.length === 1;
@@ -1073,7 +1086,23 @@ export function continuityViews(
           )))
     )
       return [];
-    if (original.parentId && collection.records.find((row) => row.id === original.parentId)?.protection[key]) return [];
+    if (original.parentId) {
+      const parent = collection.records.find((row) => row.id === original.parentId),
+        protection = parent?.protection[key],
+        parentVersion = versions.get(parent?.heads[key]?.versionId ?? "");
+      if (
+        protection &&
+        !(
+          original.administrative &&
+          continuityHolderKey(original.administrative.holder) === key &&
+          !protection.forgotten &&
+          protection.repair?.versionId === parentVersion?.id &&
+          parentVersion &&
+          original.createdRevision > parentVersion.createdRevision
+        )
+      )
+        return [];
+    }
     if (holder.kind === "room" && (!head.current || (original.room?.expiresAt && original.room.expiresAt <= at)))
       return [];
     const version = structuredClone(original);
@@ -1150,7 +1179,16 @@ export function protectContinuity(
   holders: ContinuityHolder[],
   operationId: string,
   at: string,
-  action: { forget: true } | { text: string; restore?: string },
+  action:
+    | { forget: true }
+    | {
+        text: string;
+        restore?: string;
+        closed?: "fulfilled" | "withdrawn" | "ended" | null;
+        current?: boolean;
+        room?: ContinuityVersion["room"];
+        preserveSubjects?: boolean;
+      },
 ): ContinuityCollection {
   memoryString(operationId, 160);
   memoryRequire(!operationId.startsWith("narration-abandoned:"), "reserved narration receipt namespace");
@@ -1202,14 +1240,22 @@ export function protectContinuity(
         createdRevision: collection.revision + 1,
         text: action.text,
         sources: [],
-        about: restored ? structuredClone(restored.about) : [],
+        about: restored || action.preserveSubjects ? structuredClone(previous.about) : [],
         operationId,
-        administrative: { holder: structuredClone(holder), at },
+        administrative: {
+          holder: structuredClone(holder),
+          at,
+          ...(action.preserveSubjects && previous.about.length ? { subjectsFrom: previous.id } : {}),
+        },
       };
       if (!restored) {
         delete version.offerEvents;
         delete version.agenda;
       }
+      if (action.closed === null) delete version.closed;
+      else if (action.closed) version.closed = { reason: action.closed };
+      if (action.current !== undefined) head.current = action.current;
+      if (action.room) version.room = structuredClone(action.room);
       delete version.relationshipScore;
       delete version.relationshipDay;
       delete version.romanticInterest;
