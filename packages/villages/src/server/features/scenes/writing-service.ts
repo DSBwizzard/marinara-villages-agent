@@ -646,6 +646,13 @@ export function createSceneWriting({
         ...(places.length
           ? [{ evidenceId: "native-places", text: narrationPlacePrompt(places), optional: "memory" as const }]
           : []),
+        ...(scheduledCast && !scene.visitorIntroduction
+          ? [
+              {
+                text: "Use the speaker’s supplied Agenda for concrete times. A dated slot is for that day. Planned presence does not establish office hours, availability, invitation, recurring hours or booking. An omitted slot says nothing about closure or plans. If the supplied schedule does not answer the question, say so in character.",
+              },
+            ]
+          : []),
         ...(agendaOptions.length ||
         agenda.homeActivities ||
         agenda.available ||
@@ -669,7 +676,7 @@ export function createSceneWriting({
                     : []),
                   ...(agendaOptions.length
                     ? [
-                        'Agenda discovery: information keep for:["player"],about:[actorId],agenda:{actorId,kind:"told"|"seen",time:{date,startMinute,endMinute,venueId,zoneId?}}. Copy the supplied slot and cite the witnessed line sharing it, or the observed activity in its Zone (captured minute through next minute).',
+                        'Agenda discovery: information keep for:["player"],about:[actorId],text:"Complete witnessed activity and hours",agenda:{actorId,kind:"told"|"seen",time:{date,startMinute,endMinute,venueId,zoneId?}}. Copy the supplied slot and cite the witnessed line sharing it, or the observed activity in its Zone (captured minute through next minute).',
                       ]
                     : []),
                   ...(agendaVenues.length

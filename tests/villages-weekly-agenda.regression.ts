@@ -385,6 +385,7 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
     let calls = 0;
     const offer = "Let's look through maps here tomorrow from noon to one.";
     host.model.chatComplete = async (messages: { content: string }[]) => {
+      assert(messages.some(({ content }) => content.includes("A dated slot is for that day.")));
       const agenda = messages
         .flatMap(({ content }) => content.split("\n"))
         .find((line) => line.startsWith('{"agendaOptions":'));
@@ -458,7 +459,7 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
     };
     try {
       assert.equal((await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).statusCode, 200);
-      for (const message of ["How are you today? I am reading a book.", offer]) {
+      for (const message of ["Do you keep office hours?", offer]) {
         const result = await host.app.inject({
           method: "POST",
           url: "/api/villages/rooms/turn",
