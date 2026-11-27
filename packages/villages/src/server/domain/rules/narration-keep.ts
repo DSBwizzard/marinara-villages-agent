@@ -387,11 +387,12 @@ export function prepareNarrationKeep(
       ) {
         if (
           ("act" in segment && segment.act === "offer") ||
-          ((/(?:^|[.!?]\s+)(?:come\b[^.!?]{0,120}\band I['’]ll\b|if you want\b[^.!?]{0,130},\s*say yes and I['’]ll\b)/iu.test(
-            line.content,
-          ) ||
-            (recognizeDirectOfferSpeech === true &&
-              /^(?:then )?say the word and I['’]ll walk you through\b/iu.test(line.content))) &&
+          (!explicitSceneEvidence &&
+            (/(?:^|[.!?]\s+)(?:come\b[^.!?]{0,120}\band I['’]ll\b|if you want\b[^.!?]{0,130},\s*say yes and I['’]ll\b)/iu.test(
+              line.content,
+            ) ||
+              (recognizeDirectOfferSpeech === true &&
+                /^(?:then )?say the word and I['’]ll walk you through\b/iu.test(line.content))) &&
             !/["“”«»‘]|(?:^|[\s,:;])'/u.test(line.content))
         ) {
           const { owner, ...withoutOwner } = keep;

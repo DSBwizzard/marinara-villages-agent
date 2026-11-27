@@ -936,7 +936,12 @@ await runCase("npc-admission/name", () => {
     taggedSceneReply: true as const,
     relaxedNarrationProse: true as const,
   };
-  assert.equal(decodeTaggedSceneReply('Coordinator output: {"keep":[{"text":"private"}]}', strictProse).value, null);
+  for (const text of [
+    'Coordinator output: {"keep":[{"text":"private"}]}',
+    "Coordinator output: {'keep':{'text':'private'}}",
+    'Coordinator output: ["private thought", "mara"]',
+  ])
+    assert.equal(decodeTaggedSceneReply(text, strictProse).value, null);
 
   const savedQuote = reply('"Rasha Dunmore." She taps the glass.', "saved-quote", false);
   assert.equal(savedQuote.segments[0].name, "Mara");
