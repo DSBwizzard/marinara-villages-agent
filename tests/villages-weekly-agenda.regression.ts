@@ -203,7 +203,7 @@ await runCase("weekly-agenda/visibility", () => {
 });
 
 await runCase("weekly-agenda/agreement", () => {
-  const { world, publish } = fixture();
+  const { world, publish, scene } = fixture();
   const propose = "Let's look through maps here tomorrow from noon to one.";
   const raw = {
     segments: [
@@ -271,6 +271,28 @@ await runCase("weekly-agenda/agreement", () => {
   const due = new Date(tomorrow + "T12:15:00Z");
   assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].source, "agreed");
   assert.equal(Object.hasOwn(agendaWeek(state, "mara", due, false).days[0].blocks[0], "join"), false);
+
+  const meetup = { ...scene, id: "booked-activity", startedAt: due.toISOString() };
+  const greeting = publish(
+    { segments: [{ kind: "dialogue", speakerId: "mara", text: "Welcome. The window is already open." }] },
+    "activity-hello",
+    "Good afternoon.",
+    state,
+    meetup,
+    due.toISOString(),
+  );
+  assert.equal(greeting.held, false, JSON.stringify(greeting.rejected));
+  const offerEvidence = "episode-context:" + result.episode!.id;
+  const recall = () =>
+    narrationContinuityContext(state, meetup, state.venues[0], "activity-next", "Mm-hm.", due.toISOString());
+  assert(recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
+  const booking = state.residentPlans.appointments![0];
+  const activity = booking.activity;
+  booking.activity = "Something different";
+  assert(!recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
+  booking.activity = activity;
+  booking.cancelled = true;
+  assert(!recall().parts.some(({ block }) => block.evidenceId === offerEvidence));
 });
 
 await runCase("weekly-agenda/compact-context", () => {

@@ -1,4 +1,5 @@
 import { findCardCharacter } from "./visitors.js";
+import { calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { badRequest } from "./errors.js";
 import { compactSceneExchange, projectEpisodeRecall } from "./episode-recall.js";
 import { readOnlyRoomContext } from "./continuity-context.js";
@@ -382,15 +383,77 @@ export function narrationContinuityContext(
   const transcriptIds = new Set(transcript.map((part) => part.episodeIds[0]));
   parts.push(...transcript);
   const sharedRecall = history.sharedRecall ?? [];
-  const recallCandidates =
+  const calendar = capturedSceneCalendar({ startedAt: at }, state.timeZone);
+  const local = new ZonedDate(at, calendar.timeZone);
+  const instant = local.getTime();
+  const bookedEpisodes = new Set<string>();
+  for (const booking of state.residentPlans.appointments ?? []) {
+    const time = booking.time;
+    if (
+      booking.cancelled ||
+      !booking.termsVersionId ||
+      time.date !== calendar.date ||
+      instant < calendarAt(local, time.date, time.startMinute).getTime() ||
+      instant >= calendarAt(local, time.date, time.endMinute).getTime() ||
+      time.venueId !== scene.placeId ||
+      (time.zoneId ?? "exterior") !== scene.zoneId ||
+      !scene.activeIds.includes(booking.resident.id) ||
+      contactPosition(scene, booking.resident.id) !== scene.zoneId
+    )
+      continue;
+    const known = (id: string, incarnation: string) =>
+      views.some(
+        (view) =>
+          view.id === booking.id &&
+          view.current &&
+          !view.repaired &&
+          view.holder.kind === "actor" &&
+          view.holder.id === id &&
+          view.holder.incarnation === incarnation,
+      );
+    if (!known("player", booking.playerIncarnation) || !known(booking.resident.id, booking.resident.incarnation))
+      continue;
+    const offer = state.continuity.records.find((record) => record.id === booking.id)?.offer;
+    const terms = state.continuity.versions.find((version) => version.id === booking.termsVersionId);
+    if (
+      offer?.termsVersionId !== booking.termsVersionId ||
+      terms?.rootId !== booking.id ||
+      terms.agenda?.kind !== "offer" ||
+      terms.agenda.actorId !== booking.resident.id ||
+      terms.agenda.activity !== booking.activity ||
+      memoryHash(terms.agenda.time) !== memoryHash(time)
+    )
+      continue;
+    const parties = ["player", booking.resident.id];
+    for (const source of terms.sources) {
+      if (
+        source.kind !== "speech" ||
+        source.actorId !== booking.resident.id ||
+        (source.act !== "offer" && source.act !== "accept")
+      )
+        continue;
+      const view = sharedRecall.find((row) => row.id === source.episodeId);
+      if (
+        view?.segments.some(
+          (line) =>
+            line.id === source.unitId &&
+            "text" in line &&
+            line.text === source.excerpt &&
+            parties.every((id) => line.perceivedBy[id] === "words"),
+        )
+      )
+        bookedEpisodes.add(source.episodeId);
+    }
+  }
+  const bookedRecall = sharedRecall.filter((view) => bookedEpisodes.has(view.id) && !transcriptIds.has(view.id));
+  const conversationalRecall =
     scene.visitEvent && opening
       ? []
       : [
-          ...new Set([
-            ...(history.recallCandidates ?? []),
-            ...(sharedRecall.some((view) => transcriptIds.has(view.id)) ? [] : sharedRecall),
-          ]),
+          ...(history.recallCandidates ?? []),
+          ...(sharedRecall.some((view) => transcriptIds.has(view.id)) ? [] : sharedRecall),
         ];
+  const recallCandidates = [...new Set([...bookedRecall, ...conversationalRecall])];
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
   for (const { npc, met } of npcCandidates)
@@ -705,15 +768,15 @@ export function narrationContinuityContext(
     }
     return false;
   };
-  if (opening) tryOlder();
+  const earlyRecall = (opening || bookedRecall.length > 0) && tryOlder();
   for (const part of optional.filter((part) => !actorFact(part))) takeRecall(part);
   let factsAdded = 0;
   for (const part of facts) {
     if (!takeRecall(part) || opening) continue;
-    if (++factsAdded === 1) tryOlder();
+    if (++factsAdded === 1 && !earlyRecall) tryOlder();
     if (factsAdded === 2) break;
   }
-  if (!opening && !factsAdded) tryOlder();
+  if (!opening && !factsAdded && !earlyRecall) tryOlder();
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts
     .filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds))
@@ -744,7 +807,7 @@ export function narrationContinuityContext(
       "circumstance-" + memoryHash([state.seed, scene.id, operationId]).slice(0, 32),
       new Date(at),
     ),
-    calendar: capturedSceneCalendar({ startedAt: at }, state.timeZone),
+    calendar,
     holders,
     room,
     repairs,
