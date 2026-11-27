@@ -1024,13 +1024,17 @@ await runCase("scene-travel/mixed-speech-actions", async () => {
       assert.equal(move.json().session.activeIds.includes("mara"), !movesAway);
       assert.equal(calls, 1, "One reply settles both actions. Move and replay purchase nothing.");
       if (!movesAway) {
+        const current = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+        assert.equal(current.statusCode, 200, current.body);
+        const currentSession = current.json().session;
         const stopped = await host.app.inject({
           method: "POST",
           url: "/api/villages/rooms/turn",
           payload: {
             ...input,
+            sessionId: currentSession.id,
             submissionId: "stop-following",
-            expectedSceneRevision: move.json().session.sceneRevision,
+            expectedSceneRevision: currentSession.sceneRevision,
             message: '"I can take it from here, Mara. Thanks for coming along."',
           },
         });
