@@ -136,6 +136,24 @@ const detail = {
   related: [],
   token: "zone",
 };
+const venueDetails = {
+  ...detail,
+  id: '["venue","hall"]',
+  title: "Hearth Alms Rooms",
+  summary: "Venue identity and map placement",
+  fields: [
+    { key: "name", label: "Name", type: "text", multiline: false, value: "Hearth Alms Rooms" },
+    { key: "form", label: "Physical form", type: "text", value: "A village inn" },
+    { key: "description", label: "Exterior description", type: "text", value: "A welcoming inn beside the green." },
+    { key: "category", label: "Category", type: "text", value: "Hospitality" },
+  ],
+};
+const management = {
+  ...detail,
+  id: '["management","hall"]',
+  title: "Hearth Alms Rooms, Runs this Venue",
+  fields: [{ key: "manager:nora", label: "Nora", type: "boolean", value: true }],
+};
 const directory = [
   {
     id: "venues",
@@ -143,14 +161,23 @@ const directory = [
     icon: "venue",
     children: [
       {
-        id: "location-hall",
+        id: '["location","venue","hall"]',
         title: "Hearth Alms Rooms",
         icon: "venue",
         mapId: "village",
         mapName: "Village",
         children: [
+          { id: venueDetails.id, title: "Venue details", icon: "details" },
+          { id: management.id, title: "Runs this Venue", icon: "details" },
           {
-            id: "zone-dining",
+            id: '["location","venue","hall"]/residents',
+            title: "Residents",
+            icon: "people",
+            children: [{ id: '["person","nora"]', personId: "nora", title: "Nora", icon: "people" }],
+          },
+          { id: '["location","venue","hall"]/workers', title: "Workers", icon: "people", children: [] },
+          {
+            id: '["zone","venue","hall","dining"]',
             title: "Dining room",
             icon: "zone",
             children: [{ id: detail.id, title: "Zone details", icon: "details" }],
@@ -322,9 +349,17 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
       };
     const native = options.records?.find((record) => record.id === id);
     if (native) return structuredClone(native);
-    const found = [world, letter, visitor, detail, appointment, ...agenda, ...localMemories].find(
-      (record) => record.id === id,
-    );
+    const found = [
+      world,
+      letter,
+      visitor,
+      detail,
+      venueDetails,
+      management,
+      appointment,
+      ...agenda,
+      ...localMemories,
+    ].find((record) => record.id === id);
     if (id?.startsWith('["work",')) return { ...structuredClone(work), id };
     if (id?.startsWith('["home",'))
       return { ...structuredClone(home), id, title: person + " home assignment", token: "home-" + person };

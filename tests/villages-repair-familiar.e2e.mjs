@@ -97,9 +97,18 @@ await withBrowser(browser, async () => {
       await capture("memory");
       await f.area("places");
       await page.getByRole("button", { name: "Hearth Alms Rooms, Venue", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Hearth Alms Rooms");
+      await capture("venue-details");
+      if (width < 700)
+        await page.getByRole("combobox", { name: "Location repairs", exact: true }).selectOption("zones");
+      else
+        await page
+          .getByRole("navigation", { name: "Location repairs", exact: true })
+          .getByRole("button", { name: "Zones", exact: true })
+          .click();
       await capture("zones");
       await page.getByRole("button", { name: "Dining room", exact: true }).click();
-      await page.getByRole("button", { name: /Zone details/ }).click();
+      await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Dining room");
       await capture("zone");
       await page.close();
     });
