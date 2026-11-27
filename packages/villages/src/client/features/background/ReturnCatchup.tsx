@@ -71,8 +71,10 @@ export function ReturnCatchup({
   }, [enabled, onSettled]);
   useEffect(() => {
     if (!expanded || repair) return;
-    const outside = (event: PointerEvent) => {
-      if (!activity.current?.contains(event.target as Node)) setExpanded(false);
+    // Let menu controls finish their click before the expanded panel frees layout space.
+    const outsideEvent = menu ? "click" : "pointerdown";
+    const outside = (event: Event) => {
+      if (activity.current && !event.composedPath().includes(activity.current)) setExpanded(false);
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -80,13 +82,13 @@ export function ReturnCatchup({
       setExpanded(false);
       trigger.current?.focus();
     };
-    document.addEventListener("pointerdown", outside);
+    document.addEventListener(outsideEvent, outside);
     document.addEventListener("keydown", escape);
     return () => {
-      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener(outsideEvent, outside);
       document.removeEventListener("keydown", escape);
     };
-  }, [expanded, repair]);
+  }, [expanded, menu, repair]);
   const act = async (kind: "retry" | "continue") => {
     if (!batch) return;
     setBusy(true);

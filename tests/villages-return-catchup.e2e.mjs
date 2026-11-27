@@ -110,8 +110,8 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Retry Mara" })).toBeVisible();
     await returnButton.click({ trial: true });
     await menuNavigation.getByRole("button", { name: "Projects", exact: true }).click({ trial: true });
-    delete agenda.failure;
     await menuNavigation.getByRole("button", { name: "Settings", exact: true }).click();
+    delete agenda.failure;
     const sections = page.getByRole("combobox", { name: "Section", exact: true });
     if (width <= 700) await sections.selectOption("repair");
     else await page.getByRole("button", { name: "REPAIR", exact: true }).click();
