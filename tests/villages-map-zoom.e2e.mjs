@@ -31,10 +31,13 @@ createRoot(document.getElementById('root')).render(<Harness/>);`,
 const browser = await chromium.launch({ headless: true });
 await runCase("maps/zoom-stability", () =>
   withBrowser(browser, async () => {
-    for (const width of [1366, 390]) {
-      const mobile = width < 600;
+    for (const [width, touch] of [
+      [1366, false],
+      [390, true],
+      [844, true],
+    ]) {
       for (const animatedAccent of [false, true]) {
-        const page = await browser.newPage({ viewport: { width, height: 800 }, hasTouch: mobile });
+        const page = await browser.newPage({ viewport: { width, height: 800 }, hasTouch: touch });
         await page.setContent(`<style>html,body{margin:0}marinara-capability-villages,#root{display:block;height:600px}
 /* Engine 61ec07274ac0, globals.css: animated accent override installed on 8500. */
 html[data-marinara-accent-animation] *,html[data-marinara-accent-animation] *::before,html[data-marinara-accent-animation] *::after {
@@ -46,7 +49,7 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
             window.phone = phone;
             document.documentElement.toggleAttribute("data-marinara-accent-animation", animated);
           },
-          { image: mapImage, phone: mobile, animated: animatedAccent },
+          { image: mapImage, phone: width <= 704, animated: animatedAccent },
         );
         await page.addScriptTag({ content: bundle.outputFiles[0].text });
         const stage = page.locator("[data-navigation-zoom]");
@@ -55,9 +58,9 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
         await expect(stage).toHaveAttribute("data-picture-width", /\d/);
         const bounds = await stage.boundingBox();
         const cdp = await page.context().newCDPSession(page);
-        if (mobile) await expect(slider).toHaveCount(0);
-        for (const action of mobile ? [1.25, 1.2, 0.8, 0.5] : [20, 40, 30, 0, 50, 0]) {
-          if (mobile) {
+        if (touch) await expect(slider).toBeHidden();
+        for (const action of touch ? [1.25, 1.2, 0.8, 0.5] : [20, 40, 30, 0, 50, 0]) {
+          if (touch) {
             const before = await stage.getAttribute("data-navigation-zoom");
             await cdp.send("Input.synthesizePinchGesture", {
               x: bounds.x + bounds.width / 2,
@@ -105,8 +108,8 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
         const overview = await image.boundingBox();
         assert.ok(overview.width >= bounds.width - 0.5 && overview.height >= bounds.height - 0.5);
         assert.ok(Math.min(Math.abs(overview.width - bounds.width), Math.abs(overview.height - bounds.height)) < 0.5);
-        if (!mobile) await expect(slider).toHaveAttribute("aria-valuetext", "Overview");
-        if (!mobile && animatedAccent) {
+        if (!touch) await expect(slider).toHaveAttribute("aria-valuetext", "Overview");
+        if (!touch && animatedAccent) {
           await page.addStyleTag({
             content:
               'input[type="range"]::-webkit-slider-thumb{width:15px;height:15px;background:#f5f5f7;border-radius:9999px;opacity:0}',
@@ -130,7 +133,7 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
           }
           assert.ok(handleRows >= 5, "The rectangular handle remains visible over Engine range styles");
         }
-        if (!mobile && !animatedAccent) {
+        if (!touch && !animatedAccent) {
           const control = await slider.boundingBox();
           assert.equal(control.x + control.width, bounds.x + bounds.width - 16);
           assert.equal(control.y + control.height, bounds.y + bounds.height - 16);

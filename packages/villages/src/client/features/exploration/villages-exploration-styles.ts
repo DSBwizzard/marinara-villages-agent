@@ -107,6 +107,9 @@ export const EXPLORATION_STYLES = `
   box-sizing:border-box; width:25px; height:8px; opacity:1;
   border:1px solid #e8ddff; border-radius:1px; background:var(--zoom-accent);
 }
+@media (hover:none) and (pointer:coarse) {
+  .${P}-stage .${P}-map-zoom-slider { display:none; }
+}
 .${P}-home-full button:disabled { opacity:.5; cursor:default; }
 .${P}-home-full :is(button,input,[tabindex]):focus-visible { outline:3px solid var(--explore-selected); outline-offset:-3px; }
 .${P}-home-full button:hover:not(:disabled) { filter:brightness(1.12); }
