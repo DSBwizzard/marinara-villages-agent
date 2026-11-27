@@ -1,8 +1,9 @@
 import type { RepairField, RepairRecord, RepairValue } from "../../../shared/contracts/repair.js";
 import { repairClockMinutes } from "../../../shared/helpers/repair-clock.js";
 import { calendarAt, calendarDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
-import type { VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
+import type { AgendaPurpose, VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
 import { composeAgenda } from "./agenda-composition.js";
+import { readAgendaPurpose } from "./agenda-flexibility.js";
 import { restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
 import {
   agendaBlocksFor,
@@ -91,20 +92,33 @@ export function requireAgendaDay(state: VillageState, date: string, at: string, 
 }
 
 function locationLabels<T extends { id: string; name: string }>(locations: T[]) {
+  const keyFor = (name: string) => name.normalize("NFKC").trim().toLocaleLowerCase("en-US");
   const count = new Map<string, number>();
-  for (const { name } of locations) count.set(name, (count.get(name) ?? 0) + 1);
+  for (const { name } of locations) {
+    const key = keyFor(name);
+    count.set(key, (count.get(key) ?? 0) + 1);
+  }
   const ordinal = new Map<string, number>();
   const labels = new Set(count.keys());
   return locations.map(({ id, name }) => {
-    if (count.get(name) === 1) return { value: id, label: name };
-    let number = (ordinal.get(name) ?? 0) + 1;
-    while (labels.has(`${name} (${number})`)) number++;
-    ordinal.set(name, number);
+    const key = keyFor(name);
+    if (count.get(key) === 1) return { value: id, label: name };
+    let number = (ordinal.get(key) ?? 0) + 1;
+    while (labels.has(keyFor(`${name} (${number})`))) number++;
+    ordinal.set(key, number);
     const label = `${name} (${number})`;
-    labels.add(label);
+    labels.add(keyFor(label));
     return { value: id, label };
   });
 }
+
+const activityTypeLabels: Record<AgendaPurpose, string> = {
+  unplanned: "Unplanned",
+  ordinary: "Ordinary",
+  rest: "Rest",
+  work: "Work",
+  repair: "Repair",
+};
 
 export function agendaRepairRecords(state: VillageState, resident: VillageVillager, at: string): RepairRecord[] {
   if (!resident.agenda) return [];
@@ -119,6 +133,21 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
   const locationFields = (index: number | "new", block?: VillageAgendaBlock): RepairField[] => [
     { key: `venue:${index}`, label: "Venue", type: "choice", value: block?.venueId ?? "", group: "Location" },
     { key: `zone:${index}`, label: "Zone", type: "choice", value: block?.zoneId ?? "", group: "Location" },
+  ];
+  const activityFields = (index: number | "new", block?: VillageAgendaBlock): RepairField[] => [
+    {
+      key: `purpose:${index}`,
+      label: "Activity type",
+      type: "choice",
+      value: block ? (block.purpose ?? "") : "ordinary",
+      options: [
+        ...(block && !block.purpose ? [{ value: "", label: "Existing type" }] : []),
+        ...Object.entries(activityTypeLabels)
+          .filter(([value]) => value !== "unplanned" || block?.purpose === value)
+          .map(([value, label]) => ({ value, label })),
+      ],
+    },
+    { key: `flexible:${index}`, label: "Can reschedule", type: "boolean", value: block?.flexible === true },
   ];
   return Array.from({ length: 7 }, (_, offset) => {
     const day = calendarDate(today, today.getFullYear(), today.getMonth(), today.getDate() + offset, 12);
@@ -153,6 +182,7 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
         },
         { key: `end:${index}`, label: `${activity} end`, type: "clock", value: clock(block.endMinute), group: "Time" },
         ...locationFields(index, block),
+        ...activityFields(index, block),
         {
           key: `repeat:${index}`,
           label: "Repeat",
@@ -235,6 +265,7 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
         { key: "start:new", label: "Start", type: "clock", value: "", group: "Time" },
         { key: "end:new", label: "End", type: "clock", value: "", group: "Time" },
         ...locationFields("new"),
+        ...activityFields("new"),
         {
           key: "repeat:new",
           label: "Repeat",
@@ -246,16 +277,19 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
           ],
         },
       ],
-      source: blocks.map((block) =>
-        [
+      source: blocks.map((block, index) => {
+        const activity = scheduled[index]!;
+        return [
           `${clock(block.startMinute)}–${clock(block.endMinute)}`,
           block.activity,
           block.place,
           block.source === "agreed" ? "Agreed plan" : block.note,
+          activity.purpose ? activityTypeLabels[activity.purpose] : "",
+          activity.flexible === true ? "Can reschedule" : "",
         ]
           .filter(Boolean)
-          .join(", "),
-      ),
+          .join(", ");
+      }),
       actions: [
         ...(fields.length ? [{ id: "correct", label: "Modify" }] : []),
         ...(fields.length ? [{ id: "remove-activity", label: "Remove activity" }] : []),
@@ -308,11 +342,28 @@ export function applyAgendaRepair(
     if (endMinute <= startMinute) throw repairFieldError(`end:${index}`, "End time must be after the start time.");
     const venueId = String(values[`venue:${index}`] ?? block?.venueId ?? "");
     const zoneId = String(values[`zone:${index}`] ?? block?.zoneId ?? "") || undefined;
+    const requestedPurpose = values[`purpose:${index}`];
+    const selectedPurpose =
+      requestedPurpose === undefined || requestedPurpose === ""
+        ? block
+          ? block.purpose
+          : "ordinary"
+        : readAgendaPurpose(requestedPurpose);
+    if (requestedPurpose && (!selectedPurpose || (selectedPurpose === "unplanned" && block?.purpose !== "unplanned")))
+      throw repairFieldError(`purpose:${index}`, "Choose an activity type.");
+    const purpose =
+      selectedPurpose === "unplanned" && block && activity !== block.activity ? "ordinary" : selectedPurpose;
+    const requestedFlexibility = values[`flexible:${index}`] ?? block?.flexible === true;
+    if (typeof requestedFlexibility !== "boolean")
+      throw repairFieldError(`flexible:${index}`, "Choose whether to allow rescheduling.");
+    const flexible = purpose !== "rest" && requestedFlexibility;
     const relocating = !block || venueId !== block.venueId || zoneId !== (block.zoneId || undefined);
     if (
       block &&
       !relocating &&
       activity === block.activity &&
+      purpose === block.purpose &&
+      flexible === (block.flexible === true) &&
       startMinute === block.startMinute &&
       endMinute === block.endMinute
     )
@@ -325,7 +376,9 @@ export function applyAgendaRepair(
         throw repairFieldError(`zone:${index}`, "Choose a Zone in this Venue.");
     }
     const edited = {
-      ...(block ?? { flexible: false }),
+      ...block,
+      purpose,
+      flexible,
       activity,
       startMinute,
       endMinute,
@@ -424,7 +477,7 @@ export function applyAgendaRepair(
     const venue = locationFor(block);
     if (!venue) continue;
     const zoneFor = (item: VillageAgendaBlock, at: Date) =>
-      chooseAgendaZone(venue, residentId, item.activity, item.zoneId, state, { at }).id;
+      chooseAgendaZone(venue, residentId, item, item.zoneId, state, { at }).id;
     const available = zoneActivityFits(
       state,
       [residentId],
@@ -476,7 +529,7 @@ export function applyAgendaRepair(
     if (remove && index < 0) throw timeError("This activity has no repeating source. Remove it for this date only.");
     const target = index < 0 ? "new" : String(index),
       repeatedValues: Record<string, RepairValue> = {};
-    for (const key of ["activity", "start", "end", "venue", "zone"])
+    for (const key of ["activity", "start", "end", "venue", "zone", "purpose", "flexible"])
       if (values[`${key}:${selected}`] !== undefined)
         repeatedValues[`${key}:${target}`] = values[`${key}:${selected}`]!;
     const repeatedState = {
@@ -486,7 +539,9 @@ export function applyAgendaRepair(
       ),
     };
     applyAgendaRepair(repeatedState, residentId, date, repeatedValues, at, index < 0, remove);
-    (agenda.repairedWeek ??= {})[weekday] = repeatingAgenda.plannedDays![date]!;
+    const repeatedDay = repeatingAgenda.plannedDays?.[date];
+    if (!repeatedDay) return;
+    (agenda.repairedWeek ??= {})[weekday] = repeatedDay;
     for (const key of Object.keys(agenda.plannedDays ?? {})) {
       if (
         key !== date &&

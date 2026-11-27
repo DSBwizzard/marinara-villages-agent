@@ -4,18 +4,14 @@ import type { ContinuityEvidence } from "../models/continuity-model.js";
 import { z } from "zod";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
-import type { VenueScene } from "../models/scene-model.js";
-import type { VillageState, VillageVenue } from "../models/world.js";
+import type { VillageState } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { narrationWitnesses, type NarrationCommunication } from "./narration-sources.js";
 import { findLocation, findNpc, sceneActorIds } from "./places.js";
-import { contactNeighbors } from "./venue-contact.js";
-import { sceneLayoutVenue } from "./scene-layout.js";
 import { findCardCharacter } from "./visitors.js";
 import {
   applyAccessCommand,
-  defaultZonePolicy,
   managesAccess,
   mayInvite,
   readAccessCommand,
@@ -142,42 +138,18 @@ export const narrationAccessScopeSchema = z
       .max(5),
   })
   .strict();
-export function sceneAccessDiscussed(scene: VenueScene, venue: VillageVenue, input: string) {
-  // shortcut: keep full rules for structured access and likely access dialogue, extend only if access requests are missed.
-  const accessWords =
-    /\b(?:work|shift|job|schedule|access|permission|invit(?:e|ed|es|ing|ation)|allow(?:ed|ing)?|forbid(?:den)?|ban(?:ned)?|visitor hours|visiting hours|(?:may|can|could) (?:i|we) (?:enter|come|go|use|visit)|come (?:in|through|inside)|let (?:me|us|them|you) (?:in|through)|open (?:the |this )?door|knock|locked|unlock)\b/iu;
-  const origin = scene.zoneId ?? "exterior";
-  const neighbors = contactNeighbors(venue, origin, scene);
-  const named = input.normalize("NFKC").toLowerCase();
-  const restricted = sceneLayoutVenue(venue, scene).zones?.some((zone) => {
-    if (
-      zone.id !== origin &&
-      !(zone.seen && neighbors.includes(zone.id) && named.includes(zone.name.normalize("NFKC").toLowerCase()))
-    )
-      return false;
-    const policy = zone.access ?? defaultZonePolicy(venue, zone);
-    return (
-      policy.mode !== "public" ||
-      policy.accompanied ||
-      Array.isArray(policy.visitorHours) ||
-      (policy.visitorHours === "inherit" && !!venue.access?.visitorHours)
-    );
-  });
-  return (
-    scene.area === "private" ||
-    origin === "exterior" ||
-    !!restricted ||
-    !!scene.pendingAccessClaim ||
-    !!scene.doorwayContacts?.length ||
-    !!scene.contactGeneration?.instruction ||
-    accessWords.test(input) ||
-    scene.lines.slice(-4).some((line) => !line.contactHidden && accessWords.test(line.content))
-  );
-}
-
-export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
+export function narrationAccessPrompt(
+  scopes: NarrationAccessScope[],
+  localVenue?: string,
+  localZones: string[] = [],
+  compact = false,
+) {
+  const visible = (venueId: string, zoneId: string | null) =>
+    venueId !== localVenue || zoneId === null || localZones.includes(zoneId);
   return scopes.length
-    ? 'Scoped native access authority (GM only). Each Zone has explicit visitorHours: "always" or a schedule array. Set hours through zone-policy for that Zone; venue-policy changes only who runs the Venue. Work offers are exact pending terms, not current work. Only the actual required speaker may agree or decline through access.decide outcome:"access-management", zone:null, management:{action:"work-decide",offerId:the exact pending id,accept:true|false}. Require that speaker’s complete current communication explicitly accepting those terms; another person reporting agreement is insufficient. Changes to terms require a fresh proposal and fresh approvals. To propose new terms use management:{action:"work-propose",characterId,terms:{characterId,activity,zoneId,accessZoneIds,days,startMinute,endMinute}}; terms:null proposes ending work. Never invent an agreement or infer one from ordinary work attendance. ' +
+    ? (compact
+        ? "Scoped native access authority (GM only): "
+        : 'Scoped native access authority (GM only). Each Zone has explicit visitorHours: "always" or a schedule array. Set hours through zone-policy for that Zone; venue-policy changes only who runs the Venue. Work offers are exact pending terms, not current work. The player decides in the Work panel. Only the actual required resident may agree or decline through access.decide outcome:"access-management", zone:null, management:{action:"work-decide",offerId:the exact pending id,accept:true|false}. Require that speaker’s complete current communication explicitly accepting those terms; another person reporting agreement is insufficient. Changes to terms require a fresh proposal and fresh approvals. To propose new terms use management:{action:"work-propose",characterId,terms:{characterId,activity,zoneId,accessZoneIds,days,startMinute,endMinute}}; terms:null proposes ending work. Never invent an agreement or infer one from ordinary work attendance. ') +
         JSON.stringify(
           scopes.map(({ venueId, name, authorities }) => ({
             venueId,
@@ -191,40 +163,46 @@ export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
                     managerIds: row.venuePolicy.managerIds,
                   }
                 : undefined,
-              zones: row.zones.map(({ id, name, policy, manages, invites }) => ({
-                id,
-                name,
-                manages: manages || undefined,
-                invites: invites || undefined,
-                policy: policy
-                  ? {
-                      mode: policy.mode,
-                      managerIds: policy.managerIds ?? undefined,
-                      memberIds: policy.memberIds.length ? policy.memberIds : undefined,
-                      memberRoles: policy.memberRoles.length ? policy.memberRoles : undefined,
-                      inviterIds: policy.inviterIds.length ? policy.inviterIds : undefined,
-                      visitorHours: Array.isArray(policy.visitorHours)
-                        ? hoursSchema.parse(policy.visitorHours)
-                        : policy.visitorHours === "inherit"
-                          ? undefined
-                          : policy.visitorHours,
-                      accompanied: policy.accompanied || undefined,
-                    }
-                  : undefined,
-              })),
+              zones: row.zones
+                .filter(({ id }) => visible(venueId, id))
+                .map(({ id, name, policy, manages, invites }) => ({
+                  id,
+                  name,
+                  manages: manages || undefined,
+                  invites: invites || undefined,
+                  policy: policy
+                    ? {
+                        mode: policy.mode,
+                        managerIds: policy.managerIds ?? undefined,
+                        memberIds: policy.memberIds.length ? policy.memberIds : undefined,
+                        memberRoles: policy.memberRoles.length ? policy.memberRoles : undefined,
+                        inviterIds: policy.inviterIds.length ? policy.inviterIds : undefined,
+                        visitorHours: Array.isArray(policy.visitorHours)
+                          ? hoursSchema.parse(policy.visitorHours)
+                          : policy.visitorHours === "inherit"
+                            ? undefined
+                            : policy.visitorHours,
+                        accompanied: policy.accompanied || undefined,
+                      }
+                    : undefined,
+                })),
               permissions: row.permissions.length
-                ? row.permissions.map(({ id, zoneId, visitorId, issuerId, duration, accompaniedBy, outsideHours }) => ({
-                    id,
-                    zoneId,
-                    visitorId,
-                    issuerId,
-                    duration,
-                    accompaniedBy,
-                    outsideHours,
-                  }))
+                ? row.permissions
+                    .filter(({ zoneId }) => visible(venueId, zoneId))
+                    .map(({ id, zoneId, visitorId, issuerId, duration, accompaniedBy, outsideHours }) => ({
+                      id,
+                      zoneId,
+                      visitorId,
+                      issuerId,
+                      duration,
+                      accompaniedBy,
+                      outsideHours,
+                    }))
                 : undefined,
               bans: row.bans.length
-                ? row.bans.map(({ id, zoneId, visitorId, issuerId }) => ({ id, zoneId, visitorId, issuerId }))
+                ? row.bans
+                    .filter(({ zoneId }) => visible(venueId, zoneId))
+                    .map(({ id, zoneId, visitorId, issuerId }) => ({ id, zoneId, visitorId, issuerId }))
                 : undefined,
             })),
           })),
@@ -307,8 +285,8 @@ export function assertNarrationDecision(
 export function applyNarrationAccess(
   state: VillageState,
   decision: NarrationAccessDecision,
-  readset: Pick<NarrationReadset, "setupAt" | "access"> & {
-    source: Pick<NarrationReadset["source"], "seed" | "episodeId" | "visitorTrips">;
+  readset: Pick<NarrationReadset, "setupAt" | "access" | "visibleAccessZones" | "explicitSceneEvidence"> & {
+    source: Pick<NarrationReadset["source"], "seed" | "episodeId" | "visitorTrips"> & { scene?: { placeId: string } };
   },
   context: NarrationCommunication,
   sources: ContinuityEvidence[],
@@ -335,6 +313,12 @@ export function applyNarrationAccess(
     !(decision.type === "access.decide" && decision.outcome === "host-visitor"),
     "Visitor hosting is unavailable until sleeping arrangements are defined.",
   );
+  const visible = (zoneId: string | null) =>
+    !zoneId ||
+    decision.venue !== readset.source.scene?.placeId ||
+    !readset.visibleAccessZones ||
+    readset.visibleAccessZones.includes(zoneId);
+  memoryRequire(visible(decision.zone), "the Zone was not supplied for this decision");
   assertNarrationDecision(state, decision.by, context, sources);
   memoryRequire(
     sources.every((source) => source.perceptions.some((row) => row.channel === "words" && row.actorId !== decision.by)),
@@ -343,9 +327,19 @@ export function applyNarrationAccess(
   const lineIds = [...new Set(sources.map((source) => source.unitId))],
     known = ["player", ...sceneActorIds(state)];
   const apply = (meaning: object, id = receiptId) => {
+    const command = readAccessCommand({ ...meaning, operationId: id, expectedRevision: venue.access!.revision });
+    if ("zoneId" in command)
+      memoryRequire(visible(command.zoneId ?? null), "the Zone was not supplied for this decision");
+    if (readset.explicitSceneEvidence && decision.by === "player" && command.action === "work-decide")
+      memoryRequire(false, "confirm the player's work decision in the Work panel");
+    if (command.action === "work-propose" && command.terms)
+      memoryRequire(
+        visible(command.terms.zoneId ?? null) && command.terms.accessZoneIds.every(visible),
+        "the work Zones were not supplied for this decision",
+      );
     applyAccessCommand(
       venue,
-      readAccessCommand({ ...meaning, operationId: id, expectedRevision: venue.access!.revision }),
+      command,
       decision.by,
       at,
       known,

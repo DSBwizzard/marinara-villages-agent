@@ -202,8 +202,8 @@ await withBrowser(browser, async () => {
   });
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect.poll(() => heartbeats.some((beat) => beat.visible)).toBe(true);
-  await expect(page.getByRole("button", { name: /^Lorebooks/ })).toBeVisible();
   await page.getByRole("button", { name: "More" }).click();
+  await expect(page.getByRole("button", { name: /^Lorebooks/ })).toBeVisible();
   await expect(page.getByText("Background work", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Debug", exact: true }).click();
   await expect(page.getByRole("button", { name: "Retry unfinished work" })).toHaveCount(0);

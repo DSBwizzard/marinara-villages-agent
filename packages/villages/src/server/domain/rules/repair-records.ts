@@ -973,7 +973,7 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
   if (kind === "agenda") {
     const indices = new Set(
       Object.keys(request.values)
-        .filter((key) => /^(activity|start|end|venue|zone|repeat):/u.test(key))
+        .filter((key) => /^(activity|start|end|venue|zone|purpose|flexible|repeat):/u.test(key))
         .map((key) => key.split(":")[1]),
     );
     if (request.action === "remove-activity" && (indices.size !== 1 || indices.has("new")))
@@ -995,7 +995,6 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
       const npc = state.worldPlaces.npcs[id];
       if (!npc) throw conflict("This supporting character changed.");
       if (str("name") !== npc.name) assertDistinctNpcName(state, str("name"), npc.id);
-      if (str("label") !== npc.label) assertDistinctNpcName(state, str("label"), npc.id);
       if (str("mapId") && !state.maps.some((map) => map.id === str("mapId"))) throw badRequest("Choose a saved Map.");
       const associations = npc.associations.flatMap((_row, index) => {
         const placeId = str("association-place:" + index);

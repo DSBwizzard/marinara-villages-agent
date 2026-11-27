@@ -120,6 +120,7 @@ function fixture(
     raw: Record<string, unknown>,
     operation = "operation",
     separateRecallFromEvidence = false,
+    rememberFor?: string,
   ): NarrationPublication {
     const context = narrationContinuityContext(
       state,
@@ -129,6 +130,8 @@ function fixture(
       input,
       at,
       separateRecallFromEvidence,
+      false,
+      rememberFor,
     );
     const readset = fittedNarrationReadset(
       state,
@@ -172,6 +175,11 @@ await runCase("narration-acceptance/visitor-introduction", () => {
 await runCase("narration-acceptance/requested-memory", () => {
   const fact = "My mother taught me weaving";
   const input = `"Mara, please remember this for future visits: ${fact}."`;
+  const frozen = (publication: NarrationPublication, f: ReturnType<typeof fixture>, start = f.input.indexOf(fact)) => {
+    publication.readset.requestedMemory = { start, end: start + fact.length, recipientId: f.id };
+    publication.readset.codeRequestedMemory = true;
+    return publication;
+  };
   for (const variant of ["missing", "wrong-text", "wrong-recipient", "wrong-source", "valid", "legacy"] as const) {
     const f = fixture(input);
     const keep = {
@@ -194,6 +202,7 @@ await runCase("narration-acceptance/requested-memory", () => {
       "operation",
       true,
     );
+    frozen(publication, f);
     assert.deepEqual(publication.readset.requestedMemory, {
       start: input.indexOf(fact),
       end: input.indexOf(fact) + fact.length,
@@ -222,7 +231,7 @@ await runCase("narration-acceptance/requested-memory", () => {
   }
   const repeated = fixture(`  “Mara, remember this for ${fact}: ${fact}. ”  `);
   const raw = { segments: repeated.response(["remember-fact"]) };
-  const publication = repeated.publication(raw, "operation", true);
+  const publication = frozen(repeated.publication(raw, "operation", true), repeated, repeated.input.lastIndexOf(fact));
   const result = acceptNarrationContinuity(repeated.state, publication, "remember", later);
   assert.equal(result.held, false);
   const [version] = repeated.state.continuity.versions;
@@ -235,17 +244,66 @@ await runCase("narration-acceptance/requested-memory", () => {
   assert.equal(Object.hasOwn(raw, "keep"), false);
   acceptNarrationContinuity(repeated.state, publication, "remember", later);
   assert.equal(repeated.state.continuity.versions.length, 1);
-  const unnamed = fixture(`"Remember this: ${fact}."`);
-  const unnamedPublication = unnamed.publication({ segments: unnamed.response(["remember-fact"]) }, "operation", true);
-  assert.equal(unnamedPublication.readset.requestedMemory?.recipientId, unnamed.id);
-  assert.equal(unnamedPublication.readset.codeRequestedMemory, true);
-  assert.equal(acceptNarrationContinuity(unnamed.state, unnamedPublication, "memory", later).held, false);
-  assert.deepEqual(
-    unnamed.state.continuity.versions[0].sources[0].perceptions.map(({ actorId }) => actorId),
-    [unnamed.id],
+  const direct = fixture("  L’été, je tricote.  ");
+  const explicit = direct.publication({ segments: direct.response(["remember-fact"]) }, "operation", true, direct.id);
+  assert.equal(explicit.readset.codeRequestedMemory, true);
+  const outsider = {
+    ...explicit,
+    raw: { segments: [{ kind: "dialogue", speakerId: "other", text: "L’été, je tricote." }] },
+  };
+  assert.throws(
+    () => acceptNarrationContinuity(direct.state, outsider, "memory", later),
+    /only the reminder recipient/,
   );
-  const qualified = fixture(`"Remember this for future visits: ${fact}."`).publication({}, "operation", true).readset;
-  assert(qualified.requestedMemory && !qualified.requestedMemory.recipientId && !qualified.codeRequestedMemory);
+  assert.equal(direct.state.continuity.versions.length, 0);
+  const savedReminder = acceptNarrationContinuity(direct.state, explicit, "memory", later);
+  assert.equal(savedReminder.held, false);
+  assert.equal(savedReminder.episode!.segments[0].kind, "whisper");
+  assert.equal(savedReminder.episode!.segments[0].targetId, "player");
+  const [savedDirect] = direct.state.continuity.versions;
+  assert.equal(savedDirect.text, "Player said: L’été, je tricote.");
+  assert.deepEqual(
+    savedDirect.sources[0].perceptions.map(({ actorId }) => actorId),
+    [direct.id],
+  );
+  const noisy = fixture("I’ll mark the index with a blue ribbon. Please keep that between us.");
+  const noisyReply = noisy.publication(
+    {
+      segments: [
+        {
+          kind: "dialogue",
+          speakerId: noisy.id,
+          text: "I've remembered it and passed it on.",
+          requires: ["extra-note"],
+        },
+      ],
+      keep: [{ ...noisy.keep, id: "extra-note", for: ["player"] }],
+    },
+    "noisy-reminder",
+    true,
+    noisy.id,
+  );
+  assert.equal(noisyReply.readset.codeRequestedMemory, true);
+  const recoveredReminder = acceptNarrationContinuity(noisy.state, noisyReply, "noisy-reminder", later);
+  assert.equal(recoveredReminder.held, false);
+  assert.deepEqual(
+    recoveredReminder.episode!.segments.map(({ kind, speakerId, targetId, content }) => ({
+      kind,
+      speakerId,
+      targetId,
+      content,
+    })),
+    [{ kind: "whisper", speakerId: noisy.id, targetId: "player", content: "I'll remember that." }],
+  );
+  assert.deepEqual(
+    noisy.state.continuity.versions.map(({ text }) => text),
+    ["Player said: " + noisy.input],
+  );
+  assert.deepEqual(
+    noisy.state.continuity.versions[0].sources[0].perceptions.map(({ actorId }) => actorId),
+    [noisy.id],
+  );
+  assert.throws(() => direct.publication({}, "operation", true, "absent"), /someone in this Zone/);
   const group = fixture(`"Remember this: ${fact}."`, true);
   const other = Object.keys(group.state.worldPlaces.npcs)[0];
   const attending = { characterId: other, name: "Another resident", doing: "Listening" };
@@ -302,16 +360,25 @@ await runCase("narration-acceptance/requested-memory", () => {
     later,
     { forget: true },
   );
-  const screened = protectedWorld.publication({ segments: protectedWorld.response() }, "screened", true);
+  const screened = protectedWorld.publication(
+    { segments: protectedWorld.response() },
+    "screened",
+    true,
+    protectedWorld.id,
+  );
   assert(screened.readset.requestedMemory && screened.readset.admission.protectedRoots.length);
   assert.equal(screened.readset.codeRequestedMemory, undefined);
-  assert.equal(acceptNarrationContinuity(protectedWorld.state, screened, "screened", later).held, true);
+  assert.throws(
+    () => acceptNarrationContinuity(protectedWorld.state, screened, "screened", later),
+    /can only save the explicit reminder/,
+  );
   const collision = fixture(input);
   const collisionPublication = collision.publication(
     { segments: collision.response(), keep: [{ ...collision.keep, id: "remember-fact" }] },
     "operation",
     true,
   );
+  frozen(collisionPublication, collision);
   assert.throws(() => acceptNarrationContinuity(collision.state, collisionPublication, "remember", later), /reserved/u);
   assert.equal(collision.state.continuity.versions.length, 0);
   const echo = {
@@ -332,6 +399,7 @@ await runCase("narration-acceptance/requested-memory", () => {
     "echoed",
     true,
   );
+  frozen(echoed, collision);
   echoed.readset.recoverCodeMemoryEcho = true;
   for (const keep of [
     [{ ...echo, for: ["player"] }],
@@ -1239,6 +1307,10 @@ await runCase("narration-acceptance/independent-failure", () => {
       ],
     };
     const p = f.publication(raw, "operation", variant === "remember");
+    if (variant === "remember") {
+      const start = f.input.indexOf("I use the west peg.");
+      p.readset.requestedMemory = { start, end: start + "I use the west peg".length, recipientId: f.id };
+    }
     p.readset.ordinaryDialogue = true;
     p.readset.positionedSceneSources = true;
     p.readset.quotedSceneSources = true;

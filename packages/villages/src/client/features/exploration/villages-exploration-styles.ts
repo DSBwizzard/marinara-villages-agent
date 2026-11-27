@@ -80,6 +80,36 @@ export const EXPLORATION_STYLES = `
 .${P}-map-camera-controls { display:flex; gap:2px; position:absolute; z-index:6; right:12px; bottom:12px; padding:3px; border:1px solid var(--explore-border); border-radius:7px; background:#111720ed; }
 .${P}-map-camera-controls button { min-width:44px; min-height:44px; padding:6px 10px; border:0; border-radius:4px; background:transparent; color:var(--explore-text); font:inherit; cursor:pointer; }
 .${P}-map-camera-controls button:first-child,.${P}-map-camera-controls button:last-child { font-size:22px; }
+.${P}-stage .${P}-map-zoom-slider {
+  --zoom-rail:#d9d4e5; --zoom-accent:#c5aaff; --zoom-tick:#b4adc6;
+  appearance:none; box-sizing:border-box; writing-mode:vertical-lr; direction:rtl;
+  right:16px; bottom:16px; z-index:6; width:45px; height:min(158px,calc(100% - 32px));
+  margin:0; padding:11px 0; border:1px solid #8994ad66; border-radius:7px;
+  background:
+    linear-gradient(var(--zoom-rail),var(--zoom-rail)) center top / 24px 2px,
+    linear-gradient(var(--zoom-tick),var(--zoom-tick)) center 25% / 12px 1px,
+    linear-gradient(var(--zoom-tick),var(--zoom-tick)) center / 16px 1px,
+    linear-gradient(var(--zoom-tick),var(--zoom-tick)) center 75% / 12px 1px,
+    linear-gradient(var(--zoom-accent),var(--zoom-accent)) center bottom / 24px 2px,
+    linear-gradient(to top,var(--zoom-accent) var(--map-zoom-position),var(--zoom-rail) var(--map-zoom-position)) center / 2px 100%;
+  background-color:#182130d9; background-repeat:no-repeat; background-origin:content-box;
+  box-shadow:0 2px 6px #080d1766; cursor:ns-resize;
+}
+.${P}-map-zoom-slider:focus-visible { outline:2px solid var(--zoom-accent); outline-offset:2px; }
+.${P}-map-zoom-slider:disabled { opacity:.5; cursor:default; }
+.${P}-map-zoom-slider::-webkit-slider-runnable-track { width:2px; }
+.${P}-stage .${P}-map-zoom-slider::-webkit-slider-thumb {
+  appearance:none; box-sizing:border-box; width:25px; height:8px; margin-left:-11.5px; opacity:1;
+  border:1px solid #e8ddff; border-radius:1px; background:var(--zoom-accent);
+}
+.${P}-map-zoom-slider::-moz-range-track { width:2px; background:transparent; }
+.${P}-stage .${P}-map-zoom-slider::-moz-range-thumb {
+  box-sizing:border-box; width:25px; height:8px; opacity:1;
+  border:1px solid #e8ddff; border-radius:1px; background:var(--zoom-accent);
+}
+@media (hover:none) and (pointer:coarse) {
+  .${P}-stage .${P}-map-zoom-slider { display:none; }
+}
 .${P}-home-full button:disabled { opacity:.5; cursor:default; }
 .${P}-home-full :is(button,input,[tabindex]):focus-visible { outline:3px solid var(--explore-selected); outline-offset:-3px; }
 .${P}-home-full button:hover:not(:disabled) { filter:brightness(1.12); }

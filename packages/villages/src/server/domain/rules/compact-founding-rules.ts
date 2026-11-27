@@ -70,6 +70,7 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
       );
     return {
       activity,
+      purpose: row.purpose === "rest" || row.purpose === "work" ? row.purpose : "ordinary",
       ...(Array.isArray(row.weekdays) ? { weekdays: row.weekdays as number[] } : {}),
       duration: Math.max(
         ROUTINE_CONTRACT.minMinutes,

@@ -496,7 +496,10 @@ async function main() {
     recalled.recentLore.map(({ text }) => text),
     [spoken, "The harbor is quiet."],
   );
-  assert(recalled.parts.some((part) => part.block.text.includes(original)));
+  const historical = recalled.parts.find((part) => part.block.evidenceId?.startsWith("episode-context:"));
+  assert(historical, "The next Scene has eligible evidence from the earlier exchange");
+  assert.equal(JSON.parse(historical.block.text).interaction.inputWithheld, true);
+  assert(!recalled.parts.some((part) => part.block.text.includes("vaultcipher")), "Previous private thoughts stay out");
   const keyed = ["harbor", "vaultcipher", "secretguild", "narratorsigil"];
   assert.deepEqual(
     selectVillageLore(

@@ -19,7 +19,7 @@ export type VillageAgenda = {
   /** One line about an ordinary day for them, here. */
   routineSummary: string;
   /** Fallback for captured Agendas created before an exact week was saved. */
-  day: { startMinute: number; endMinute: number; venueId: string; zoneId?: string; activity: string }[];
+  day: VillageAgendaBlock[];
   /** Villages' own complete weekly plan, independent of Marinara schedules. */
   week?: Record<string, VillageAgendaBlock[]>;
   /** The day already in progress never changes when a week is rewritten. */
@@ -34,7 +34,10 @@ export type VillageAgenda = {
   generatedAt: string;
 };
 
+export type AgendaPurpose = "ordinary" | "rest" | "work" | "repair" | "unplanned";
+
 export type VillageAgendaBlock = {
+  purpose?: AgendaPurpose;
   essential?: boolean;
   commitmentId?: string;
   flexible?: boolean;
