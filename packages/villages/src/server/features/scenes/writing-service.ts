@@ -757,6 +757,7 @@ export function createSceneWriting({
               npcSpeakerNames,
               explicitNpcIntroduction: true as const,
               compactSceneDecisions: true as const,
+              validateAppointmentAvailability: true as const,
               relaxedNarrationProse: true as const,
             }
           : {}),

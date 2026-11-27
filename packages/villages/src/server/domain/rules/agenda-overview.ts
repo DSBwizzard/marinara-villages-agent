@@ -426,7 +426,7 @@ export function sceneAgendaEvidence(
         ).getTime() > Date.parse(readset.calendar.instant),
       "The appointment needs a future slot and a supplied location",
     );
-    if (readset.compactSceneDecisions && evidence.confirmable) {
+    if (readset.validateAppointmentAvailability && evidence.confirmable) {
       const player = continuityActor(world, "player");
       memoryRequire(
         player && !appointmentConflict(world, resident, player, time, dateAt(world, new Date(acceptedAt))),

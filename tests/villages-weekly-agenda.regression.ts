@@ -43,7 +43,7 @@ const tomorrow = "2026-11-11";
 const when = new Date(at);
 const time = { date: tomorrow, startMinute: 720, endMinute: 780, venueId: "mill", zoneId: "exterior" };
 
-function fixture() {
+function fixture({ oldCompactCapture = false } = {}) {
   const world = { ...defaultVillageState(), seed: "agenda", setupAt: at, foundedAt: at, timeZone: "UTC" };
   const venue = venueFixture({ id: "mill", name: "The Mill", category: "public" });
   world.venues.push(venue);
@@ -112,6 +112,7 @@ function fixture() {
         responseDigest: memoryHash(raw),
         readset: {
           ...readset,
+          ...(oldCompactCapture ? { compactSceneDecisions: true as const } : {}),
           agendaOptions: sceneAgendaContext(
             world,
             [{ characterId: "mara", doing: "Talking" }],
@@ -240,6 +241,16 @@ await runCase("weekly-agenda/agreement", () => {
   assert.equal(agendaWeek(world, "mara", when, false).pending, undefined);
   const explicit = structuredClone(raw);
   Object.assign(explicit.segments[0], { offerAppointment: true });
+  const historical = fixture({ oldCompactCapture: true });
+  const beforeOfferCheck = structuredClone(explicit);
+  Object.assign(beforeOfferCheck.keep[0].agenda.time, { startMinute: 600, endMinute: 630 });
+  const retained = historical.publish(beforeOfferCheck, "retained-appointment", propose);
+  assert.equal(retained.held, false, JSON.stringify(retained.rejected));
+  const retainedOffer = agendaWeek(historical.world, "mara", when, false).pending![0];
+  assert.throws(
+    () => confirmAgendaAppointment(historical.world, "mara", retainedOffer.token, when),
+    /already committed/,
+  );
   const result = publish(explicit, "agreement", propose);
   assert.equal(result.held, false, JSON.stringify(result.rejected));
   const pending = agendaWeek(world, "mara", when, false).pending!;
