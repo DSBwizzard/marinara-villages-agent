@@ -910,26 +910,15 @@ await runCase("resident-narration/mail-room", () => {
       "a generated letter cannot restore protected room context in GM recall",
     );
     assert.equal(f.state.mailbox.messages[mail.id].text, text, "the original signed text stays exact");
-    if (meaningful) {
-      const before = structuredClone(f.state);
-      assert.throws(() => readDeliveredLetter(f.state, mail.id, later), /room context protection changed/);
-      assert.deepEqual(f.state, before, "changed context holds saved learning without a new request or partial read");
-    } else {
-      readDeliveredLetter(f.state, mail.id, later);
-      f.cold();
-      assert.equal(f.state.mailbox.messages[mail.id].readAt, later);
-      assert.equal(
-        gmEpisodeView(
-          f.state.episodes.records.at(-1)!,
-          f.state.continuity,
-          [continuityActor(f.state, "player")!],
-          f.state.episodes,
-        ),
-        null,
-        "actual reading preserves writer-room ancestry without teaching room truth",
-      );
-      assert.equal(f.views("player").length, 0);
-    }
+    const before = structuredClone(f.state);
+    readDeliveredLetter(f.state, mail.id, later);
+    f.cold();
+    const held = f.state.mailbox.messages[mail.id];
+    assert.equal(held.withheld, "protection-changed");
+    assert.equal(held.readAt, undefined);
+    assert.equal(held.text, text, "withholding preserves the original signed text");
+    assert.deepEqual(f.state.episodes, before.episodes, "withholding does not add a reading episode");
+    assert.equal(f.views("player").length, 0);
   }
 });
 
