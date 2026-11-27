@@ -27,6 +27,7 @@ const mariVisitorSprites = [
   "Neutral",
   "Neutral_2",
   "Neutral_3",
+  "Neutral_4",
   "Playful",
   "Thinking",
   "Thinking_2",
