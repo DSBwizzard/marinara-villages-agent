@@ -370,6 +370,13 @@ export function worldRepairRecords(
         [text("text", "Wish", ""), ...memoryFields("desire", [], true)],
         { creating: true, people: people.filter((person) => person.id === personId), source: [] },
       );
+    const sourceVersions = new Map<string, ContinuityVersion[]>();
+    for (const version of state.continuity.versions) {
+      if (version.administrative) continue;
+      const versions = sourceVersions.get(version.rootId) ?? [];
+      versions.push(version);
+      sourceVersions.set(version.rootId, versions);
+    }
     const grouped = new Map<string, ReturnType<typeof continuityRepairEntries>>();
     for (const row of continuityRepairEntries(state, at)) {
       const rows = grouped.get(row.record.id) ?? [];
@@ -429,12 +436,9 @@ export function worldRepairRecords(
           source: [
             ...new Set(
               (focused ? [focused] : rows).flatMap((value) =>
-                state.continuity.versions
+                (sourceVersions.get(value.record.id) ?? [])
                   .filter(
-                    (version) =>
-                      version.rootId === value.record.id &&
-                      !version.administrative &&
-                      version.id === continuityVersionId(state.seed, version.operationId, value.holder),
+                    (version) => version.id === continuityVersionId(state.seed, version.operationId, value.holder),
                   )
                   .flatMap((version) => version.sources.map((source) => source.excerpt)),
               ),

@@ -601,7 +601,7 @@ export function createRepairService(ports: RepairPorts) {
       selected.sort((a, b) => Number(repairParts(a.id)[0] !== "home") - Number(repairParts(b.id)[0] !== "home"));
     return {
       records: selected.slice(offset, offset + 50).map((r) =>
-        personName && memoryList
+        personName && memoryList && section !== "relationships"
           ? {
               ...r,
               summary: `${r.people?.some((p) => p.id === personId && p.forgotten) ? "Forgotten by" : r.people?.some((p) => p.id === personId) ? "Remembered by" : "About"} ${personName}, ${r.summary}`,

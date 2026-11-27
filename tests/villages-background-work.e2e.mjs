@@ -239,7 +239,7 @@ await withBrowser(browser, async () => {
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
   await expect.poll(() => retries.length).toBe(2);
   assert.equal(acceptedRetries, 1);
-  await page.getByRole("button", { name: "Main menu", exact: true }).click();
+  await page.getByRole("button", { name: "← Return to village", exact: true }).click();
   await page.getByRole("button", { name: "People", exact: true }).click();
   await page.getByRole("button", { name: "Open Mara profile" }).click();
   await clickCharacterTool(page, "Inspect");

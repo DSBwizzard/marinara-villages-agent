@@ -108,7 +108,7 @@ await withBrowser(browser, async () => {
       });
     });
     await page.getByRole("button", { name: "Restore Village", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Main menu", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "← Return to village", exact: true })).toBeDisabled();
     await page.evaluate(() =>
       window.resolveRepairRefresh({ title: "Preserved Scene draft", text: "I was about to ask about the library." }),
     );
