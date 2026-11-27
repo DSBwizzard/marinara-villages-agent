@@ -151,7 +151,11 @@ export function projectLiveAttendance(village: VillageState, scene: VenueScene, 
   const gatheringIds = foundingRoster.filter((id) => {
     const resident = village.villagers.find((person) => person.characterId === id);
     const admitted = scene.continuity?.facts.villagers.find((person) => person.characterId === id);
-    return resident && (!admitted || admitted.incarnation === resident.incarnation);
+    return (
+      resident &&
+      Date.parse(resident.addedAt || scene.startedAt) <= Date.parse(scene.startedAt) &&
+      (!admitted || admitted.incarnation === resident.incarnation)
+    );
   });
   const sameRoutine = (id: string) =>
     (!foundingRoster.includes(id) || gatheringIds.includes(id)) &&

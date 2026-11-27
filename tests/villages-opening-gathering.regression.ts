@@ -84,5 +84,16 @@ for (const count of [1, 2, 3]) {
     ["b"],
   );
   assert.deepEqual(replaced.accompanying, [], "A replacement cannot inherit an admitted founder's position");
+  scene.status = "opening";
+  const refreshedAt = new Date(Date.parse(at) + 30_000);
+  resident.addedAt = refreshedAt.toISOString();
+  scene.sceneAttendance = projectLiveAttendance(world, scene, venue, refreshedAt).attendance;
+  scene.continuity = captureSceneContinuity(world, scene, refreshedAt.getTime());
+  const reloaded = projectLiveAttendance(world, scene, venue, refreshedAt);
+  assert.deepEqual(
+    reloaded.attendance.occupants.map(({ characterId }) => characterId),
+    ["b"],
+    "A fresh roster capture cannot admit a later replacement to the reserved gathering",
+  );
 }
 console.log("Ordinary Founding gatherings preserve their saved identity without scripted Projects.");
