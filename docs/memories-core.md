@@ -10,6 +10,8 @@ An Episode records an accepted interaction, its sources and what each participan
 
 Native authority comes from the matching mechanical validator and receipt. A retained statement can record a promise, preference or refusal. It cannot grant access, complete a Project or change a schedule. Publication checks the selected sources, audiences and revisions before atomically saving the accepted changes.
 
+Ordinary Scene replies contain narration and tagged dialogue. The same request can propose a lasting change on a separate line. Villages saves the accepted exchange and effects together. An invalid optional note does not interrupt the conversation. If an asserted effect fails, its dependent lines are omitted. The game keeps the draft if it cannot publish a reply and makes no automatic replacement request.
+
 ## Forget and correction
 
 Forget suppresses the selected holder's existing account and protects its affected sources from reappearing through later recall or replay. Correct publishes a player-authored replacement for selected holders who already know the statement. Independently known material remains separate. Neither operation changes prior dialogue, creates a fictional event or modifies mechanical state. Privileged Inspect can show retained evidence. Reading Inspect does not teach a character.

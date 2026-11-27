@@ -8,6 +8,7 @@ export type VenueTiming = {
   stages: { stage: string; elapsedMs: number; reused: boolean }[];
 };
 export type VenueOperation = {
+  freshReply?: true;
   timing?: VenueTiming;
   failure?: WorkFailure;
   id: string;

@@ -107,6 +107,7 @@ export async function verifyFoundingLayout(group) {
             Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
           });
         let setupPosts = 0;
+        let foundedSnapshot;
         let payload,
           suggestions = 0,
           settingReceipt,
@@ -159,7 +160,7 @@ export async function verifyFoundingLayout(group) {
               startedAt: new Date().toISOString(),
               status: failMapGeneration ? "failed" : "complete",
               error: failMapGeneration
-                ? `The Engine refused /api/characters/avatar-generation (500): ${"upstream error details ".repeat(25)}`
+                ? 'The Engine refused /api/characters/avatar-generation (500): OpenAI image generation failed (429): {"error":{"message":"upstream error details","code":"rate_limit_exceeded"}}'
                 : "",
               result: failMapGeneration ? null : { image: generationImage, width: 1536, height: 1024 },
             };
@@ -315,7 +316,22 @@ export async function verifyFoundingLayout(group) {
                 body: JSON.stringify({ error: "Fixture founding failure." }),
               });
             payload = route.request().postDataJSON();
-            return send(snapshot);
+            foundedSnapshot = {
+              ...snapshot,
+              isFounded: true,
+              village: { ...snapshot.village, name: payload.name },
+              foundingPreparation: {
+                status: "pending",
+                canPlay: view.width === 727,
+                phase: "residents",
+                completedIds: [],
+                currentId: "finn",
+                currentTask: "routine",
+                error: "",
+              },
+              villagers: characters.slice(0, view.count).map(({ id, name }) => ({ characterId: id, name })),
+            };
+            return send(foundedSnapshot);
           }
           if (path.endsWith("/setup/venue-image/generate")) {
             generatedImages++;
@@ -353,7 +369,7 @@ export async function verifyFoundingLayout(group) {
             });
           if (path.endsWith("/image-style-profiles"))
             return send({ defaultProfileId: "fixture-ink", profiles: [{ id: "fixture-ink", name: "Ink" }] });
-          return send(snapshot);
+          return send(foundedSnapshot ?? snapshot);
         });
         await page.route("**/api/connections", (route) =>
           fulfill(route, {
@@ -435,11 +451,14 @@ export async function verifyFoundingLayout(group) {
           await finishPassage(root, -1);
           await button("Back").click();
         };
+        const venueIntroOpening = /^There’s our Map\./;
         const enterChapter = async () => {
           const guide = root.locator(".villages-chapter-guide");
           if (await root.locator("[data-explanation]").count()) {
-            const introduction = guide.getByText(/^Add or draft your Venues/);
+            const passage = guide.locator(".villages-setting-dialogue");
+            const introduction = guide.getByText(venueIntroOpening);
             await expect(introduction).toBeVisible();
+            await expect(passage).not.toHaveAttribute("data-reader-next-page");
             await expect(work).toHaveCount(0);
             await layer("Venue");
             await expect(hierarchy).toBeInViewport({ ratio: 1 });
@@ -456,6 +475,26 @@ export async function verifyFoundingLayout(group) {
               await page.screenshot({
                 path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `venue-intro-${view.width}.png`),
               });
+            await advance();
+            const addOrDraft = guide.getByText(/^Got a place in mind/);
+            await expect(addOrDraft).toBeVisible();
+            await expect(passage).not.toHaveAttribute("data-reader-next-page");
+            await expect(work).toHaveCount(0);
+            await advance();
+            const assignments = guide.getByText(/^Put your places on the Map/);
+            await expect(assignments).toBeVisible();
+            await expect(passage).not.toHaveAttribute("data-reader-next-page");
+            await expect(work).toHaveCount(0);
+            if (view.width === 1366 || (view.width === 390 && view.height === 844)) {
+              await retreat();
+              await expect(addOrDraft).toBeVisible();
+              await advance();
+              await expect(assignments).toBeVisible();
+              if (process.env.VILLAGES_SCREENSHOT_DIR)
+                await page.screenshot({
+                  path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `venue-intro-assignments-${view.width}.png`),
+                });
+            }
             await finishPassage(guide);
             if (view.width === 1366) {
               const move = await page.evaluate(async () => {
@@ -1765,7 +1804,7 @@ export async function verifyFoundingLayout(group) {
         await bounds("people");
         await advance();
         await expect(root).toHaveAttribute("data-step", "2");
-        await expect(root.getByText(/^Add or draft your Venues/)).toHaveCount(0);
+        await expect(root.getByText(venueIntroOpening)).toHaveCount(0);
         await enterChapter();
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await button("Art settings").click();
@@ -1872,8 +1911,9 @@ export async function verifyFoundingLayout(group) {
           await button("Generate image").click();
           const artwork = root.getByRole("region", { name: "Map artwork", exact: true });
           const mapFailure = artwork.getByRole("alert");
+          const failureText = "Couldn’t generate the map (rate_limit_exceeded).";
           const checkMapFailure = async () => {
-            await expect(mapFailure).toHaveText("Couldn’t generate the map.");
+            await expect(mapFailure).toHaveText(failureText);
             await expect(mapFailure).toBeInViewport({ ratio: 1 });
             for (const name of ["Generate again", "Upload image"]) {
               await expect(button(name)).toBeEnabled();
@@ -1883,14 +1923,18 @@ export async function verifyFoundingLayout(group) {
             await expect(root.getByText(/upstream error details/)).toHaveCount(0);
           };
           await checkMapFailure();
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({
+              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `map-generation-error-${view.width}.png`),
+            });
           if (phone) await retreat(); // Close the Maps panel before leaving the chapter.
           await retreat();
           await expect(root).toHaveAttribute("data-step", "1");
-          await expect(root.getByText("Couldn’t generate the map.", { exact: true })).toHaveCount(0);
+          await expect(root.getByText(failureText, { exact: true })).toHaveCount(0);
           if (phone) await retreat();
           await retreat();
           await expect(root).toHaveAttribute("data-step", "0");
-          await expect(root.getByText("Couldn’t generate the map.", { exact: true })).toHaveCount(0);
+          await expect(root.getByText(failureText, { exact: true })).toHaveCount(0);
           await advance();
           await enterChapter();
           await advance();
@@ -1898,7 +1942,7 @@ export async function verifyFoundingLayout(group) {
           await checkMapFailure();
           await expect
             .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.mapProblem))
-            .toBe("Couldn’t generate the map.");
+            .toBe(failureText);
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
           await checkMapFailure();
@@ -1992,7 +2036,7 @@ export async function verifyFoundingLayout(group) {
         await advance();
         await expect(root).toHaveAttribute("data-step", "3");
         await expect(root.locator("[data-explanation]")).toHaveCount(1);
-        await expect(root.getByText(/^Add or draft your Venues/)).toBeVisible();
+        await expect(root.getByText(venueIntroOpening)).toBeVisible();
         await expect(work).toHaveCount(0);
         await enterChapter();
         await retreat();
@@ -2001,7 +2045,7 @@ export async function verifyFoundingLayout(group) {
         if (phone)
           await expect(root.locator(".villages-setting-dialogue:visible")).not.toHaveAttribute("data-reader-next-page");
         await finishPassage(root, -1);
-        await expect(root.getByText(/^Add or draft your Venues/)).toBeVisible();
+        await expect(root.getByText(venueIntroOpening)).toBeVisible();
         await expect(work).toHaveCount(0);
         await retreat();
         await expect(root).toHaveAttribute("data-step", "2");
@@ -2927,17 +2971,16 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-review-stage", "map");
         await expect(button("Reset map view")).toBeVisible();
         await advance();
-        await button("Found village").click();
-        await expect(root).toHaveAttribute("data-review-stage", "sendoff");
-        assert.equal(setupPosts, 0, "Confirmation and scripted dialogue do not dispatch founding or model requests");
-        await expectPose("presenting");
-        await retreat();
         await expect(root).toHaveAttribute("data-review-stage", "confirm");
-        await button("Found village").click();
-        await advance();
-        await expect(root).toHaveAttribute("data-review-stage", "playful");
-        await expect(root.getByText("Maybe I'll see you there!", { exact: true })).toBeVisible();
-        await expectPose("playful");
+        assert.equal(setupPosts, 0, "Review does not submit founding");
+        const backdrop = await root.evaluate((node) => getComputedStyle(node).backgroundImage);
+        const readerStyle = () =>
+          root.locator(".villages-chapter-guide .villages-setting-dialogue").evaluate((reader) => {
+            const line = getComputedStyle(reader.querySelector("p[aria-live]"));
+            const footer = getComputedStyle(reader.querySelector(".villages-reader-footer"));
+            return [line.fontFamily, line.fontSize, line.lineHeight, footer.borderTopWidth];
+          });
+        const confirmationReaderStyle = await readerStyle();
         if (view.width === 320 || view.width === 1366) {
           await page.evaluate(() =>
             window.featureController.updateSetupMapRequest({
@@ -2947,16 +2990,41 @@ export async function verifyFoundingLayout(group) {
               phase: "paused",
             }),
           );
-          await expect(button("Enter village")).toBeDisabled();
-          assert.equal(setupPosts, 0, "A paused map attempt still blocks Enter village after confirmation");
+          await expect(button("Found village")).toBeDisabled();
+          assert.equal(setupPosts, 0, "A paused map attempt blocks founding");
           await page.evaluate(() => window.featureController.updateSetupMapRequest(null));
         }
-        await expect(button("Enter village")).toBeEnabled();
-        const mariBox = await stage.boundingBox();
-        assert.ok(
-          mariBox.x + mariBox.width / 2 < frame.x + frame.width * 0.5,
-          "Mari stays on the left during her send-off",
+        await button("Found village").click();
+        if (view.width === 1366) {
+          await expect(root.getByRole("alert")).toContainText("Fixture founding failure.");
+          await expect(root).toHaveAttribute("data-review-stage", "confirm");
+          await expectPose("proud");
+          await button("Found village").click();
+        }
+        await expect(root).toHaveAttribute("data-step", "preparation");
+        assert.equal(await root.evaluate((node) => getComputedStyle(node).backgroundImage), backdrop);
+        if (view.width !== 727) {
+          await expect(root.getByRole("heading", { name: "Preparing your village" })).toBeVisible();
+          await expect(stage).toHaveCount(0);
+          await expect(button("Enter village")).toHaveCount(0);
+          foundedSnapshot.foundingPreparation.canPlay = true;
+        }
+        await expect(root.getByText(/Coastal Community is ready for you/)).toBeVisible();
+        assert.deepEqual(await readerStyle(), confirmationReaderStyle, "Mari's return uses the Founding reader style");
+        await expectPose("presenting");
+        await expect(button("Next")).toBeInViewport({ ratio: 1 });
+        await button("Next").press("Enter");
+        await expect(root.getByText("Maybe I'll see you there!", { exact: true })).toBeVisible();
+        await button("Back").press("Enter");
+        await expect(root.getByText(/Coastal Community is ready for you/)).toBeVisible();
+        await button("Next").click();
+        assert.deepEqual(
+          await readerStyle(),
+          confirmationReaderStyle,
+          "Mari's farewell uses the Founding reader style",
         );
+        await expectPose("playful");
+        await expect(root.locator(".villages-setting-dialogue")).toBeInViewport({ ratio: 1 });
         await expect(button("Enter village")).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
@@ -2966,17 +3034,12 @@ export async function verifyFoundingLayout(group) {
             ),
           });
         await button("Enter village").click();
-        if (view.width === 1366) {
-          await expect(root.getByRole("alert")).toContainText("Fixture founding failure.");
-          await expect(root).toHaveAttribute("data-review-stage", "playful");
-          await expect(button("Enter village")).toBeEnabled();
-          await button("Enter village").click();
-        }
+        await expect(root).toHaveCount(0);
         await expect.poll(() => payload).toBeTruthy();
         assert.equal(
           setupPosts,
           view.width === 1366 ? 2 : 1,
-          "Only the final action submits, with one explicit retry on failure",
+          "Only Found village submits, with one explicit retry on failure",
         );
         assert.equal(payload.name, "Coastal Community");
         assert.equal(payload.timeZone, snapshot.clock?.timeZone || snapshot.village.timeZone);

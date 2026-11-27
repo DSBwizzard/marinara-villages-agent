@@ -1,4 +1,5 @@
 import { badRequest, statusCodeOf } from "../../domain/rules/errors.js";
+import { coerceWorkFailure, sceneFailureMetadata } from "../../domain/rules/work-failure.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../../domain/rules/image-limits.js";
 import { MAX_SUBMISSION_ID_LENGTH, MAX_TOWN_MAP_IMAGE_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { villagesLogger } from "../engine/runtime-host.js";
@@ -56,7 +57,8 @@ export function fail(reply: FastifyReply, error: unknown, context: string) {
   const statusCode = statusCodeOf(error);
   const message = error instanceof Error ? error.message : "The village could not do that.";
   if (statusCode >= 500) villagesLogger().error(error, "[villages] %s failed", context);
-  return reply.code(statusCode).send({ error: message, code: (error as { code?: string })?.code });
+  const sceneFailure = sceneFailureMetadata(coerceWorkFailure((error as { failure?: unknown })?.failure));
+  return reply.code(statusCode).send({ error: message, code: (error as { code?: string })?.code, sceneFailure });
 }
 export type CharacterParams = { characterId: string };
 export type VenueTurnBody = {

@@ -53,27 +53,33 @@ await withBrowser({ close: server.stop }, async () => {
     );
     const turns = [];
     let rejectFirstReply;
-    let dropHeldResponse = false;
+    let dropFailedResponse = false;
     const complete = server.model.chatComplete;
     server.model.chatComplete = (...args) => {
       if (!rejectFirstReply) return complete(...args);
       const rejected = rejectFirstReply;
       rejectFirstReply = undefined;
+      if (rejected === "json")
+        return {
+          finishReason: "stop",
+          content: '[unadmitted]: Private parser text.\n[keep]: {"text":"Private replacement"',
+        };
+      if (rejected === "format")
+        return {
+          finishReason: "stop",
+          content:
+            '[!mara]: Private model narration.\n[keep]: {"id":"private-effect-id","for":["mara"],"class":"information","text":"Private continuity note","source":99}',
+        };
       if (rejected === "expression")
         return {
           finishReason: "stop",
-          content: JSON.stringify({
-            segments: [
-              { kind: "dialogue", speakerId: "mara", text: "I see.", expression: "unavailable-fixture-expression" },
-            ],
-          }),
+          content: '[mara]: I see.\n[cue]: {"expression":"unavailable-fixture-expression"}',
         };
       if (rejected === "continuity")
         return {
           finishReason: "stop",
           content: JSON.stringify({
             segments: [
-              { kind: "narration", text: "Private narration from the witness fixture." },
               {
                 kind: "dialogue",
                 speakerId: "mara",
@@ -91,7 +97,7 @@ await withBrowser({ close: server.stop }, async () => {
                 about: ["player"],
                 text: "Private relationship note.",
                 relationship: { impact: "turning-negative" },
-                source: [{ segment: 1 }],
+                source: [{ segment: 1, perceive: { kind: "seen", by: ["mara"] } }],
               },
               { for: ["room"], class: "experience", text: "Private room note.", source: [{ segment: 1 }] },
             ],
@@ -105,22 +111,9 @@ await withBrowser({ close: server.stop }, async () => {
               kind: "dialogue",
               speakerId: "mara",
               text: "Private model narration.",
-              ...(rejected === "format" ? { requires: ["private-effect-id"] } : {}),
             },
           ],
-          ...(rejected === "format"
-            ? {
-                keep: [
-                  {
-                    id: "private-effect-id",
-                    for: ["mara"],
-                    class: "information",
-                    text: "Private continuity note.",
-                    source: [{ segment: "private malformed reference" }],
-                  },
-                ],
-              }
-            : { input: [{ kind: "speech", text: "Unsupported inventory" }] }),
+          input: [{ kind: "speech", text: "Unsupported inventory" }],
         }),
       };
     };
@@ -136,17 +129,17 @@ await withBrowser({ close: server.stop }, async () => {
       });
       if (url.pathname.endsWith("/rooms/turn")) {
         turns.push({ input: request.postDataJSON(), response });
-        if (dropHeldResponse) {
-          dropHeldResponse = false;
-          assert.equal(server.scene().submissions.at(-1)?.acceptance.status, "held", response.body);
+        if (dropFailedResponse) {
+          dropFailedResponse = false;
+          assert.equal(response.statusCode, 502, response.body);
+          assert.equal(server.scene().submissions.at(-1)?.acceptance.status, "abandoned");
           return abort(route);
         }
       }
       if (response.statusCode !== 200)
         assert(
           (url.pathname.endsWith("/rooms/turn") &&
-            (server.scene().submissions.at(-1)?.acceptance.status === "held" ||
-              response.json().code === "SCENE_MESSAGE_TOO_LONG")) ||
+            (response.statusCode === 502 || response.json().code === "SCENE_MESSAGE_TOO_LONG")) ||
             (url.pathname.endsWith("/rooms/browser/recovery") && response.json().error === "That Scene is not closed."),
           `${request.method()} ${url.pathname}: ${response.body}`,
         );
@@ -191,12 +184,15 @@ await withBrowser({ close: server.stop }, async () => {
     for (const edit of [false, true]) {
       rejectFirstReply = edit ? "format" : "legacy";
       const original = "An ordinary line " + edit;
-      const beforeHold = turns.length;
+      const beforeFailure = turns.length;
       await composer.fill(original);
       await send.click();
-      await expect.poll(() => turns.length).toBe(beforeHold + 1);
-      await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("held");
-      const held = turns.at(-1).input.submissionId;
+      await expect.poll(() => turns.length).toBe(beforeFailure + 1);
+      const failed = turns.at(-1).input.submissionId;
+      const failedTurn = () => server.scene().submissions.find((row) => row.id === failed);
+      assert.equal(turns.at(-1).response.statusCode, 502);
+      assert.notEqual(failedTurn()?.acceptance.status, "applied");
+      assert.equal(failedTurn()?.narration, undefined);
       await expect(composer).toHaveValue(original);
       const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
       await expect(chip).toHaveCount(1);
@@ -204,20 +200,17 @@ await withBrowser({ close: server.stop }, async () => {
       if (edit) {
         await chip.click();
         await expect(page.getByRole("button", { name: "Replay", exact: true })).toHaveCount(0);
-        await expect(
-          page.getByText("The AI reply contained an invalid Scene reference (invalid_format)."),
-        ).toBeVisible();
+        await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
         await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
         await expect(page.getByText("Anonymous report copied.")).toBeVisible();
         const report = await page.evaluate(() => window.sceneReport);
         assert.match(report, /Server build: [a-f0-9]{16}/);
-        assert.match(
-          report,
-          /Operation code: missing_result\nPhase: reply validation\nValidator: invalid_format · source\.0\.segment/,
-        );
-        assert.match(report, /Completion: parse complete · finish stop · \d+ response characters/);
-        assert.match(report, /Saved request: reply held · last checkpoint writing-completion/);
-        assert(!report.includes(held));
+        assert.match(report, /Result: HTTP 502/);
+        assert.match(report, /Cause: invalid_reply\nPhase: reply validation/);
+        assert.match(report, /Validator: invalid_type at source \(expected array\)/);
+        assert.match(report, /parse complete.*finish stop.*token output limit/);
+        assert.doesNotMatch(report, /reply held|writing-completion/);
+        assert(!report.includes(failed));
         assert.doesNotMatch(
           report,
           /Private model narration|Private continuity note|private malformed reference|private-effect-id|An ordinary line|Mara|The Mill/iu,
@@ -226,10 +219,12 @@ await withBrowser({ close: server.stop }, async () => {
         await composer.fill(original + " with edits");
       }
       await send.click();
-      await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("applied");
-      assert.equal(turns.at(-1).input.replaceOfOperationId, held);
+      await expect.poll(() => turns.length).toBe(beforeFailure + 2);
+      await expect.poll(() => server.scene().submissions.at(-1)?.id).toBe(turns.at(-1).input.submissionId);
+      assert.equal(server.scene().submissions.at(-1)?.acceptance.status, "applied");
+      assert.equal(turns.at(-1).input.replaceOfOperationId, failed);
       assert.equal(turns.at(-1).input.message, edit ? original + " with edits" : original);
-      assert.equal(server.scene().submissions.find((row) => row.id === held).acceptance.status, "abandoned");
+      assert.notEqual(failedTurn()?.acceptance.status, "applied");
       await expect
         .poll(async () => {
           const next = page.getByRole("button", { name: "Next paragraph", exact: true });
@@ -268,25 +263,50 @@ await withBrowser({ close: server.stop }, async () => {
     await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
     await composer.fill("I knock the cup to the floor.");
     rejectFirstReply = "continuity";
-    dropHeldResponse = true;
+    dropFailedResponse = true;
     await send.click();
     await expect(composer).toHaveValue("I knock the cup to the floor.");
     await expect(send).toBeEnabled();
     const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
     await expect(chip).toHaveAccessibleName("1 Scene error");
     await chip.click();
-    await expect(page.getByText("The AI reply couldn’t show that a character witnessed the event.")).toBeVisible();
-    await expect(page.getByText("The game couldn’t reach the server.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
     await expect(page.getByText("Anonymous report copied.")).toBeVisible();
-    const heldReport = await page.evaluate(() => window.sceneReport);
-    assert.match(heldReport, /Result: No HTTP response · NETWORK_ERROR/);
-    assert.match(heldReport, /continuity_evidence_not_witnessed · source/);
-    assert.match(heldReport, /room_target_in_actor_memory · for/);
-    assert.match(heldReport, /Saved request: reply held/);
-    assert(!heldReport.includes(turns.at(-1).input.submissionId));
-    assert.doesNotMatch(heldReport, /Private |private-attitude-id|knock the cup|Mara|The Mill/i);
-
+    const droppedReport = await page.evaluate(() => window.sceneReport);
+    assert.match(droppedReport, /Result: No HTTP response · NETWORK_ERROR/);
+    assert.match(droppedReport, /Validator: room_target_in_actor_memory at for/);
+    assert.doesNotMatch(droppedReport, /reply held|writing-completion/);
+    assert(!droppedReport.includes(turns.at(-1).input.submissionId));
+    assert.doesNotMatch(droppedReport, /Private |private-attitude-id|knock the cup|Mara|The Mill/i);
+    await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
+    const draft = "Private draft for JSON failure.";
+    await composer.fill(draft);
+    rejectFirstReply = "json";
+    const nextTurn = turns.length + 1;
+    await send.click();
+    await expect.poll(() => turns.length).toBe(nextTurn);
+    const malformed = turns.at(-1);
+    assert.equal(malformed.response.statusCode, 502);
+    assert.equal(malformed.response.json().sceneFailure.failureCause, "invalid_reply");
+    assert.equal(server.scene().operation.failure.responseDiagnostics.parseStatus, "invalid");
+    assert.doesNotMatch(JSON.stringify(server.scene().operation), /Private parser text|Private replacement/);
+    await expect(composer).toHaveValue(draft);
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(composer).toHaveValue(draft);
+    await expect(chip).toHaveAccessibleName("1 Scene error");
+    await chip.click();
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    await expect(page.getByText("Anonymous report copied.")).toBeVisible();
+    const parserReport = await page.evaluate(() => window.sceneReport);
+    assert.match(parserReport, /Cause: invalid_reply/);
+    assert.match(parserReport, /Reply parser: a private record was malformed \(invalid_private_record\)/);
+    assert.match(parserReport, /parse invalid/);
+    assert.doesNotMatch(parserReport, /Private parser text|Private replacement|Private draft|Mara|The Mill/i);
+    assert.equal(turns.length, nextTurn, "reload never submits the failed reply");
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
     await composer.fill("Thanks for listening.");
     rejectFirstReply = "expression";

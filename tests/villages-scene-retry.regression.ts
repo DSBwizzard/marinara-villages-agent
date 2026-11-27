@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
-import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
+import { editFixtureScene, fixtureVillageState } from "./helpers/village-storage.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import {
@@ -96,11 +96,34 @@ async function fixture() {
   const send = async (response: unknown = refusal, message = line) => {
     const scene = await active();
     responses.push(response);
+    // This suite exercises the alternate-reply feature for existing saved requests.
+    const submissionId = randomUUID();
+    const attemptId = randomUUID();
+    const input = { message, mode: "chat", targetId: "" };
+    const existing = host.scene().operation;
+    if (existing?.kind !== "retry" || existing.status !== "interrupted")
+      editFixtureScene(host.records.get("villages-venue-visit-browser"), host.records, (saved) => {
+        saved.operation = {
+          id: submissionId,
+          kind: "turn",
+          input,
+          token: randomUUID(),
+          attemptId,
+          status: "interrupted",
+          stage: "admission",
+          startedAt: new Date().toISOString(),
+          sceneRevision: scene.sceneRevision,
+          snapshot: null,
+          checkpoints: {},
+          attempts: {},
+          error: "",
+        };
+      });
     const result = await post("/turn", {
       sessionId: "browser",
-      submissionId: randomUUID(),
-      mode: "chat",
-      message,
+      submissionId,
+      ...input,
+      ...(existing?.kind === "retry" && existing.status === "interrupted" ? {} : { retryOfAttemptId: attemptId }),
       expectedSceneRevision: scene.sceneRevision,
     });
     assert.equal(result.statusCode, 200, result.body + JSON.stringify(host.scene().submissions.at(-1)?.acceptance));

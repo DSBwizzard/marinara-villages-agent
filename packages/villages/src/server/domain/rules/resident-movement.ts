@@ -1,4 +1,5 @@
 import type { VenueScene } from "../models/scene-model.js";
+import type { SceneSpeechAction } from "../models/narration-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { NPC_PREFIX } from "./places.js";
 import { badGateway } from "./errors.js";
@@ -350,6 +351,40 @@ export function residentMovementOptions(
     })),
     groups,
   };
+}
+
+/** Spoken follow choices use the captured local cast and the existing route options. */
+export function residentFollowingOptions(
+  venue: VillageVenue,
+  scene: VenueScene,
+  options: ReturnType<typeof residentMovementOptions>,
+): Extract<SceneSpeechAction, { kind: "follow" }>[] {
+  const from = scene.zoneId;
+  if (!from) return [];
+  const adjacent = new Set(contactNeighbors(venue, from, scene));
+  return options.destinations.flatMap(({ characterId: actorId, zoneIds, trespassZoneIds }) => {
+    if (contactPosition(scene, actorId) !== from) return [];
+    const option = (agrees: boolean, to?: string, trespass?: true) => ({
+      kind: "follow" as const,
+      actorId,
+      agrees,
+      to,
+      trespass,
+    });
+    return [
+      option(true),
+      option(false),
+      ...options.zones.flatMap(({ id }) =>
+        !adjacent.has(id)
+          ? []
+          : [
+              ...(zoneIds.includes(id) ? [option(true, id)] : []),
+              ...(trespassZoneIds.includes(id) ? [option(true, id, true)] : []),
+              option(false, id),
+            ],
+      ),
+    ];
+  });
 }
 
 /** Display eligibility and capacity once per destination. The native move checks still use the full options. */

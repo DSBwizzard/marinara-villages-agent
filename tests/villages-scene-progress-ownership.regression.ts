@@ -1,6 +1,6 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
-// Test cases: scene-narration/dismiss-failed, scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/accepted-notices, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc, scene-narration/native-circumstance
+// Test cases: scene-narration/fresh-reply, scene-narration/dismiss-failed, scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/accepted-notices, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc, scene-narration/native-circumstance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -45,6 +45,7 @@ import { actorEpisodeView } from "../packages/villages/src/server/domain/rules/e
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { continuityHolderKey, protectContinuity } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
+import { readNarrationSubmission } from "../packages/villages/src/server/domain/decoding/narration-submission.js";
 import { scenePlaybackSteps } from "../packages/villages/src/client/features/scenes/scene-playback.js";
 import { readNpc } from "../packages/villages/src/server/domain/rules/places.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
@@ -63,6 +64,60 @@ import {
 } from "../packages/villages/src/server/features/scenes/progress.js";
 import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 const at = "2026-11-09T12:00:00.000Z";
+await runCase("scene-narration/fresh-reply", async () => {
+  for (const outcome of ["invalid", "lost-before-commit", "lost-ack"] as const) {
+    const f = fixture();
+    const scene = f.scenes.get("scene")!;
+    const turn = f.turn();
+    const publication = turn.narration!;
+    turn.id = publication.readset.source.operationId;
+    scene.operation!.freshReply = true;
+    if (outcome === "invalid")
+      publication.raw = { segments: [{ kind: "dialogue", speakerId: "absent", text: "Hello." }] };
+    turn.replyCommit = {
+      episodeId: publication.readset.source.episodeId,
+      digest: memoryHash([publication.responseDigest, publication.raw, publication.readset]),
+      setupAt: publication.readset.setupAt,
+    };
+    delete turn.narration;
+    const saved = readNarrationSubmission(turn);
+    assert.equal(saved.narration, undefined);
+    if (outcome === "invalid")
+      await assert.rejects(f.service.processSavedExchange(scene.id, turn.id, false, publication), {
+        statusCode: 502,
+        failure: {
+          cause: "invalid_reply",
+          stage: "reply-validation",
+          message: "Scene cannot invent a player or an actor's words.",
+          diagnostic: {
+            checks: [{ code: "invalid_scene_speaker", path: ["segments", "speakerId"] }],
+            rejected: 1,
+            parseStatus: undefined,
+            finishReason: undefined,
+            responseLength: undefined,
+            requestedOutputTokens: undefined,
+            modelAttempts: undefined,
+          },
+        },
+      });
+    if (outcome === "lost-ack") {
+      f.failScene();
+      await assert.rejects(
+        f.service.processSavedExchange(scene.id, turn.id, false, publication),
+        (error) => error === f.exact,
+      );
+      assert.equal(f.world.episodes.records.length, 1);
+    }
+    await f.service.processSavedExchange(scene.id, turn.id, true);
+    await f.service.processSavedExchange(scene.id, turn.id, true);
+    const applied = outcome === "lost-ack";
+    assert.equal(f.turn().acceptance.status, applied ? "applied" : "abandoned");
+    assert.equal(f.turn().narration, undefined);
+    assert.equal(f.world.episodes.records.length, applied ? 1 : 0);
+    assert.equal(f.scenes.get(scene.id)!.lines.length, applied ? 2 : 0);
+    assert.equal(narrationBlocker(f.scenes.get(scene.id)!), null);
+  }
+});
 function fixture(seed = "world", traveler = false) {
   const world = { ...defaultVillageState(), seed, setupAt: at, foundedAt: at };
   const place = establishPlace(

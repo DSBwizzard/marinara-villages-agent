@@ -3,7 +3,10 @@ import { messageFrom, VillageApiError, villageRequestFailure } from "../../share
 import { sceneErrorCategory, sceneErrorCause } from "./scene-error-message.js";
 import {
   sceneFailureDiagnostic,
+  sceneJsonIssues,
+  sceneReplyIssues,
   type SceneFailureDiagnostic,
+  type SceneFailureMetadata,
 } from "../../../shared/contracts/scene-failure-diagnostic.js";
 
 declare const VILLAGES_REPORT_VERSION: string;
@@ -34,9 +37,11 @@ type RequestTrace = {
   status?: number;
   code?: string;
   elapsedMs?: number;
+  failure?: SceneFailureMetadata;
 };
 
 export type SceneFailure = { message: string; trace: RequestTrace };
+export type SceneGreetingFailure = { sessionId: string; message: string; trace?: RequestTrace };
 
 const codes = new Set([
   "AI_CONNECTION_NOT_CONFIGURED",
@@ -50,11 +55,13 @@ const codes = new Set([
   "INVALID_RESPONSE",
   "TIMEOUT",
   "ABORTED",
+  "SCENE_RETRY_UNAVAILABLE",
 ]);
 const causes = new Set([
   "empty_output",
   "output_limit",
   "invalid_json",
+  "invalid_reply",
   "missing_result",
   "duplicate_result",
   "unsupported_outcome",
@@ -75,7 +82,9 @@ const stages = new Set([
   "metadata",
   "complete",
   "interrupted",
+  "reply",
 ]);
+const failureStages = new Set([...stages, "reply-validation", "dispatch", "context-fit", "storage"]);
 const resultStates = new Set(["running", "interrupted", "complete"]);
 const sceneStates = new Set(["opening", "active", "closing", "closed"]);
 const operationLabels: Partial<Record<string, SceneAction>> = {
@@ -93,6 +102,8 @@ const routes = new Set([
   "/rooms/greet",
   "/rooms/active",
   "/rooms/continue",
+  "/rooms/react",
+  "/rooms/retry",
   "/rooms/debug/discard",
   "/rooms/:scene/operation",
   "/rooms/:scene/operations/:request",
@@ -126,6 +137,7 @@ export function sceneFailure(
 ): SceneFailure {
   const request = villageRequestFailure(cause);
   const api = cause instanceof VillageApiError ? cause : undefined;
+  const failure = api?.sceneFailure;
   const code =
     api?.code ??
     (cause instanceof Error
@@ -144,6 +156,16 @@ export function sceneFailure(
       status: api?.status,
       code: code && codes.has(code) ? code : undefined,
       elapsedMs: request?.elapsedMs,
+      ...(failure
+        ? {
+            failure: {
+              failureCause: failure.failureCause && causes.has(failure.failureCause) ? failure.failureCause : undefined,
+              failureStage:
+                failure.failureStage && failureStages.has(failure.failureStage) ? failure.failureStage : undefined,
+              diagnostic: sceneFailureDiagnostic(failure.diagnostic),
+            },
+          }
+        : {}),
     },
   };
 }
@@ -153,7 +175,7 @@ export type SceneErrorReportItem = {
   title: string;
   message: string;
   trace?: RequestTrace;
-  operation?: Pick<RoomOperation, "kind" | "stage" | "status" | "failureCause"> | null;
+  operation?: (Pick<RoomOperation, "kind" | "stage" | "status"> & SceneFailureMetadata) | null;
   held?: boolean;
   diagnostic?: SceneFailureDiagnostic;
 };
@@ -179,7 +201,7 @@ export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context
 
   for (const [index, item] of items.slice(0, 8).entries()) {
     const { trace, operation } = item;
-    const diagnostic = sceneFailureDiagnostic(item.diagnostic);
+    const diagnostic = sceneFailureDiagnostic(item.diagnostic ?? operation?.diagnostic ?? trace?.failure?.diagnostic);
     const action =
       trace?.action ??
       (operation && Object.hasOwn(operationLabels, operation.kind) ? operationLabels[operation.kind] : undefined);
@@ -216,28 +238,39 @@ export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context
       lines.push("Cause: A line can be at most 4000 characters.", "Stage: input validation, before model dispatch");
     else {
       const category = sceneErrorCategory(sceneErrorCause(item.message));
-      const failureCause = operation?.failureCause;
+      const failureCause = operation?.failureCause ?? trace?.failure?.failureCause;
+      const phase = operation?.failureStage ?? trace?.failure?.failureStage;
       if (failureCause && causes.has(failureCause))
         lines.push(`${diagnostic && item.held ? "Operation code" : "Cause"}: ${failureCause}`);
-      if (diagnostic && item.held) {
-        lines.push("Phase: reply validation");
-        if (!diagnostic.checks.length) lines.push("Validator details: unavailable");
-        for (const { code, path } of diagnostic.checks)
-          lines.push(`Validator: ${code}${path.length ? " · " + path.join(".") : ""}`);
-        lines.push(`Rejected effects: ${diagnostic.rejected}`);
+      if (phase && failureStages.has(phase)) lines.push(`Phase: ${phase.replaceAll("-", " ")}`);
+      else if (diagnostic && item.held) lines.push("Phase: reply validation");
+      if (diagnostic) {
+        if (diagnostic.replyIssue)
+          lines.push("Reply parser: " + sceneReplyIssues[diagnostic.replyIssue] + " (" + diagnostic.replyIssue + ")");
+        if (diagnostic.jsonIssue)
+          lines.push(`JSON parser: ${sceneJsonIssues[diagnostic.jsonIssue]} (${diagnostic.jsonIssue})`);
+        if (diagnostic.rejected && !diagnostic.checks.length) lines.push("Validator details: unavailable");
+        for (const { code, path, expected } of diagnostic.checks)
+          lines.push(
+            `Validator: ${code}${path.length ? " at " + path.join(".") : ""}${expected ? ` (expected ${expected})` : ""}`,
+          );
+        if (diagnostic.rejected)
+          lines.push(`${item.held ? "Rejected effects" : "Validation issues"}: ${diagnostic.rejected}`);
         const completion = [
           diagnostic.parseStatus && `parse ${diagnostic.parseStatus}`,
           diagnostic.finishReason && `finish ${diagnostic.finishReason}`,
           diagnostic.responseLength !== undefined && `${diagnostic.responseLength} response characters`,
+          diagnostic.requestedOutputTokens !== undefined && `${diagnostic.requestedOutputTokens} token output limit`,
           diagnostic.modelAttempts !== undefined && `${diagnostic.modelAttempts} recorded model attempts`,
         ].filter(Boolean);
         if (completion.length) lines.push(`Completion: ${completion.join(" · ")}`);
-      } else if (category) lines.push(`Detail: ${category}`);
+      }
+      if (category) lines.push(`Detail: ${category}`);
     }
     const stage = operation?.stage?.split(":")[0];
     const saved = [
       item.held ? "reply held" : operation?.status && resultStates.has(operation.status) ? operation.status : "",
-      stage && stages.has(stage) ? `${diagnostic ? "last checkpoint" : "stage"} ${stage}` : "",
+      stage && stages.has(stage) ? `${item.held && diagnostic ? "last checkpoint" : "stage"} ${stage}` : "",
     ].filter(Boolean);
     if (saved.length) lines.push(`Saved request: ${saved.join(" · ")}`);
     if (item.id === "reply-recovery") lines.push("Recovery: checking for a saved reply");

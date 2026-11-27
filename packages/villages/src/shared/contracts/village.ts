@@ -694,8 +694,8 @@ type RoomParticipant = {
   /** What they were doing at that hour, in this village's terms, or `""`. */
   doing: string;
 };
-export type RoomOperation = {
-  failureCause?: string;
+export type RoomOperation = import("./scene-failure-diagnostic.js").SceneFailureMetadata & {
+  freshReply?: true;
   acceptance?: "pending" | "held" | "applied" | "abandoned";
   committed?: boolean;
   replyReady?: boolean;

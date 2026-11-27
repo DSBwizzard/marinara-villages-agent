@@ -40,7 +40,12 @@ export function StartingHistoryPreparation({
   const active = work && ["queued", "running"].includes(work.status);
   return (
     <section aria-label="Starting history">
-      <h3>Starting history · {ready ? "Ready" : active ? "Preparing" : "Needs review"}</h3>
+      <div className="villages-founding-progress-row">
+        <h2>Starting history</h2>
+        <p className="villages-founding-task-state" data-status={ready ? "Ready" : active ? "Preparing" : undefined}>
+          {ready ? "Ready" : active ? "Preparing" : "Needs review"}
+        </p>
+      </div>
       {!ready ? (
         <details onToggle={(event) => setInspect(event.currentTarget.open)}>
           <summary>Inspect starting history</summary>
