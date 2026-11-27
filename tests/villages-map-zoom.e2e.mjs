@@ -1,5 +1,6 @@
 // Test cases: maps/zoom-stability
 import assert from "node:assert/strict";
+import sharp from "sharp";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
@@ -90,6 +91,29 @@ transition-property:opacity,transform,translate,scale,rotate,width,height,max-wi
         const control = await slider.boundingBox();
         assert.equal(control.x + control.width, bounds.x + bounds.width - 16);
         assert.equal(control.y + control.height, bounds.y + bounds.height - 16);
+        if (width === 1366 && animatedAccent) {
+          await page.addStyleTag({
+            content:
+              'input[type="range"]::-webkit-slider-thumb{width:15px;height:15px;background:#f5f5f7;border-radius:9999px}',
+          });
+          await slider.fill("45");
+          const { data, info } = await sharp(await slider.screenshot())
+            .removeAlpha()
+            .raw()
+            .toBuffer({
+              resolveWithObject: true,
+            });
+          let handleRows = 0;
+          for (let y = Math.floor(info.height / 3); y < (2 * info.height) / 3; y++) {
+            let handlePixels = 0;
+            for (let x = 0; x < info.width; x++) {
+              const i = (y * info.width + x) * info.channels;
+              if (data[i] === 197 && data[i + 1] === 170 && data[i + 2] === 255) handlePixels++;
+            }
+            if (handlePixels >= 20) handleRows++;
+          }
+          assert.ok(handleRows >= 5, "The rectangular handle remains visible over Engine range styles");
+        }
         await slider.press("Home");
         await expect(slider).toHaveAttribute("aria-valuetext", "Full map");
         await expect(stage).toHaveAttribute("data-navigation-zoom", "1");
