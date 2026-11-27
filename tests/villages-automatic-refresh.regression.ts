@@ -188,10 +188,14 @@ async function main() {
               assert.ok(options.maxTokens <= weeklyOutputLimit, "The planner honors the model output limit.");
               if (options.maxTokens < minimumWeeklyReplyTokens)
                 return { content: '{"plans":[', finishReason: "length" };
-              const input = JSON.parse(String(messages.at(-1)?.content)) as {
-                residents: Array<{ name: string; days: [string, number][]; slots?: unknown[]; recent: string[] }>;
+              const request = String(messages.at(-1)?.content);
+              const input = JSON.parse(request) as {
+                residents: Array<{ name: string; brief: string; days: [string, number][]; slots?: unknown[] }>;
               };
-              const plans = input.residents.map(({ name, days, slots }) => {
+              assert.doesNotMatch(request, /"recent"|"interests"|Reading| pursuit \d+\//);
+              assert.doesNotMatch(String(messages[0]?.content), /Tend seedlings|Buy twine/);
+              const plans = input.residents.map(({ name, brief, days, slots }) => {
+                assert.equal(brief, `${name} values independence. Curious and inventive.`);
                 assert.equal(slots, undefined, "The provider sees day counts without exact schedule slots.");
                 let index = 0;
                 return days.map(([, count]) =>
@@ -204,8 +208,6 @@ async function main() {
               if (incompleteWeek) plans[0]![2] = [];
               if (repetitiveWeek) for (const day of plans[0]!) day.fill(day[0]!);
               if (repeatSameDay) {
-                recentSuggestion = input.residents[0]!.recent[0]!;
-                assert.ok(recentSuggestion);
                 plans[0]![0]![1] = plans[0]![0]![0]!;
                 plans[0]![1]!.unshift(plans[0]![0]![0]!, recentSuggestion, ["Try an unavailable venue", 999]);
               }
@@ -556,7 +558,13 @@ async function main() {
           characterId: name,
           incarnation: name + "-1",
           agendaGeneration: undefined,
-          cardSnapshot: { ...state.villagers[0]!.cardSnapshot, id: name, name },
+          cardSnapshot: {
+            ...state.villagers[0]!.cardSnapshot,
+            id: name,
+            name,
+            summary: `${name} values independence.`,
+            personality: "Curious and inventive.",
+          },
           agenda: agendaFixture({
             calendarVersion: 1,
             generatedAt: date(1).toISOString(),
@@ -718,6 +726,9 @@ async function main() {
     assert.equal(weeklyResponses, 6, "A stale automatic job cannot buy a reply for dates already planned manually.");
 
     setToday(42);
+    recentSuggestion = agendaBlocksFor((await readVillageState()).villagers[0]!.agenda!, date(42)).find(
+      ({ activity }) => activity.startsWith("Ari pursuit 6/"),
+    )!.activity;
     repeatSameDay = true;
     await reconcileVillage({ now: date(42) });
     await settleBackgroundWork();
