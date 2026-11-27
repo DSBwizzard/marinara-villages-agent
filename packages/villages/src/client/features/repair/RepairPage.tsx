@@ -207,14 +207,20 @@ export function RepairPage({
     ),
   );
   const isSnapshots = c.view === "checkpoints" || c.topic === "restore";
+  const personSection = c.person && personSections.find(([id]) => id === c.section)?.[1];
+  const personCollection = c.person && ["memories", "relationships", "wishes", "details"].includes(c.section);
   const listBudget = isSnapshots
     ? small
       ? 174 + (c.index?.sceneOpen ? 34 : 0) + (deleteSnapshot ? 44 : 0)
       : 140
     : c.topic === "places" && !c.placePath.length
       ? 240
-      : c.person && c.section === "memories" && c.view === "list"
-        ? 205
+      : personCollection
+        ? c.section === "memories"
+          ? small
+            ? 195
+            : 275
+          : 185
         : c.topic === "progress"
           ? 150
           : 130;
@@ -331,6 +337,7 @@ export function RepairPage({
   };
   const selected = c.selected;
   const editing = !!selected && !!c.draft && (c.view === "edit" || (c.view === "list" && !!selected.agendaDay));
+  const isRelationship = selected?.id.startsWith('["relationship",');
   const mainPlaceDetails = !!targetPlace && !!selected && selected.id === mainPlaceRecord?.id;
   const isMemory = selected?.topic === "memories";
   const readOnlyMemory = isMemory && ["forget", "remember"].includes(c.draft?.action ?? "");
@@ -390,6 +397,7 @@ export function RepairPage({
     ];
   });
   const fieldGroups = useMemo(() => {
+    if (isRelationship && space.height / space.scale >= 275) return [fields];
     if (mainPlaceDetails && !small && !compact && space.height / space.scale >= 430) {
       const first = fields.filter((field) => ["name", "form", "description"].includes(field.key));
       const remaining = fields.filter((field) => !first.includes(field));
@@ -442,7 +450,7 @@ export function RepairPage({
         { key: "__evidence", label: "Original conversation", type: "text", value: selected.source.join("\n\n") },
       ]);
     return groups;
-  }, [fields, compact, isMemory, selected, space.height, space.scale, mainPlaceDetails, small]);
+  }, [fields, compact, isMemory, isRelationship, selected, space.height, space.scale, mainPlaceDetails, small]);
   const currentStep = Math.min(step, Math.max(0, fieldGroups.length - 1));
   useLayoutEffect(() => {
     if (content.current) content.current.scrollTop = 0;
@@ -529,8 +537,7 @@ export function RepairPage({
     });
   const font = String(c.draft?.values.letterFontId ?? "");
   useLetterFont(font || undefined);
-  const browseMemory = c.person && ["memories", "relationships", "wishes"].includes(c.section);
-  const filteredRecords = c.records;
+  const collectionBesideEditor = personCollection && !small && !compact && (c.section === "memories" || c.total > 1);
   let nestedFolder: RepairBrowseItem | undefined;
   let placeChildren = targetPlace?.children ?? [];
   for (const id of c.placePath.slice(c.placePath.indexOf(targetPlace?.id ?? "") + 1)) {
@@ -569,15 +576,106 @@ export function RepairPage({
     .flatMap((node) =>
       ["conditions", "residents", "workers"].includes(placeSection) ? (node.children ?? [node]) : [node],
     );
+  const showingEvidence = fieldGroups[currentStep]?.[0]?.key === "__evidence";
   const editorTitle = selected?.agendaDay
     ? "Edit activity"
     : isMemory
       ? selected?.creating
         ? "Add memory"
-        : "Memory"
+        : currentStep === 0
+          ? "Memory"
+          : stepTitle(fieldGroups[currentStep]!)
       : (selected?.title ?? "");
   const collectionSearch =
-    c.section === "relationships" ? "Find a relationship" : c.section === "wishes" ? "Find a wish" : "Find a memory";
+    c.section === "relationships" ? "Find a relationship" : c.section === "wishes" ? "Find a Wish" : "Find a memory";
+  const collection = personCollection ? (
+    <section className="repair-card repair-collection" aria-label={personSection}>
+      <header className="repair-card-title">
+        <h2>{personSection}</h2>
+        <div className="repair-collection-tools">
+          {c.section === "memories" ? (
+            <nav className="repair-actions" aria-label="Memory status">
+              {(["Remembered", "Forgotten"] as const).map((label) => {
+                const status = label.toLowerCase();
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    aria-pressed={memoryFilter === status}
+                    onClick={() => {
+                      setMemoryFilter(status);
+                      void c.searchRecords(recordQuery, 0, status);
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </nav>
+          ) : null}
+          {c.creation && (c.section === "memories" || c.section === "wishes") ? (
+            <button type="button" disabled={c.busy} onClick={() => void c.open(c.creation!.id)}>
+              {c.section === "wishes" ? "Add Wish" : "Add memory"}
+            </button>
+          ) : null}
+        </div>
+      </header>
+      {c.section !== "details" ? (
+        <label className="repair-search">
+          <StorybookSearchIcon />
+          <input
+            autoComplete="off"
+            type="search"
+            aria-label={collectionSearch}
+            placeholder={collectionSearch}
+            value={recordQuery}
+            onChange={(event) => {
+              setRecordQuery(event.target.value);
+              void c.searchRecords(event.target.value);
+            }}
+          />
+        </label>
+      ) : null}
+      <div className="repair-record-list">
+        {c.records.slice(0, rowSize).map((record) => (
+          <button
+            type="button"
+            key={record.id}
+            aria-label={record.title}
+            aria-current={editing && selected.id === record.id ? "page" : undefined}
+            disabled={c.busy}
+            onClick={() => {
+              setStep(0);
+              void c.open(record.id);
+            }}
+          >
+            <strong>{record.title}</strong>
+            {record.summary ? <small>{record.summary}</small> : null}
+            <span aria-hidden="true">›</span>
+          </button>
+        ))}
+      </div>
+      {!c.records.length && !c.busy ? (
+        <p>
+          {recordQuery
+            ? "No matches."
+            : c.section === "memories"
+              ? `No ${memoryFilter} memories.`
+              : "Nothing here yet."}
+        </p>
+      ) : null}
+      {c.total > rowSize || c.offset > 0 ? (
+        <Pages
+          page={0}
+          offset={c.offset}
+          size={rowSize}
+          total={c.total}
+          disabled={c.busy}
+          onPage={(offset) => void c.searchRecords(recordQuery, offset)}
+        />
+      ) : null}
+    </section>
+  ) : null;
   const reviewPageSize = compact ? 1 : small ? 1 : 3;
   const reviewPages = [
     ...(c.review?.changes ?? []),
@@ -1185,7 +1283,7 @@ export function RepairPage({
                 <Pages page={accountPage} size={peopleSize} total={selected.people.length} onPage={setAccountPage} />
               </section>
             ) : editing ? (
-              <div className={`repair-editor ${browseMemory ? "repair-memory-editor" : ""}`}>
+              <div className="repair-editor" data-collection={collectionBesideEditor || undefined}>
                 {c.person && c.section === "home" ? (
                   <label className="repair-mobile-record">
                     <span className="repair-sr">Home and work section</span>
@@ -1203,43 +1301,10 @@ export function RepairPage({
                     </select>
                   </label>
                 ) : null}
-                {browseMemory && !small ? (
-                  <aside className="repair-memory-list">
-                    <input
-                      autoComplete="off"
-                      type="search"
-                      aria-label={collectionSearch}
-                      placeholder={collectionSearch}
-                      value={recordQuery}
-                      onChange={(event) => {
-                        setRecordQuery(event.target.value);
-                        void c.searchRecords(event.target.value);
-                        setListPage(0);
-                      }}
-                    />
-                    <div className="repair-record-list">
-                      {filteredRecords.slice(0, Math.max(1, rowSize - 1)).map((record) => (
-                        <button
-                          type="button"
-                          aria-label={record.title}
-                          aria-current={selected.id === record.id ? "page" : undefined}
-                          key={record.id}
-                          onClick={() => void c.open(record.id)}
-                        >
-                          {short(record.title)}
-                        </button>
-                      ))}
-                    </div>
-                    <Pages
-                      page={0}
-                      offset={c.offset}
-                      size={Math.max(1, rowSize - 1)}
-                      total={c.total}
-                      onPage={(offset) => void c.searchRecords(recordQuery, offset)}
-                    />
-                  </aside>
-                ) : (
-                  <aside className="repair-steps">
+                {collectionBesideEditor ? (
+                  collection
+                ) : showPageButtons ? (
+                  <nav className="repair-steps" aria-label="Form sections">
                     {arrangementSteps.length
                       ? arrangementSteps
                           .map((item, index) => ({ ...item, ordinal: index }))
@@ -1270,14 +1335,14 @@ export function RepairPage({
                               {stepTitle(group)}
                             </button>
                           ))}
-                  </aside>
-                )}
+                  </nav>
+                ) : null}
                 <section className="repair-card">
                   <header className="repair-card-title">
                     <h2>
                       {mainPlaceDetails
                         ? "Details"
-                        : selected.id.startsWith('["relationship",')
+                        : isRelationship
                           ? selected.title
                           : isMemory
                             ? editorTitle
@@ -1285,15 +1350,18 @@ export function RepairPage({
                               ? stepTitle(fieldGroups[currentStep]!)
                               : editorTitle}
                     </h2>
-                    <small>
-                      {arrangementSteps.length ? arrangementStep + 1 : currentStep + 1} of{" "}
-                      {arrangementSteps.length || Math.max(1, fieldGroups.length)}
-                    </small>
+                    {(arrangementSteps.length || groupCount) > 1 ? (
+                      <small>
+                        {arrangementSteps.length ? arrangementStep + 1 : currentStep + 1} of{" "}
+                        {arrangementSteps.length || groupCount}
+                      </small>
+                    ) : null}
                     {!(c.person && c.section === "home") && !mainPlaceDetails ? (
                       <button
                         type="button"
                         className="repair-close"
-                        aria-label={`Back to ${c.person ? personSections.find(([id]) => id === c.section)?.[1] : targetPlace ? placeSection : "records"}`}
+                        data-collection={personCollection || undefined}
+                        aria-label={`Back to ${personSection || (targetPlace ? placeSection : "records")}`}
                         disabled={c.busy}
                         onClick={() =>
                           void c.load(
@@ -1306,7 +1374,7 @@ export function RepairPage({
                           )
                         }
                       >
-                        ×
+                        {personCollection ? "← Back" : "×"}
                       </button>
                     ) : null}
                   </header>
@@ -1333,7 +1401,7 @@ export function RepairPage({
                       </select>
                     </label>
                   ) : null}
-                  {selected.actions.length > 3 ? (
+                  {!showingEvidence && selected.actions.length > 3 ? (
                     <label className="repair-field">
                       Action
                       <select
@@ -1354,7 +1422,7 @@ export function RepairPage({
                         ))}
                       </select>
                     </label>
-                  ) : selected.actions.length > 1 ? (
+                  ) : !showingEvidence && selected.actions.length > 1 ? (
                     <div className="repair-actions">
                       {selected.actions.map((action) => (
                         <button
@@ -1371,7 +1439,14 @@ export function RepairPage({
                       ))}
                     </div>
                   ) : null}
-                  {c.draft.action === "teach" ? (
+                  {showingEvidence ? (
+                    <PagedText
+                      label="Original conversation"
+                      value={selected.source.join("\n\n")}
+                      readOnly
+                      rows={proseRows}
+                    />
+                  ) : c.draft.action === "teach" ? (
                     <label className="repair-field">
                       Add person
                       <select
@@ -1387,13 +1462,6 @@ export function RepairPage({
                         ))}
                       </select>
                     </label>
-                  ) : fieldGroups[currentStep]?.[0]?.key === "__evidence" ? (
-                    <PagedText
-                      label="Original conversation"
-                      value={selected.source.join("\n\n")}
-                      readOnly
-                      rows={proseRows}
-                    />
                   ) : fieldGroups[currentStep]?.[0]?.key === "__tools" && onCharacterTools ? (
                     <button
                       type="button"
@@ -1450,7 +1518,7 @@ export function RepairPage({
                           rows={proseRows}
                           hideLabel={
                             !placeNotebook &&
-                            !selected.id.startsWith('["relationship",') &&
+                            !isRelationship &&
                             fieldGroups[currentStep]?.length === 1 &&
                             (isMemory || stepTitle(fieldGroups[currentStep]!) === field.label)
                           }
@@ -1577,6 +1645,8 @@ export function RepairPage({
                   )}
                 />
               </section>
+            ) : personCollection ? (
+              collection
             ) : (
               <section className="repair-directory">
                 {c.topic === "progress" ? (
@@ -1637,56 +1707,8 @@ export function RepairPage({
                     Village snapshots →
                   </button>
                 ) : null}
-                {browseMemory ? (
-                  <>
-                    <input
-                      autoComplete="off"
-                      type="search"
-                      aria-label={
-                        c.section === "relationships"
-                          ? "Find a relationship"
-                          : c.section === "wishes"
-                            ? "Find a Wish"
-                            : "Find a memory"
-                      }
-                      placeholder={
-                        c.section === "relationships"
-                          ? "Find a relationship"
-                          : c.section === "wishes"
-                            ? "Find a Wish"
-                            : "Find a memory"
-                      }
-                      value={recordQuery}
-                      onChange={(event) => {
-                        setRecordQuery(event.target.value);
-                        void c.searchRecords(event.target.value);
-                        setListPage(0);
-                      }}
-                    />
-                    {c.section === "memories" ? (
-                      <Sections
-                        name="Memory status"
-                        entries={[
-                          ["remembered", "Remembered"],
-                          ["forgotten", "Forgotten"],
-                        ]}
-                        value={memoryFilter}
-                        onChange={(next) => {
-                          setMemoryFilter(next);
-                          void c.searchRecords(recordQuery, 0, next);
-                          setListPage(0);
-                        }}
-                      />
-                    ) : null}
-                    {c.creation && ["memories", "wishes"].includes(c.section) ? (
-                      <button type="button" onClick={() => void c.open(c.creation!.id)}>
-                        {c.section === "wishes" ? "Add Wish" : "Add memory"}
-                      </button>
-                    ) : null}
-                  </>
-                ) : null}
                 <div className="repair-record-list">
-                  {filteredRecords.slice(0, rowSize).map((record) => (
+                  {c.records.slice(0, rowSize).map((record) => (
                     <button
                       type="button"
                       key={record.id}
@@ -1702,8 +1724,8 @@ export function RepairPage({
                     </button>
                   ))}
                 </div>
-                {!filteredRecords.length && !visibleJobs.length && !c.busy ? <p>No records here.</p> : null}
-                {c.topic === "progress" && !filteredRecords.length ? (
+                {!c.records.length && !visibleJobs.length && !c.busy ? <p>No records here.</p> : null}
+                {c.topic === "progress" && !c.records.length ? (
                   <Pages page={listPage} size={rowSize} total={visibleJobs.length} onPage={setListPage} />
                 ) : (
                   <Pages

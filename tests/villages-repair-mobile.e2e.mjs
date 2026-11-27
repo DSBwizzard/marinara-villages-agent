@@ -58,7 +58,15 @@ await withBrowser(browser, async () => {
       expect(title.width).toBeGreaterThan(width * 0.7);
       expect(detail.y).toBeGreaterThan(title.y);
       await fits();
-      await page.screenshot({ path: `.build-tmp/repair-captures/${width}-mobile-memory-list.png` });
+      await page
+        .locator(".villages-repair")
+        .screenshot({ path: `.build-tmp/repair-captures/${width}-mobile-memory-list.png` });
+      const forgotten = page.getByRole("button", { name: "Forgotten", exact: true });
+      await forgotten.tap();
+      await expect(forgotten).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByText("No forgotten memories.")).toBeVisible();
+      await page.getByRole("button", { name: "Remembered", exact: true }).tap();
+      await expect(row).toBeVisible();
       await row.tap();
       const field = page.getByRole("textbox", { name: "Memory", exact: true });
       await field.fill("Ellis loaned me the key.");

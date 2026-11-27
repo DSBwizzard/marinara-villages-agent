@@ -221,8 +221,9 @@ export function RepairFieldControl({
   hideLabel?: boolean;
 }) {
   const id = "repair-field-" + field.key;
+  const isScore = field.type === "number" && ["warmth", "romance"].includes(field.key);
   return (
-    <div className="repair-field">
+    <div className="repair-field" data-score={isScore || undefined}>
       <label htmlFor={id} className={hideLabel ? "repair-sr" : undefined}>
         {field.label}
       </label>
@@ -302,7 +303,7 @@ export function RepairFieldControl({
           ) : field.key === "romance" ? (
             <RomanticInterest score={Number(value)} target="the selected person" />
           ) : null}
-          {["warmth", "romance"].includes(field.key) ? (
+          {isScore ? (
             <input
               autoComplete="off"
               type="range"
@@ -321,7 +322,7 @@ export function RepairFieldControl({
             type="number"
             min={field.min}
             max={field.max}
-            step={["warmth", "romance"].includes(field.key) ? 1 : "any"}
+            step={isScore ? 1 : "any"}
             value={String(value)}
             disabled={disabled}
             aria-invalid={!!error}
