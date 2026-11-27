@@ -363,7 +363,7 @@ export function selectEpisodeHistory(
   query: string,
   bytes: number,
   sceneId?: string,
-  scope: { placeId?: string; ranking?: RecallRanking; projectedOnly?: boolean } = {},
+  scope: { placeId?: string; ranking?: RecallRanking } = {},
 ) {
   memoryRequire(Number.isSafeInteger(bytes) && bytes >= 0, "invalid episode context budget");
   const holderKeys = new Set(holders.map(continuityHolderKey));
@@ -444,7 +444,7 @@ export function selectEpisodeHistory(
       ),
       ...(letters ?? []).filter((letter) => shared(letter.knownBy)).map((letter) => letter.text),
     ];
-    const requireWitnessed = !currentScene && (sceneId !== undefined || scope.projectedOnly);
+    const requireWitnessed = sceneId !== undefined && !currentScene;
     if (requireWitnessed && !prose.trim()) return [];
     const projected = requireWitnessed ? witnessed : view;
     return [

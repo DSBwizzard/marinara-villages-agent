@@ -4,7 +4,7 @@ import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { villageEngineJson } from "./engine-transport.js";
 
 export function villageEmbeddingHost(runtime: CapabilityRuntimeHost) {
-  if (!runtime.embeddingsFor) return;
+  if (!("embeddingsFor" in runtime) || !runtime.embeddingsFor) return;
   return async (id: string | null, signal: AbortSignal) => {
     if (id !== null) {
       // A removed delegated connection must not make Engine resolve the parent’s endpoint instead.

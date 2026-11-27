@@ -69,9 +69,7 @@ export function captureContinuityContext(
       requiredIds: [...nativeCircumstanceRoots(state, at, views, scope)],
       identity: (id) => continuityActor(state, id),
     }),
-    history = selectEpisodeHistory(state.episodes, state.continuity, holders, query, 12000, undefined, {
-      projectedOnly: true,
-    }),
+    history = selectEpisodeHistory(state.episodes, state.continuity, holders, query, 12000),
     historical: Record<string, ContinuityEvidence> = {},
     provenance: Record<string, string[]> = {},
     sourceEpisodes = new Set<string>();

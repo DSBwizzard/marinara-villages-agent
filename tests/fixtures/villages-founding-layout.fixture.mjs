@@ -910,9 +910,18 @@ export async function verifyFoundingLayout(group) {
             await expect(modelGate).toBeVisible();
           }
         }
+        const gateSize = await modelGate.evaluate((node) => ({
+          scrollHeight: node.scrollHeight,
+          clientHeight: node.clientHeight,
+        }));
         assert.ok(
-          await modelGate.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
-          "Connection setup fits without a scrollable body",
+          gateSize.scrollHeight <= gateSize.clientHeight + 1,
+          "Connection setup fits without scrolling at " +
+            view.width +
+            " by " +
+            view.height +
+            ": " +
+            JSON.stringify(gateSize),
         );
         await expect(modelGate.getByRole("button", { name: "Next" })).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)

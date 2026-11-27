@@ -225,7 +225,9 @@ export function narrationContinuityContext(
   const captured = sceneContinuityView(state, scene);
   const loreAudience = ["player", ...writerIds];
   const actorIds = actors.map(({ id }) => id);
-  const sceneHolders = actors.filter((holder) => holder.id === "player" || writerIds.includes(holder.id));
+  const sceneHolders = actors
+    .filter((holder) => holder.id === "player" || writerIds.includes(holder.id))
+    .sort((a, b) => a.id.localeCompare(b.id, "en"));
   const history = selectEpisodeHistory(state.episodes, state.continuity, sceneHolders, input, 256_000, scene.id, {
     placeId: scene.placeId,
     ranking: { semantic },

@@ -884,6 +884,7 @@ export const VILLAGES_FORGING_STYLES = `
     border:1px solid var(--founding-line,#a68091a6); border-radius:1rem; color:var(--founding-foreground,#f0dfbc);
     background:var(--founding-panel); box-shadow:0 1rem 3rem #170f2870;
   }
+  .villages-forging-v2 .villages-founding-overlay>dialog.villages-founding-connections-dialog { max-height:100%; }
   .villages-forging-v2 .villages-founding-dialog>header {
     padding:0 0 .55rem; margin:0 0 .55rem; background:transparent; border-bottom:1px solid var(--founding-line,#ad839b45);
   }
