@@ -30,7 +30,7 @@ export function AgendaPlanner<T extends Block>({
   renderDayAction,
   disabled,
 }: {
-  days: { date: string; weekday: string; blocks: T[] }[];
+  days: { date: string; weekday: string; personalPlansPending?: true; blocks: T[] }[];
   date: string | undefined;
   onDate(date: string): void;
   onActivity?: (day: { date: string }, block: T) => void;
@@ -66,6 +66,7 @@ export function AgendaPlanner<T extends Block>({
         ))}
       </div>
       {renderDayAction ? <div className={P + "-planner-actions"}>{renderDayAction(day)}</div> : null}
+      {day.personalPlansPending ? <p role="status">Personal plans pending</p> : null}
       <div className={P + "-planner-day"} role="group" aria-label={day.weekday + " Agenda"}>
         {periods.map((period) => (
           <div key={period} className={P + "-planner-period"} role="group" aria-label={period}>

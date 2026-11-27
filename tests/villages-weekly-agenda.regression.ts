@@ -1,4 +1,4 @@
-// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo, weekly-agenda/scene-scheduling, weekly-agenda/compact-context, weekly-agenda/coverage, weekly-agenda/return-refresh
+// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo, weekly-agenda/scene-scheduling, weekly-agenda/compact-context, weekly-agenda/coverage, weekly-agenda/pending-dates, weekly-agenda/return-refresh
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mock } from "node:test";
@@ -32,7 +32,13 @@ import { acceptNarration } from "../packages/villages/src/server/domain/rules/na
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
-import { agendaCoverage, assertTodayAgendas } from "../packages/villages/src/server/domain/rules/weekly-agenda.js";
+import { planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
+import {
+  agendaCalendar,
+  agendaCoverage,
+  applyWeeklyAgenda,
+  assertTodayAgendas,
+} from "../packages/villages/src/server/domain/rules/weekly-agenda.js";
 
 const at = "2026-11-10T08:00:00.000Z";
 const later = "2026-11-10T08:01:00.000Z";
@@ -141,6 +147,56 @@ await runCase("weekly-agenda/coverage", () => {
   resident.agenda.weeklyThrough = "2026-11-17";
   const restored = coerceVillageState(world);
   assert.doesNotThrow(() => assertTodayAgendas(restored, after));
+});
+
+await runCase("weekly-agenda/pending-dates", () => {
+  const { world, resident } = fixture();
+  const bedtime = { startMinute: 0, endMinute: 420, activity: "Sleeping", venueId: "", essential: true };
+  const copied = { startMinute: 420, endMinute: 1440, activity: "Sketch the mill", venueId: "", flexible: true };
+  resident.agenda = agendaFixture({
+    calendarVersion: 1,
+    starterWeekThrough: "2026-11-10",
+    day: [bedtime, copied],
+    plannedDays: { [tomorrow]: [bedtime, copied] },
+    reservations: [
+      {
+        ...time,
+        dateKey: tomorrow,
+        id: "appointment",
+        activity: "Meet the player",
+        source: "appointment",
+        replaces: "flexible",
+      },
+      {
+        ...time,
+        dateKey: tomorrow,
+        id: "shift",
+        startMinute: 800,
+        endMinute: 870,
+        activity: "Mill shift",
+        source: "work",
+        replaces: "routine",
+      },
+    ],
+  });
+  const pending = agendaWeek(world, resident.characterId, when, true).days[1]!;
+  assert.equal(pending.personalPlansPending, true);
+  assert.deepEqual(
+    pending.blocks.map(({ activity }) => activity),
+    ["Sleeping", "Meet the player", "Mill shift"],
+  );
+  assert.equal(agendaWeek(world, resident.characterId, when, false).days[1]!.personalPlansPending, undefined);
+
+  planRoutineDays(world, agendaCalendar(world, when));
+  assert.equal(resident.agenda.plannedDays?.[tomorrow], undefined, "remove a dated copy of a starter activity");
+  const slot = { date: tomorrow, part: 1, startMinute: 510, endMinute: 570 };
+  const now = agendaCalendar(world, when);
+  assert.equal(applyWeeklyAgenda(world, resident, now, [slot], [{ activity: "Bind a notebook", venueId: "" }]), 1);
+  resident.agenda.weeklyFrom = resident.agenda.weeklyThrough = tomorrow;
+  const ready = agendaWeek(world, resident.characterId, when, true).days[1]!;
+  assert.equal(ready.personalPlansPending, undefined);
+  assert.ok(ready.blocks.some(({ activity }) => activity === "Bind a notebook"));
+  assert.ok(ready.blocks.every(({ activity }) => activity !== copied.activity));
 });
 
 await runCase("weekly-agenda/return-refresh", async () => {

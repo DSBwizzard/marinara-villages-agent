@@ -169,6 +169,7 @@ export type AgendaCatchupView = {
 
 export type VillageSnapshot = {
   worldScope: string;
+  todayAgendasPending?: true;
   mailboxUnread?: boolean;
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };

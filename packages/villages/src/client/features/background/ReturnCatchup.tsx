@@ -8,22 +8,23 @@ import { ModalDialog } from "../../shared/ModalDialog.js";
 
 export function ReturnCatchup({
   enabled,
+  pendingOnSnapshot,
   onSettled,
-  onBack,
   menu,
+  venue,
   repair,
   children,
 }: {
   enabled: boolean;
+  pendingOnSnapshot: boolean;
   onSettled: () => Promise<void>;
-  onBack: () => void;
   menu: boolean;
+  venue: boolean;
   repair: boolean;
   children: ReactNode;
 }) {
   const [batch, setBatch] = useState<ReturnCatchupView | null>(null);
-  const [agenda, setAgenda] = useState<AgendaCatchupView | null>(null);
-  const [entryGate, setEntryGate] = useState(false);
+  const [agenda, setAgenda] = useState<AgendaCatchupView | null>();
   const [expanded, setExpanded] = useState(false);
   const activity = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -32,12 +33,11 @@ export function ReturnCatchup({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const retryId = useRef("");
-  const previous = useRef(false);
+  const previous = useRef({ blocked: false, preparing: false });
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!enabled) return;
     let stopped = false;
-    let first = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
@@ -47,13 +47,9 @@ export function ReturnCatchup({
         }>("/background/catchup");
         if (stopped) return;
         const active = !!next && !["completed", "cancelled"].includes(next.status);
-        const required = !!plans?.expired;
-        if (first) {
-          setEntryGate(required);
-          first = false;
-        } else if (!required) setEntryGate(false);
-        if (previous.current && !active && !required) void onSettled();
-        previous.current = active || required;
+        const blocked = active || !!plans?.expired;
+        if ((previous.current.blocked && !blocked) || (previous.current.preparing && !plans)) void onSettled();
+        previous.current = { blocked, preparing: !!plans };
         setBatch(active ? next : null);
         setAgenda(plans ?? null);
         setError("");
@@ -70,9 +66,9 @@ export function ReturnCatchup({
     };
   }, [enabled, onSettled]);
   useEffect(() => {
-    if (!expanded || repair) return;
-    // Let menu controls finish their click before the expanded panel frees layout space.
-    const outsideEvent = menu ? "click" : "pointerdown";
+    if (!expanded || repair || agenda?.expired) return;
+    // Let menu and venue controls finish their click before the panel frees layout space.
+    const outsideEvent = menu || venue ? "click" : "pointerdown";
     const outside = (event: Event) => {
       if (activity.current && !event.composedPath().includes(activity.current)) setExpanded(false);
     };
@@ -88,7 +84,7 @@ export function ReturnCatchup({
       document.removeEventListener(outsideEvent, outside);
       document.removeEventListener("keydown", escape);
     };
-  }, [expanded, menu, repair]);
+  }, [expanded, menu, venue, repair, agenda?.expired]);
   const act = async (kind: "retry" | "continue") => {
     if (!batch) return;
     setBusy(true);
@@ -128,8 +124,9 @@ export function ReturnCatchup({
       setBusy(false);
     }
   };
-  const waiting = enabled && !!agenda?.expired;
-  const modal = enabled && (!!batch || (waiting && entryGate));
+  const waiting = enabled && (agenda === undefined ? pendingOnSnapshot : !!agenda?.expired);
+  const modal = enabled && (!!batch || waiting);
+  const modalTitle = batch ? "Welcome back" : "Village catch-up";
   const plans = agenda ? (
     <>
       <strong>
@@ -163,11 +160,17 @@ export function ReturnCatchup({
         .villages-catchup-card small { color:#bdc8e2; line-height:1.4; }
         .villages-catchup-card .villages-zone-map-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
         .villages-agenda-activity { position:absolute; z-index:25; top:7.25rem; left:.875rem; color:#f0dfbc; font:14px/1.4 system-ui,sans-serif; }
-        .villages-agenda-activity[data-menu] { top:.875rem; }
+        .villages-agenda-activity:is([data-menu],[data-venue]) { top:.875rem; }
         .villages-frame:has(.villages-agenda-activity[data-menu]) .${ELEMENT_TAG}-desk-workspace[data-desk]:not([data-desk="none"]) {
           padding-top:4.75rem;
         }
         .villages-frame:has(.villages-agenda-activity[data-menu][data-failed] .villages-agenda-details) .${ELEMENT_TAG}-desk-workspace[data-desk]:not([data-desk="none"]) {
+          padding-top:10rem;
+        }
+        .villages-frame:has(.villages-agenda-activity[data-venue]:not([data-menu])) .${ELEMENT_TAG}-desk-stage {
+          padding-top:4.75rem;
+        }
+        .villages-frame:has(.villages-agenda-activity[data-venue]:not([data-menu])[data-failed] .villages-agenda-details) .${ELEMENT_TAG}-desk-stage {
           padding-top:10rem;
         }
         .villages-agenda-activity .villages-agenda-chip { display:grid; place-items:center; width:44px; height:44px; padding:0; border:1px solid #a39b8480; border-radius:.65rem; background:#393047; color:inherit; box-shadow:0 .25rem .75rem #0004; cursor:pointer; }
@@ -178,7 +181,7 @@ export function ReturnCatchup({
         @keyframes villages-agenda-spin { to { transform:rotate(360deg); } }
         @media(prefers-reduced-motion:reduce) { .villages-agenda-spinner { animation:none; } }
         .villages-agenda-details { position:absolute; left:0; top:calc(100% + .5rem); box-sizing:border-box; width:max-content; max-width:min(22rem,calc(100vw - 2rem)); display:grid; gap:.3rem; padding:.65rem .85rem; background:#393047; border:1px solid #a39b8480; border-radius:.65rem; box-shadow:0 .75rem 2rem #0005; }
-        .villages-agenda-activity[data-menu] .villages-agenda-details {
+        .villages-agenda-activity:is([data-menu],[data-venue]) .villages-agenda-details {
           left:calc(100% + .5rem);
           top:0;
           max-width:min(22rem,calc(100vw - 5rem));
@@ -198,6 +201,7 @@ export function ReturnCatchup({
           <div
             className="villages-agenda-activity"
             data-menu={menu || undefined}
+            data-venue={venue || undefined}
             data-failed={!!agenda.failure || undefined}
             ref={activity}
           >
@@ -235,7 +239,7 @@ export function ReturnCatchup({
         ) : null}
         {modal ? (
           <ModalDialog
-            title="Welcome back"
+            title={modalTitle}
             scope={host.current?.parentElement ?? undefined}
             onClose={() => void 0}
             dismissible={false}
@@ -247,11 +251,11 @@ export function ReturnCatchup({
             <span className="villages-catchup-icon" aria-hidden="true">
               🏡
             </span>
-            <h2>Welcome back</h2>
+            <h2>{modalTitle}</h2>
             {batch ? (
               <p role="status">{batch.status === "failed" ? "Catch-up paused" : "Catching up with Village life…"}</p>
             ) : (
-              plans
+              (plans ?? <p role="status">Preparing today’s Agendas</p>)
             )}
             {batch ? (
               <>
@@ -275,7 +279,7 @@ export function ReturnCatchup({
                 ) : null}
               </>
             ) : null}
-            {batch && error ? <p role="alert">{error}</p> : null}
+            {(batch || !plans) && error ? <p role="alert">{error}</p> : null}
             {batch ? (
               <div className="villages-zone-map-actions">
                 {batch.status === "failed" && batch.issue !== "authority" ? (
@@ -287,17 +291,7 @@ export function ReturnCatchup({
                   {waiting ? "Skip optional catch-up" : "Continue to Village"}
                 </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setEntryGate(false);
-                  onBack();
-                }}
-              >
-                Back
-              </button>
-            )}
+            ) : null}
           </ModalDialog>
         ) : null}
       </div>

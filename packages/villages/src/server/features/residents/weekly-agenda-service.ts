@@ -4,11 +4,11 @@ import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 import type { Handler, Step } from "../../domain/models/background-model.js";
-import type { VillageAgendaBlock, VillageState } from "../../domain/models/world.js";
+import type { VillageState } from "../../domain/models/world.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import {
   agendaDateKey,
-  completeAgendaWeek,
+  agendaPersonalPlansPending,
   ordinaryAgendaBlocksFor,
   workingAgendaWeek,
 } from "../../domain/rules/agenda-week.js";
@@ -31,7 +31,6 @@ import { generatedIdentityDescription } from "../../domain/rules/resident-descri
 import { snapshotContent } from "../../domain/rules/resident-card-snapshot.js";
 import { fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
 import { refreshWorkReservations } from "../../domain/rules/venue-work.js";
-import { VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
 import {
   AGENDA_WEEK_DAYS,
@@ -39,11 +38,11 @@ import {
   agendaCalendar,
   agendaCoverage,
   agendaReadyOn,
+  hasUnfilledAgendaDate,
   applyWeeklyAgenda,
   preparedAgendaThrough,
   shiftAgendaDate,
   weeklyAgendaDue,
-  weeklyChoiceBlock,
   weeklyAgendaSlots,
   weeklyAgendaVenues,
   type WeeklyAgendaChoice,
@@ -132,7 +131,10 @@ function captureWeek(state: VillageState, today: Date, start: Date, characterId?
             ...(characterId === undefined ? [] : days.flatMap((day) => ordinaryAgendaBlocksFor(agenda, day))),
             ...Object.entries(agenda.plannedDays ?? {})
               .sort(([a], [b]) => b.localeCompare(a))
-              .filter(([date]) => date >= oldest && date <= current)
+              .filter(
+                ([date]) =>
+                  date >= oldest && (date < current || (date === current && !agendaPersonalPlansPending(agenda, date))),
+              )
               .flatMap(([, blocks]) => blocks),
           ]
             .filter(flexibleAgendaBlock)
@@ -355,37 +357,27 @@ function prepareStarter(
       throw new WorkFailureError({ cause: "missing_result", stage: KIND, message: error.message });
     throw error;
   }
-  const { agenda, first, restBlocks } = base;
+  const { agenda, first } = base;
   const requested = new Set(resident.slots.map(({ date }) => date));
   const days = Array.from({ length: AGENDA_WEEK_DAYS }, (_, offset) => shiftAgendaDate(first, offset));
   const slots = days.flatMap((date) =>
     requested.has(agendaDateKey(date)) ? weeklyAgendaSlots(agenda, date, resident.id) : [],
   );
   const identityDescription = describe ? generatedIdentityDescription(setup.identityDescription) : undefined;
-  return { agenda, restBlocks, days, slots, identityDescription };
+  return { agenda, slots, identityDescription };
 }
 
 function starterResult(
-  { agenda, restBlocks, days, slots, identityDescription }: ReturnType<typeof prepareStarter>,
+  { agenda, slots, identityDescription }: ReturnType<typeof prepareStarter>,
   choices: (WeeklyAgendaChoice | null)[],
   through: string,
 ): CompactFoundingResult {
-  const fallback: Record<string, VillageAgendaBlock[]> = Object.fromEntries(
-    days.map((day) => [VILLAGE_WEEKDAYS[(day.getDay() + 6) % 7], [...restBlocks]]),
-  );
-  const weekdayByDate = new Map(days.map((day) => [agendaDateKey(day), VILLAGE_WEEKDAYS[(day.getDay() + 6) % 7]!]));
-  for (const [index, slot] of slots.entries()) {
-    const choice = choices[index];
-    if (choice)
-      fallback[weekdayByDate.get(slot.date)!]!.push(weeklyChoiceBlock(choice, slot.startMinute, slot.endMinute));
-  }
   return {
     agenda,
     ...(identityDescription ? { identityDescription } : {}),
     starterWeek: {
       slots,
       choices,
-      fallbackWeek: completeAgendaWeek(fallback, agenda.week!),
       through,
     },
   };
@@ -811,10 +803,6 @@ export function createWeeklyAgenda(ports: {
             const todayAfter = now.getHours() * 60 + now.getMinutes();
             const existing = resident.agenda;
             const preserveDate = (date: string) => agendaReadyOn(existing, date);
-            const eligible = plan.slots.filter(
-              ({ date, endMinute }) =>
-                !preserveDate(date) && (date > today || (date === today && endMinute - todayAfter >= 30)),
-            );
             const probe = { ...resident, agenda: structuredClone(resident.agenda) };
             const placed = new Set<string>();
             applyWeeklyAgenda(state, probe, now, plan.slots, result[index]!, {
@@ -822,15 +810,7 @@ export function createWeeklyAgenda(ports: {
               todayAfter,
               onPlaced: (date) => placed.add(date),
             });
-            if (
-              eligible.some(
-                ({ date }) =>
-                  !placed.has(date) &&
-                  weeklyAgendaSlots(existing, calendarAt(now, date, 720), resident.characterId).some(
-                    ({ endMinute }) => date > today || endMinute - todayAfter >= 30,
-                  ),
-              )
-            )
+            if (hasUnfilledAgendaDate(resident, now, input.start, placed, todayAfter, preserveDate))
               return {
                 cause: "missing_result",
                 stage: KIND,
@@ -856,14 +836,26 @@ export function createWeeklyAgenda(ports: {
               preserveThrough: preparedAgendaThrough(resident.agenda),
             });
           } else {
-            const placed = applyWeeklyAgenda(state, resident, now, plan.slots, result[index]!);
-            if (!placed)
+            const probe = { ...resident, agenda: structuredClone(resident.agenda) };
+            const placed = new Set<string>();
+            applyWeeklyAgenda(state, probe, now, plan.slots, result[index]!, {
+              onPlaced: (date) => placed.add(date),
+            });
+            if (!placed.size || hasUnfilledAgendaDate(resident, now, input.start, placed, undefined))
               return {
                 cause: "missing_result",
                 stage: KIND,
                 message: "The new plans could not fit the available times and places. The existing Agenda was kept.",
               };
-            resident.agenda.manualWeek = { actionId: input.weekActionId, through: input.end, from: input.start };
+            const tomorrow = agendaDateKey(shiftAgendaDate(now, 1));
+            resident.agenda = {
+              ...probe.agenda,
+              manualWeek: {
+                actionId: input.weekActionId,
+                through: input.end,
+                from: tomorrow > input.start ? tomorrow : input.start,
+              },
+            };
           }
         }
       }

@@ -5,7 +5,7 @@ import type { ContinuityEvidence, ContinuityWrite } from "../models/continuity-m
 import type { NarrationReadset } from "../models/narration-model.js";
 import { recentAgendaChanges } from "./agenda-changes.js";
 import type { VillageAgendaBlock, VillageState } from "../models/world.js";
-import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
+import { agendaBlocksFor, agendaDateKey, agendaPersonalPlansPending } from "./agenda-week.js";
 import { generatedAgendaActivityLabel, restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { continuityActor } from "./continuity-actors.js";
@@ -169,15 +169,13 @@ export function sceneAgendaContext(
           .flatMap(({ characterId }) => {
             const agenda = world.villagers.find((row) => row.characterId === characterId)?.agenda;
             const start = Math.max(window.start, window.key === today ? minute : 0);
-            const block =
-              agenda &&
-              agendaBlocksFor(agenda, window.day!).find(
-                (row) =>
-                  flexibleAgendaBlock(row) &&
-                  !restingAgendaBlock(row) &&
-                  Math.min(row.endMinute, window.end) > Math.max(row.startMinute, start),
-              );
-            if (!agenda || start >= window.end) return [];
+            if (!agenda || agendaPersonalPlansPending(agenda, window.key) || start >= window.end) return [];
+            const block = agendaBlocksFor(agenda, window.day!).find(
+              (row) =>
+                flexibleAgendaBlock(row) &&
+                !restingAgendaBlock(row) &&
+                Math.min(row.endMinute, window.end) > Math.max(row.startMinute, start),
+            );
             return [
               {
                 actorId: characterId,
@@ -308,6 +306,9 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
       return {
         date,
         weekday: VILLAGE_WEEKDAYS[(day.getDay() + 6) % 7]!,
+        ...((inspect || shared) && resident.agenda && agendaPersonalPlansPending(resident.agenda, date)
+          ? { personalPlansPending: true as const }
+          : {}),
         blocks: [...new Map(blocks.map((block) => [memoryHash(block), block])).values()].sort(
           (a, b) => a.startMinute - b.startMinute,
         ),

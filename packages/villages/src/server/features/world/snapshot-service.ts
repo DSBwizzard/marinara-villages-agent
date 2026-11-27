@@ -9,6 +9,7 @@ import type { VillageSnapshot } from "../../domain/models/world.js";
 import { foundingCompletedIds, foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
+import { todayAgendasPending } from "../../domain/rules/weekly-agenda.js";
 import { openingView } from "../../domain/rules/opening-project.js";
 import { PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
@@ -214,6 +215,7 @@ export function createVillageSnapshot({
       worldScope: villageWorldScope(village),
       mailboxUnread: hasUnreadMail(village.mailbox),
       status: "ready",
+      ...(todayAgendasPending(village, now) ? { todayAgendasPending: true as const } : {}),
       clock,
       foundingPreparation: village.foundingPreparation
         ? {

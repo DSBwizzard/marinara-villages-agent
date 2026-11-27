@@ -11,6 +11,7 @@ export type VillageAgenda = {
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   manualWeek?: { actionId: string; through: string; from?: string };
   weeklyFrom?: string;
+  starterWeekFrom?: string;
   starterWeekThrough?: string;
   weeklyThrough?: string;
   /** Preserve dated corrections when the Agenda is regenerated. */

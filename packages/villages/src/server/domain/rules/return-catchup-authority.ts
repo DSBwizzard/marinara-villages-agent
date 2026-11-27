@@ -2,6 +2,7 @@ import type { VillageState } from "../models/world.js";
 import { planRoutineDays } from "./resident-agenda.js";
 import { localDateKey } from "./resident-planning.js";
 import { cloneVillageContext } from "./world-context-copy.js";
+import { agendaPersonalPlansPending, ordinaryAgendaBlocksFor } from "./agenda-week.js";
 
 export const returnCatchupSubject = (batchId: string, opportunityId: string): string =>
   "return:" + batchId + ":" + opportunityId;
@@ -33,6 +34,7 @@ export function sameReturnResident(
     activeDay: oldDay,
     plannedDays: oldPlans,
     manualWeek: _oldManualWeek,
+    starterWeekFrom: _oldStarterStart,
     starterWeekThrough: _oldStarterWeek,
     weeklyThrough: _oldWeeklyThrough,
     weeklyFrom: _oldWeeklyFrom,
@@ -45,6 +47,7 @@ export function sameReturnResident(
     activeDay: newDay,
     plannedDays: newPlans,
     manualWeek: _newManualWeek,
+    starterWeekFrom: _newStarterStart,
     starterWeekThrough: _newStarterWeek,
     weeklyThrough: _newWeeklyThrough,
     weeklyFrom: _newWeeklyFrom,
@@ -59,7 +62,16 @@ export function sameReturnResident(
     reservations: routine.reservations?.filter((row) => row.source !== "work"),
   });
   if (JSON.stringify(withoutWork(oldRoutine)) !== JSON.stringify(withoutWork(newRoutine))) return false;
-  if (oldDay?.dateKey === newDay?.dateKey && JSON.stringify(oldDay) !== JSON.stringify(newDay)) return false;
+  if (oldDay?.dateKey === newDay?.dateKey && JSON.stringify(oldDay) !== JSON.stringify(newDay)) {
+    const rebuiltPendingDay =
+      oldDay?.dateKey === date &&
+      newDay?.dateKey === date &&
+      oldDay.scheduleInformed === newDay.scheduleInformed &&
+      agendaPersonalPlansPending(newAgenda, date) &&
+      !newAgenda.repairedDays?.includes(date) &&
+      JSON.stringify(newDay.blocks) === JSON.stringify(ordinaryAgendaBlocksFor(newAgenda, at));
+    if (!rebuiltPendingDay) return false;
+  }
   if (newPlans?.[date]) {
     let expected = oldPlans?.[date] ?? (oldDay?.dateKey === date ? oldDay.blocks : undefined);
     if (!expected) {

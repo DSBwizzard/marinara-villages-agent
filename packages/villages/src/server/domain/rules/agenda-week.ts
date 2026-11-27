@@ -12,6 +12,7 @@ import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 export { agendaDateKey } from "../../../shared/helpers/calendar-day.js";
 import { agendaDateKey } from "../../../shared/helpers/calendar-day.js";
+import { AGENDA_WEEK_DAYS } from "../../../shared/contracts/agenda.js";
 
 const block = (startMinute: number, endMinute: number, venueId: string, activity: string): VillageAgendaBlock => ({
   startMinute,
@@ -20,22 +21,44 @@ const block = (startMinute: number, endMinute: number, venueId: string, activity
   activity,
 });
 
-/** A complete, varied week exists before any model or schedule is consulted. */
+const openDay = (): VillageAgendaBlock[] => [
+  {
+    ...block(0, 1440, "", "Taking care of their own affairs"),
+    flexible: true,
+  },
+];
+
+/** Open intervals can receive dated plans and commitments. */
 export function workingAgendaWeek(): Record<string, VillageAgendaBlock[]> {
-  return Object.fromEntries(
-    VILLAGE_WEEKDAYS.map((weekday) => [
-      weekday,
-      [
-        {
-          startMinute: 0,
-          endMinute: 1440,
-          venueId: "",
-          activity: "Taking care of their own affairs",
-          flexible: true,
-        },
-      ],
-    ]),
-  ) as Record<string, VillageAgendaBlock[]>;
+  return Object.fromEntries(VILLAGE_WEEKDAYS.map((weekday) => [weekday, openDay()]));
+}
+
+export function agendaReadyOn(agenda: VillageAgenda | null, date: string): boolean {
+  if (!agenda) return false;
+  if ((agenda.starterWeekThrough ?? "") >= date && (agenda.starterWeekFrom ?? "") <= date) return true;
+  if (agenda.weeklyFrom && agenda.weeklyThrough && agenda.weeklyFrom <= date && agenda.weeklyThrough >= date)
+    return true;
+  const manual = agenda.manualWeek;
+  if (!manual || manual.through < date) return false;
+  const through = Date.parse(manual.through);
+  if (!Number.isFinite(through)) return false;
+  const from = manual.from ?? new Date(through - (AGENDA_WEEK_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+  return from <= date;
+}
+
+export function agendaTracksDatedPlans(agenda: VillageAgenda | null): boolean {
+  return !!(
+    agenda?.calendarVersion === 1 &&
+    (agenda.starterWeekFrom ||
+      agenda.starterWeekThrough ||
+      agenda.manualWeek ||
+      agenda.weeklyThrough ||
+      agenda.personalizationPending)
+  );
+}
+
+export function agendaPersonalPlansPending(agenda: VillageAgenda, date: string): boolean {
+  return agendaTracksDatedPlans(agenda) && !agendaReadyOn(agenda, date);
 }
 
 /** Preserve valid proposed intervals and fill every gap with the working week. */
@@ -142,6 +165,7 @@ function withRecurringRest(
 export function activeAgendaSleep(agenda: VillageAgenda | null, now: Date) {
   const day = agenda?.activeDay;
   if (!agenda?.calendarVersion || !day || day.dateKey !== agendaDateKey(now)) return;
+  if (agendaPersonalPlansPending(agenda, day.dateKey)) return;
   const minute = now.getHours() * 60 + now.getMinutes();
   const activeBlocks = composeAgenda(
     day.blocks,
@@ -166,33 +190,46 @@ function withoutInterval(block: VillageAgendaBlock, interval: Pick<VillageAgenda
   ];
 }
 
-export function ordinaryAgendaBlocksFor(agenda: VillageAgenda, at: Date, activating = false): VillageAgendaBlock[] {
+export function ordinaryAgendaBlocksFor(
+  agenda: VillageAgenda,
+  at: Date,
+  activating = false,
+  captured = false,
+): VillageAgendaBlock[] {
   const key = agendaDateKey(at);
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
+  const dated = agenda.activeDay?.dateKey === key ? agenda.activeDay.blocks : agenda.plannedDays?.[key];
+  const pending = agendaPersonalPlansPending(agenda, key);
+  const preserved = agenda.repairedDays?.includes(key) || (agenda.activeDay && key < agenda.activeDay.dateKey);
+  // Old saves may already have written copies of the starter week into dated rows.
+  if (!captured && agendaTracksDatedPlans(agenda) && (!dated || (pending && !preserved))) {
+    const sleep = (agenda.week?.[weekday] ?? []).filter(
+      (row) => row.restKind === "sleep" || (row.activity === "Sleeping" && !flexibleAgendaBlock(row)),
+    );
+    return withRecurringRest(agenda, key, sleep, openDay(), 0);
+  }
   const influence = !agenda.calendarVersion ? agenda.scheduleInfluenceSnapshot : undefined;
   const blocks =
-    agenda.activeDay?.dateKey === key
-      ? agenda.activeDay.blocks
-      : (agenda.plannedDays?.[key] ??
-        (agenda.calendarVersion && agenda.routineProfile?.baseWeek ? agenda.week?.[weekday] : undefined) ??
-        (agenda.routineProfile
-          ? routineDay(agenda.routineProfile, agenda.generatedAt || agenda.routineSummary, at, influence, {
-              version: 1,
-              enabled: influence?.enabled === true,
-              categories: {
-                rhythm: true,
-                busyFree: true,
-                weekdayWeekend: true,
-                interests: true,
-                establishedEntities: true,
-              },
-            })
-          : undefined) ??
-        agenda.week?.[weekday] ??
-        agenda.day.map((entry) => ({
-          ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
-          zoneId: entry.zoneId,
-        })));
+    dated ??
+    (agenda.calendarVersion && agenda.routineProfile?.baseWeek ? agenda.week?.[weekday] : undefined) ??
+    (agenda.routineProfile
+      ? routineDay(agenda.routineProfile, agenda.generatedAt || agenda.routineSummary, at, influence, {
+          version: 1,
+          enabled: influence?.enabled === true,
+          categories: {
+            rhythm: true,
+            busyFree: true,
+            weekdayWeekend: true,
+            interests: true,
+            establishedEntities: true,
+          },
+        })
+      : undefined) ??
+    agenda.week?.[weekday] ??
+    agenda.day.map((entry) => ({
+      ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
+      zoneId: entry.zoneId,
+    }));
   return agenda.calendarVersion === 1 && (agenda.activeDay ? key > agenda.activeDay.dateKey : activating)
     ? withRecurringRest(agenda, key, agenda.week?.[weekday] ?? [], blocks, 0)
     : blocks;

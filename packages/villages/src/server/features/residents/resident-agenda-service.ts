@@ -11,13 +11,12 @@ import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domain/models/world.js";
 import { scheduledAgendaActivity, unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
-import { flexibleAgendaBlock } from "../../domain/rules/agenda-flexibility.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import {
   activeAgendaSleep,
   agendaDateKey,
+  agendaPersonalPlansPending,
   bookedAgendaDays,
-  completeAgendaWeek,
   workingAgendaWeek,
 } from "../../domain/rules/agenda-week.js";
 import { calendarReplay } from "../../domain/rules/clock-state.js";
@@ -39,15 +38,21 @@ import { routineVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
-import { randomVillageSeed, VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
+import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import type { backgroundJobSnapshot, backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/background-work.js";
 import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import type { createWeeklyAgenda } from "./weekly-agenda-service.js";
-import { agendaCalendar, applyWeeklyAgenda } from "../../domain/rules/weekly-agenda.js";
+import {
+  AGENDA_WEEK_DAYS,
+  agendaCalendar,
+  applyWeeklyAgenda,
+  hasUnfilledAgendaDate,
+  shiftAgendaDate,
+} from "../../domain/rules/weekly-agenda.js";
 import { refreshWorkReservations } from "../../domain/rules/venue-work.js";
-import { routineProfileFromWeek } from "../../domain/rules/owned-routine.js";
+import type { WorkFailure } from "../../domain/rules/work-failure.js";
 export interface ResidentAgendaPorts {
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
@@ -84,10 +89,17 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     const revision = clockRevision ?? clock?.revision;
     const village = known ?? (await readVillageState());
+    const today = agendaDateKey(now);
     if (
       village.villagers.every(
         ({ agenda }) =>
-          !agenda || (agenda.activeDay?.dateKey === agendaDateKey(now) && !activeAgendaSleep(agenda, now)),
+          !agenda ||
+          (agenda.activeDay?.dateKey === today &&
+            !activeAgendaSleep(agenda, now) &&
+            !Object.keys(agenda.plannedDays ?? {}).some(
+              (date) =>
+                date >= today && agendaPersonalPlansPending(agenda, date) && !agenda.repairedDays?.includes(date),
+            )),
       )
     )
       return false;
@@ -285,6 +297,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
             : agendaRevision(state, input.characterId) === input.revision),
     apply: (state, input, result, context) => {
       if (typeof input.weekActionId === "string") return weeklyAgenda.handler.apply(state, input, result, context);
+      const failure = applyAgenda(state, input.characterId, result.agenda, result.starterWeek);
+      if (failure) return failure;
       const task = state.foundingPreparation?.tasks?.[input.characterId]?.routine;
       if (input.foundingContract === 1 && task?.revision === input.revision) task.lore = input.context.loreUse;
       const resident = state.villagers.find((row) => row.characterId === input.characterId);
@@ -294,7 +308,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           input.context.identityDescriptionRevision,
           result.identityDescription,
         );
-      applyAgenda(state, input.characterId, result.agenda, result.starterWeek);
       if (input.foundingContract === 1) completeFoundingTask(state, input.characterId, "routine", input.revision);
     },
   };
@@ -498,19 +511,26 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     },
     apply(state, input, result, context) {
       if (!startingBatch(input)) return weeklyAgenda.handler.apply(state, input, result, context);
+      const staged = {
+        ...state,
+        villagers: structuredClone(state.villagers),
+        foundingPreparation: structuredClone(state.foundingPreparation),
+      };
       for (const [index, { id, revision, descriptionRevision, lore }] of (input as StartingBatch).members.entries()) {
         const starter = (result as CompactFoundingResult[])[index]!;
+        const failure = applyAgenda(staged, id, starter.agenda, starter.starterWeek, input.rebuildActionId);
+        if (failure) return failure;
         if (input.rebuildActionId) {
-          applyAgenda(state, id, starter.agenda, starter.starterWeek, input.rebuildActionId);
           continue;
         }
-        const task = state.foundingPreparation!.tasks![id]!.routine!;
+        const task = staged.foundingPreparation!.tasks![id]!.routine!;
         task.lore = lore;
-        const resident = state.villagers.find((row) => row.characterId === id)!;
+        const resident = staged.villagers.find((row) => row.characterId === id)!;
         applyInitialIdentityDescription(resident, descriptionRevision, starter.identityDescription);
-        applyAgenda(state, id, starter.agenda, starter.starterWeek);
-        completeFoundingTask(state, id, "routine", revision);
+        completeFoundingTask(staged, id, "routine", revision);
       }
+      state.villagers = staged.villagers;
+      state.foundingPreparation = staged.foundingPreparation;
     },
   };
 
@@ -529,7 +549,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     agenda: VillageAgenda,
     starter?: CompactFoundingResult["starterWeek"],
     rebuildActionId?: string,
-  ): void {
+  ): WorkFailure | undefined {
     const villager = state.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
     if (state.foundingPreparation?.status === "pending" && state.foundingPreparation.currentId === characterId) {
@@ -542,26 +562,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const rebuildToday = !!rebuildActionId && starter?.slots[0]?.date === today;
     const dayHasRolled = rebuildToday || previous?.activeDay?.dateKey !== today;
     const booked = previous ? bookedAgendaDays(previous, now) : {};
-    const rebuildBookings = () => {
-      const fallback = workingAgendaWeek();
-      return Object.fromEntries(
-        Object.keys(booked).map((date) => {
-          const weekday = VILLAGE_WEEKDAYS[(calendarAt(now, date, 720).getDay() + 6) % 7]!;
-          const activities =
-            date > (starter?.through ?? "") ? (starter?.fallbackWeek[weekday]?.filter(flexibleAgendaBlock) ?? []) : [];
-          return [
-            date,
-            activities.length ? completeAgendaWeek({ [weekday]: activities }, fallback)[weekday]! : fallback[weekday]!,
-          ];
-        }),
-      );
-    };
     villager.agenda = {
       ...agenda,
       calendarVersion: 1,
       recentChanges: previous?.recentChanges,
       plannedDays: rebuildActionId
-        ? rebuildBookings()
+        ? Object.fromEntries(Object.keys(booked).map((date) => [date, workingAgendaWeek().Monday!]))
         : {
             ...booked,
             ...Object.fromEntries(
@@ -605,11 +611,25 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       }
       projectAgendaReservations(state);
       refreshWorkReservations(state, now);
-      if (applyWeeklyAgenda(state, villager, now, starter.slots, starter.choices, { todayAfter }))
+      const placed = new Set<string>();
+      applyWeeklyAgenda(state, villager, now, starter.slots, starter.choices, {
+        todayAfter,
+        onPlaced: (date) => placed.add(date),
+      });
+      const first = shiftAgendaDate(calendarAt(now, starter.through, 720), 1 - AGENDA_WEEK_DAYS);
+      if (hasUnfilledAgendaDate(villager, now, agendaDateKey(first), placed, todayAfter)) {
+        villager.agenda = previous;
+        return {
+          cause: "missing_result",
+          stage: "agenda",
+          message: "The new plans could not fit the available times and places.",
+        };
+      }
+      villager.agenda.starterWeekFrom = today > agendaDateKey(first) ? today : agendaDateKey(first);
+      if (starter.through >= villager.agenda.starterWeekFrom) {
         villager.agenda.starterWeekThrough = starter.through;
-      if (rebuildActionId) villager.agenda.manualWeek = { actionId: rebuildActionId, through: starter.through };
-      villager.agenda.week = starter.fallbackWeek;
-      villager.agenda.routineProfile = routineProfileFromWeek(starter.fallbackWeek);
+        if (rebuildActionId) villager.agenda.manualWeek = { actionId: rebuildActionId, through: starter.through };
+      }
     }
     planRoutineDays(state, now);
     if (!starter) {

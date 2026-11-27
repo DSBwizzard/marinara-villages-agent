@@ -32,9 +32,10 @@ export function VillagesFrame({
         <ReturnCatchup
           key={controller.snapshot?.worldScope ?? ""}
           enabled={controller.visible && !!controller.snapshot?.isFounded && controller.screen !== "preparing"}
+          pendingOnSnapshot={controller.snapshot?.todayAgendasPending === true}
           onSettled={controller.loadSnapshot}
-          onBack={() => void controller.goHome()}
           menu={menu}
+          venue={controller.screen === "venue"}
           repair={controller.screen === "menu" && controller.menuPage === "repair"}
         >
           <LoreActivity

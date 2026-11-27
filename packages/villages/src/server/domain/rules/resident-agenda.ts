@@ -1,7 +1,12 @@
 import { refreshWorkReservations } from "./venue-work.js";
 import { calendarDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageAgenda, VillageState, VillageVillager } from "../models/world.js";
-import { activeAgendaSleep, agendaDateKey, ordinaryAgendaBlocksFor } from "./agenda-week.js";
+import {
+  activeAgendaSleep,
+  agendaDateKey,
+  agendaPersonalPlansPending,
+  ordinaryAgendaBlocksFor,
+} from "./agenda-week.js";
 import { influenceSettings, routineDay, validateRoutineDay } from "./owned-routine.js";
 import { routineVenues } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -16,6 +21,15 @@ export function planRoutineDays(state: VillageState, now: Date): void {
     for (let offset = 0; offset < 7; offset++) {
       const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12),
         key = agendaDateKey(date);
+      if (
+        agendaPersonalPlansPending(agenda, key) &&
+        !agenda.repairedDays?.includes(key) &&
+        (!agenda.activeDay || key >= agenda.activeDay.dateKey)
+      ) {
+        delete agenda.plannedDays[key];
+        if (agenda.activeDay?.dateKey === key) agenda.activeDay.blocks = ordinaryAgendaBlocksFor(agenda, date);
+        continue;
+      }
       if (agenda.activeDay?.dateKey === key) {
         const sleep = activeAgendaSleep(agenda, now);
         if (sleep) agenda.activeDay.blocks = sleep;
@@ -66,6 +80,23 @@ export function activateVillagerDay(villager: VillageVillager, now: Date, state:
     blocks: agenda.plannedDays?.[key] ? blocks : validateRoutineDay(blocks, villager, state, now),
     scheduleInformed: false,
   };
+}
+
+/** Reproduce one already-admitted historical date inside a detached recovery snapshot. */
+export function restoreCapturedAgendaDay(state: VillageState, at: Date): void {
+  const key = agendaDateKey(at);
+  for (const resident of state.villagers) {
+    const agenda = resident.agenda;
+    if (!agenda || !agendaPersonalPlansPending(agenda, key)) continue;
+    if (agenda.activeDay?.dateKey !== key && !agenda.plannedDays?.[key])
+      (agenda.plannedDays ??= {})[key] = validateRoutineDay(
+        ordinaryAgendaBlocksFor(agenda, at, false, true),
+        resident,
+        state,
+        at,
+      );
+    agenda.starterWeekFrom = agenda.starterWeekThrough = key;
+  }
 }
 /** An edited map cannot leave a daily plan pointing at a vanished public place. */
 export function keepAgendaPlaces(state: VillageState): void {

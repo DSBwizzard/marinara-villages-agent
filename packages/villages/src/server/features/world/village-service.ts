@@ -1,4 +1,5 @@
 import { foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
+import { assertTodayAgendas, todayAgendasPending } from "../../domain/rules/weekly-agenda.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import type {
@@ -110,7 +111,6 @@ export function createWorldCoordination({
     return result;
   }
   async function reconcileAt(options: ReconcileOptions): Promise<VillageSnapshot> {
-    if (!options.advanceTime) await reconcileNarrative?.(options.now ?? villageNow());
     if (options.advanceTime) {
       const request = options.advanceTime;
       const departure = await readVillageAuthority({ memories: true });
@@ -120,6 +120,7 @@ export function createWorldCoordination({
           (state.opening?.stage === "gathering" && !state.opening.gatheringSceneId && !startingHistoryReady(state))
         )
           throw conflict("Finish Founding preparation before advancing time.");
+        assertTodayAgendas(state, from);
         const captured = captureReturnContext(state, from);
         if (returnCaptureRevision(captured) !== returnCaptureRevision(captureReturnContext(departure, from)))
           throw conflict("The Village changed. Refresh before advancing time.");
@@ -178,8 +179,10 @@ export function createWorldCoordination({
       state.lastKnownTimeZone = moment.timeZone;
     });
 
-    if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
-    await settleResidentAttendance?.(now);
+    const current = await readVillageState();
+    if (calendarReplay(current, now)) return buildVillageSnapshot(now);
+    const plansPending = todayAgendasPending(current, now);
+    if (!plansPending) await settleResidentAttendance?.(now);
     // Founding owns its optional requests; ordinary pulses must not retry them.
     if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready")
       return buildVillageSnapshot(now);
@@ -192,7 +195,10 @@ export function createWorldCoordination({
     await reconcileWeeklyAgenda?.(ready, now, options.returning).catch((error) => {
       villagesLogger().warn("[villages] could not queue weekly Agendas: %s", String(error));
     });
-    await reconcileResidentPlanning?.(now);
+    if (!plansPending) {
+      if (!options.advanceTime) await reconcileNarrative?.(now);
+      await reconcileResidentPlanning?.(now);
+    }
     return buildVillageSnapshot(now);
   }
 

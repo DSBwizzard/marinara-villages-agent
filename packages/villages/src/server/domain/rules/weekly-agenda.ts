@@ -2,7 +2,8 @@ import { calendarAt, calendarDate, ZonedDate } from "../../../shared/helpers/zon
 import type { Job } from "../models/background-model.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
 import { AGENDA_NAP_ACTIVITY, fixedRestAgendaBlock, flexibleAgendaBlock } from "./agenda-flexibility.js";
-import { agendaDateKey, ordinaryAgendaBlocksFor } from "./agenda-week.js";
+import { agendaDateKey, agendaReadyOn, agendaTracksDatedPlans, ordinaryAgendaBlocksFor } from "./agenda-week.js";
+import { AGENDA_WEEK_DAYS } from "../../../shared/contracts/agenda.js";
 import { validateRoutineDay } from "./owned-routine.js";
 import { routineVenues } from "./prompt-preset.js";
 import { accessibleVenueRoute } from "./venue-path.js";
@@ -11,7 +12,7 @@ import { canOccupyZone, resolveVenueZone, venueZones, zoneClosed } from "./venue
 import { hashString } from "./village-clock.js";
 import { conflict } from "./errors.js";
 
-export const AGENDA_WEEK_DAYS = 7;
+export { AGENDA_WEEK_DAYS, agendaReadyOn };
 const dayParts = [360, 720, 1020, 1440];
 const minActivityMinutes = 30;
 const maxActivityMinutes = 240;
@@ -29,26 +30,9 @@ export function preparedAgendaThrough(agenda: VillageAgenda | null | undefined):
     .at(-1)!;
 }
 
-export function agendaReadyOn(agenda: VillageAgenda | null, date: string): boolean {
-  if (!agenda) return false;
-  if ((agenda.starterWeekThrough ?? "") >= date) return true;
-  if (agenda.weeklyFrom && agenda.weeklyThrough && agenda.weeklyFrom <= date && agenda.weeklyThrough >= date)
-    return true;
-  const manual = agenda.manualWeek;
-  if (!manual || manual.through < date) return false;
-  const through = Date.parse(manual.through);
-  if (!Number.isFinite(through)) return false;
-  const from = manual.from ?? new Date(through - (AGENDA_WEEK_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
-  return from <= date;
-}
-
 export function weeklyAgendaResidents(state: Pick<VillageState, "villagers" | "foundingPreparation">) {
   if (state.foundingPreparation && state.foundingPreparation.status !== "ready") return [];
-  const started = state.villagers.some(
-    ({ agenda }) =>
-      agenda &&
-      (agenda.starterWeekThrough || agenda.manualWeek || agenda.weeklyThrough || agenda.personalizationPending),
-  );
+  const started = state.villagers.some(({ agenda }) => agendaTracksDatedPlans(agenda));
   if (!started) return [];
   return state.villagers.filter(({ agenda }) => agenda?.calendarVersion === 1);
 }
@@ -62,9 +46,13 @@ export function agendaCoverage(state: Pick<VillageState, "villagers" | "founding
   return { today, start, residents, ready, prepared: readyOn(start) };
 }
 
-export function assertTodayAgendas(state: VillageState, now: Date) {
+export function todayAgendasPending(state: VillageState, now: Date): boolean {
   const { residents, ready } = agendaCoverage(state, now);
-  if (ready.length !== residents.length) throw conflict("Wait for today’s Agendas to finish preparing.");
+  return ready.length !== residents.length;
+}
+
+export function assertTodayAgendas(state: VillageState, now: Date) {
+  if (todayAgendasPending(state, now)) throw conflict("Wait for today’s Agendas to finish preparing.");
 }
 
 export function shiftAgendaDate(date: Date, days: number): Date {
@@ -166,6 +154,33 @@ export function weeklyAgendaSlots(agenda: VillageAgenda, date: Date, residentId:
 }
 
 export type WeeklyAgendaSlot = ReturnType<typeof weeklyAgendaSlots>[number];
+
+export function hasUnfilledAgendaDate(
+  resident: Pick<VillageVillager, "agenda" | "characterId">,
+  now: Date,
+  start: string,
+  placed: ReadonlySet<string>,
+  todayAfter: number | undefined,
+  preserveDate?: (date: string) => boolean,
+): boolean {
+  const today = agendaDateKey(now);
+  if (!resident.agenda) return false;
+  const first = calendarAt(now, start, 720);
+  for (let offset = 0; offset < AGENDA_WEEK_DAYS; offset++) {
+    const at = shiftAgendaDate(first, offset);
+    const date = agendaDateKey(at);
+    if (date < today || placed.has(date) || preserveDate?.(date) || (date === today && todayAfter === undefined))
+      continue;
+    if (
+      weeklyAgendaSlots(resident.agenda, at, resident.characterId).some(
+        ({ endMinute }) => date > today || endMinute - (todayAfter ?? 1440) >= minActivityMinutes,
+      )
+    )
+      return true;
+  }
+  return false;
+}
+
 export type WeeklyAgendaChoice = { activity: string; venueId: string; maxMinutes?: number; nap?: true };
 
 export function weeklyChoiceBlock(

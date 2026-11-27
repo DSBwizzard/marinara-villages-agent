@@ -667,11 +667,11 @@ async function main() {
         const today = agenda.activeDay!;
         assert.ok(today.dateKey > checkpoint.data.input.weekPlan.start);
         assert.ok(today.blocks.every((block) => !block.activity.startsWith("Station activity")));
-        const next = Object.keys(agenda.plannedDays!)
-          .sort()
-          .find((date) => date > today.dateKey)!;
-        const upcoming = agenda.plannedDays![next]!;
-        assert.ok(new Set(upcoming.filter((block) => block.flexible).map((block) => block.activity)).size >= 3);
+        assert.equal(agenda.starterWeekFrom, today.dateKey);
+        assert.ok(
+          Object.keys(agenda.plannedDays!).every((date) => date < today.dateKey),
+          "expired replies leave new dates pending",
+        );
       }
       const before = calls.length;
       await retryFoundedVillagePreparation();

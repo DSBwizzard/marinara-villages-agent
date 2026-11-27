@@ -67,7 +67,6 @@ export type CompactFoundingResult = {
   starterWeek?: {
     slots: WeeklyAgendaSlot[];
     choices: (WeeklyAgendaChoice | null)[];
-    fallbackWeek: Record<string, VillageAgendaBlock[]>;
     through: string;
   };
 };
@@ -334,13 +333,10 @@ function parseStarterWeek(
   if (!Array.isArray(payload.starterDays) || payload.starterDays.length !== AGENDA_WEEK_DAYS)
     return invalid("The starter Agenda needs plans for all seven days.");
   const slots: WeeklyAgendaSlot[] = [],
-    choices: (WeeklyAgendaChoice | null)[] = [],
-    fallback: Record<string, VillageAgendaBlock[]> = {};
+    choices: (WeeklyAgendaChoice | null)[] = [];
   const distinct = new Set<string>();
   for (const [offset, entries] of payload.starterDays.entries()) {
     const date = shiftAgendaDate(first, offset);
-    const blocks = [...restBlocks];
-    fallback[VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!] = blocks;
     const offered = weeklyAgendaSlots(agenda, date, context.characterId ?? context.card.id).slice(0, 8);
     if (!Array.isArray(entries) || entries.length !== 8 || !offered.length)
       return invalid("Each starter Agenda day needs eight activity choices and some waking time.");
@@ -365,7 +361,6 @@ function parseStarterWeek(
       slots.push(slot);
       choices.push(choice);
       if (choice) {
-        blocks.push({ ...choice, startMinute: slot.startMinute, endMinute: slot.endMinute, flexible: true });
         dayTitles.add(key);
         distinct.add(key);
       }
@@ -380,7 +375,6 @@ function parseStarterWeek(
     starterWeek: {
       slots,
       choices,
-      fallbackWeek: completeAgendaWeek(fallback, agenda.week!),
       through: agendaDateKey(shiftAgendaDate(first, AGENDA_WEEK_DAYS - 1)),
     },
   };

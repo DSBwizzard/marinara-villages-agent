@@ -78,6 +78,14 @@ await withBrowser(browser, async () => {
     const chip = page.getByRole("button", { name: "Preparing Agendas", exact: true });
     await expect(chip).toBeVisible({ timeout: 8000 });
     const mapChip = await chip.boundingBox();
+    await page.locator('[data-pin-id="market"]').click();
+    await expect(page.getByRole("heading", { name: "The Market", exact: true })).toBeVisible();
+    const venueChip = await chip.boundingBox();
+    assert.ok(venueChip.x < 20 && venueChip.y < 20, "the venue chip sits in the top-left corner");
+    await chip.click();
+    await expect(page.getByText("1 of 2 ready", { exact: true })).toBeVisible();
+    await page.screenshot({ path: resolve(`.build-tmp/agenda-chip-venue-${width}.png`) });
+    await page.getByRole("button", { name: "Back to map", exact: true }).click();
     const people = page.getByRole("button", { name: "People", exact: true });
     if (!(await people.isVisible())) await page.getByRole("button", { name: "More", exact: true }).click();
     await people.click();
@@ -122,14 +130,16 @@ await withBrowser(browser, async () => {
     await expect(repair).toBeHidden();
     await expect(chip).toBeVisible({ timeout: 8000 });
     agenda.expired = true;
-    await expect(chip).toBeVisible();
-    await expect(dialog).toBeHidden();
+    const agendaWait = page.getByRole("dialog", { name: "Village catch-up" });
+    await expect(agendaWait).toContainText("Preparing today’s Agendas", { timeout: 8000 });
+    assert.ok(await page.locator('[inert] [aria-label="Village navigation"]').count());
+    await page.keyboard.press("Escape");
+    await expect(agendaWait).toBeVisible();
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await expect(dialog).toContainText("Preparing today’s Agendas", { timeout: 8000 });
-    await expect(dialog.getByRole("button", { name: "Back", exact: true })).toBeVisible();
+    await expect(agendaWait).toContainText("Preparing today’s Agendas", { timeout: 8000 });
     agenda = null;
-    await expect(dialog).toBeHidden({ timeout: 8000 });
+    await expect(agendaWait).toBeHidden({ timeout: 8000 });
     await page.close();
   }
 });
