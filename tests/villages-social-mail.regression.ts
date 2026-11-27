@@ -275,7 +275,23 @@ await runCase("social-mail/visitor", async () => {
           },
         ],
       },
-      reply: { text: replyQuote, visitPreference: { kind: "invite", requestQuote, replyQuote } },
+      reply: {
+        text: replyQuote,
+        visitPreference: { kind: "invite", requestQuote, replyQuote },
+        requires: ["shared-invitation"],
+        keep: [
+          {
+            id: "shared-invitation",
+            for: ["ada", "player"],
+            owner: "ada",
+            about: ["player"],
+            class: "perspective",
+            current: true,
+            text: replyQuote,
+            source: ["letter", "self"],
+          },
+        ],
+      },
     }),
     finishReason: "stop",
   });
@@ -284,8 +300,25 @@ await runCase("social-mail/visitor", async () => {
   const result = await f.service.handler.generate(input);
   const saved = await f.apply(input, result);
   assert.equal(saved.visitors?.[0].visitPreference?.kind, "invite");
+  const delivered = saved.mailbox.messages[input.incoming.id + ":reply"];
+  assert.equal(delivered.text, replyQuote);
+  assert.equal(delivered.readAt, undefined);
   assert.equal(continuityRelationships(saved, at)[0].scores[0].romanticInterest, 1);
   assert.deepEqual(await f.apply(input, result), saved, "recovery cannot extend the invitation");
+  const writerVersion = saved.continuity.versions.find((entry) => entry.text === replyQuote)!;
+  assert(writerVersion.sources.some((proof) => proof.kind === "self" && proof.actorId === "ada"));
+  const heads = (state: typeof saved) =>
+    Object.values(state.continuity.records.find(({ id }) => id === writerVersion.rootId)!.heads);
+  assert(!heads(saved).some(({ holder }) => holder.kind === "actor" && holder.id === "player"));
+  const replySummary = (await f.service.readMailbox({ scope: f.scope })).letters.find(
+    ({ message }) => message.id === delivered.id,
+  )!;
+  await f.service.readLetter(replySummary.thread.id, delivered.id, f.scope, replySummary.message.token);
+  const read = await f.read();
+  const playerHead = heads(read).find(({ holder }) => holder.kind === "actor" && holder.id === "player")!;
+  const playerVersion = read.continuity.versions.find(({ id }) => id === playerHead.versionId)!;
+  assert(!playerVersion.sources.some((proof) => proof.kind === "self"));
+  assert(playerVersion.sources.some((proof) => proof.kind === "written" && proof.excerpt === replyQuote));
   const distanceRequest = "Please give me a week to myself.";
   const distanceReply = "I will stay away this week.";
   await f.send("misplaced-preference", distanceRequest);

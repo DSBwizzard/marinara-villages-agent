@@ -314,7 +314,7 @@ export function createSocialMail(ports: SocialMailPorts) {
               "\n\n" +
               input.identity +
               (input.visitor
-                ? '\nThe addressee visits town occasionally. Decide freely about an explicit invitation or request for distance. For an agreement, put visitPreference inside reply next to text, as in {"reply":{"text":"...","visitPreference":{"kind":"invite","requestQuote":"exact incoming words","replyQuote":"exact agreeing words from reply.text"}}}. Use kind "space" for accepted distance. An invitation improves the chance of a visit during the next three days. Accepted distance keeps them away for seven days. Give no fixed arrival. Omit visitPreference for a refusal, ambiguity or casual mention.'
+                ? '\nThe addressee visits town occasionally. Decide freely about an explicit invitation or request for distance. For an agreement, put visitPreference inside reply next to text, as in {"reply":{"text":"...","visitPreference":{"kind":"invite","requestQuote":"exact incoming words","replyQuote":"exact agreeing words from reply.text"}}}. Use kind "space" for accepted distance. This field saves the visit decision. Keep it out of keep and requires. An invitation improves the chance of a visit during the next three days. Accepted distance keeps them away for seven days. Give no fixed arrival. Omit visitPreference for a refusal, ambiguity or casual mention.'
                 : ""),
           },
           {

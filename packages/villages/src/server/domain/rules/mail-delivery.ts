@@ -140,6 +140,9 @@ function deliverLetter(
       if (!root) return [];
       supplyRoot(readingCapture, candidate, root, baseline);
       row.replace = root;
+      // A shared keep reaches its reader through the letter. The writer's private self evidence stays with the writer.
+      if (Array.isArray(row.source) && row.source.includes("letter"))
+        row.source = row.source.filter((source) => source !== "self");
       delete row.offer;
       delete row.accept;
       delete row.closeOffer;
