@@ -437,7 +437,7 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
     calls.push({ path, url: url.toString(), body });
     if (path.endsWith("/records")) {
       if (url.searchParams.get("topic") === "places")
-        return answer(route, "places", { records: [], total: 0, directory });
+        return answer(route, "places", { records: [], total: 0, directory: options.directory ?? directory });
       const section = url.searchParams.get("section"),
         topic = url.searchParams.get("topic");
       let records =
