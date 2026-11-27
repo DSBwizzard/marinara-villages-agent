@@ -43,7 +43,12 @@ export function StartingHistoryPreparation({
   const missing = !work || ["completed", "obsolete"].includes(work.status);
   return (
     <section aria-label="Starting history">
-      <h3>Starting history, {ready ? "ready" : active ? "preparing" : "needs review"}</h3>
+      <div className="villages-founding-progress-row">
+        <h2>Starting history</h2>
+        <p className="villages-founding-task-state" data-status={ready ? "Ready" : active ? "Preparing" : undefined}>
+          {ready ? "Ready" : active ? "Preparing" : "Needs review"}
+        </p>
+      </div>
       {!ready && work?.error ? <p role="alert">{work.error}</p> : null}
       {!ready && missing && retryMissing && !view?.conflicts.length ? (
         <button type="button" onClick={() => void retryMissing()}>

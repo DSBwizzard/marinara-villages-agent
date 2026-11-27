@@ -14,14 +14,13 @@ import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import { useSceneRequestLifetime } from "./request-lifetime.js";
 import {
   completedGreetingAfterFailure,
-  completedRoomAfterFailure,
   currentRoom,
-  openingFailureMessage,
+  openingFailure,
   refreshSceneAfterFailure,
   staleVenueReason,
 } from "./ScenePanel.js";
 import { sceneSubmissionText, useTurnRecovery } from "./turn-recovery.js";
-import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
+import { sceneFailure, type SceneFailure, type SceneGreetingFailure } from "./scene-error-report.js";
 import type { ContactRecovery } from "./useScenesState.js";
 import { sceneResend } from "./villages-venue-send";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
@@ -484,6 +483,7 @@ export function useSendRoom(ports: {
     setRoomError,
     setRoomDraft,
     submission: roomSubmissionIdRef,
+    completion: roomCompletionRef,
     editVersion: composerEditVersionRef,
     receiveRoomRecordEvents,
     refreshSnapshot: () => void loadSnapshot({ quiet: true }),
@@ -493,7 +493,7 @@ export function useSendRoom(ports: {
     async (replacement?: ContactRecovery) => {
       if (contactRecovery?.sceneId === room?.id && !replacement) return;
       const editVersion = composerEditVersionRef?.current ?? 0;
-      const text = roomDraft.trim() ? roomDraft : (uncertain?.text ?? "");
+      const text = roomDraft;
       if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.trim().length === 0)
         return;
       const claim = lifetime.begin(room.id);
@@ -536,7 +536,7 @@ export function useSendRoom(ports: {
                 ).operation;
           if (!owns()) return;
           if (previous && (previous.committed || previous.terminal || previous.status === "running")) {
-            await check();
+            await check(previous);
             if (lifetime.finish(claim)) setRoomBusy(false);
             return;
           }
@@ -633,25 +633,38 @@ export function useSendRoom(ports: {
         void loadSnapshot();
       } catch (cause) {
         if (!owns()) return;
-        const latest = await refreshSceneAfterFailure(room.id, submissionId, owns);
-        if (!owns()) return;
+        const rejectedInput = cause instanceof VillageApiError && cause.code === "SUBMISSION_MISMATCH";
+        const staleReason = staleVenueReason(cause);
+        const uncertainResponse =
+          !rejectedInput &&
+          (!(cause instanceof VillageApiError) ||
+            cause.status === 0 ||
+            cause.status >= 500 ||
+            ["RESPONSE_READ_FAILED", "INVALID_RESPONSE"].includes(cause.code ?? "") ||
+            keptUnconfirmedId);
+        if (uncertainResponse && !staleReason && !replacement) {
+          // The reconnect observer owns reads after a lost ordinary Send.
+          setRoom((current) =>
+            current?.id === room.id
+              ? { ...current, lines: current.lines.filter((line) => line.id !== mine.id) }
+              : current,
+          );
+          const failure = sceneFailure(cause, "Couldn’t confirm your reply.", "send", submissionId);
+          beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace);
+          return;
+        }
         const { operation } = await request<{ operation: RoomOperation | null }>(
           `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(submissionId)}`,
           { signal: AbortSignal.timeout(5_000) },
         ).catch(() => ({ operation: null }));
         if (!owns()) return;
-        // A turn can commit between recovery reads. Check the final active read
-        // for our receipt before restoring the draft or displaying the POST error.
-        let recovered =
+        const latest = await refreshSceneAfterFailure(room.id, submissionId, owns);
+        if (!owns()) return;
+        const recovered =
           hasPublishedRoomSubmission(latest, submissionId) ||
           (latest && operation?.id === submissionId && operation.committed && operation.replyReady)
             ? latest
-            : await completedRoomAfterFailure(room.id, submissionId, owns);
-        if (!owns()) return;
-        const authoritative = recovered ? null : await refreshSceneAfterFailure(room.id, submissionId, owns);
-        if (!owns()) return;
-        if (hasPublishedRoomSubmission(authoritative, submissionId)) recovered = authoritative;
-        const rejectedInput = cause instanceof VillageApiError && cause.code === "SUBMISSION_MISMATCH";
+            : null;
         if (recovered) {
           const acceptedText = sceneSubmissionText(operation, submissionId);
           if (sharedIdentity && !rejectedInput && acceptedText === undefined) {
@@ -662,7 +675,6 @@ export function useSendRoom(ports: {
           }
           finish();
           if (replacement) setContactRecovery(null);
-          if (latest) setRoom(currentRoom(latest));
           setRoom(currentRoom(recovered));
           setRoomEnded(recovered.status === "closed");
           if (sharedIdentity && (rejectedInput || acceptedText !== text)) {
@@ -678,7 +690,6 @@ export function useSendRoom(ports: {
         }
         roomCompletionRef.current = null;
         claim.completion = null;
-        const staleReason = staleVenueReason(cause);
         if (staleReason) {
           finish();
           if (latest) setRoom(currentRoom(latest));
@@ -693,11 +704,7 @@ export function useSendRoom(ports: {
           void loadSnapshot();
           return;
         }
-        const newest =
-          latest && authoritative && (latest.sceneRevision ?? 0) > (authoritative.sceneRevision ?? 0)
-            ? latest
-            : (authoritative ?? latest);
-        if (newest) setRoom(currentRoom(newest));
+        if (latest) setRoom(currentRoom(latest));
         else setRoom(before);
         if (
           rejectedInput ||
@@ -714,14 +721,7 @@ export function useSendRoom(ports: {
           roomSubmissionIdRef.current = null;
           claim.submission = null;
         }
-        const stillUncertain =
-          !rejectedInput &&
-          !confirmedFailure &&
-          (!(cause instanceof VillageApiError) ||
-            cause.status === 0 ||
-            cause.status >= 500 ||
-            ["RESPONSE_READ_FAILED", "INVALID_RESPONSE"].includes(cause.code ?? "") ||
-            keptUnconfirmedId);
+        const stillUncertain = uncertainResponse && !confirmedFailure;
         if (stillUncertain) {
           const failure = sceneFailure(cause, "The reply connection was interrupted.", "send", submissionId);
           beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace);
@@ -779,7 +779,6 @@ export function useSendRoom(ports: {
   return {
     sendRoom,
     turnRecovery: recovery.status && trace ? { message: recovery.status, trace } : recovery.status,
-    checkSavedReply: recovery.check,
     replyPending: recoveryPending,
   };
 }
@@ -796,7 +795,7 @@ export function useGreetRoom(ports: {
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
-  setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
+  setRoomGreetingError: React.Dispatch<SetStateAction<SceneGreetingFailure>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
 }) {
   const {
@@ -856,7 +855,7 @@ export function useGreetRoom(ports: {
           setRoomGreetingError((current) => (current?.sessionId === sessionId ? null : current));
         } else
           setRoomGreetingError((current) =>
-            current && current.sessionId !== sessionId ? current : { sessionId, message: openingFailureMessage(cause) },
+            current && current.sessionId !== sessionId ? current : { sessionId, ...openingFailure(cause) },
           );
       } finally {
         if (claim && lifetime.finish(claim)) setRoomBusy(false);
@@ -962,7 +961,7 @@ export function useRetrySavedScene(ports: {
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
-  setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
+  setRoomGreetingError: React.Dispatch<SetStateAction<SceneGreetingFailure>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<SetStateAction<string>>;
 }) {
@@ -1052,13 +1051,19 @@ export function useRetrySavedScene(ports: {
                     ? "/rooms/leave"
                     : "/rooms/turn"
                 : "/rooms/end";
+        const replaceFailedTurn =
+          operation.kind === "turn" &&
+          (operation.input?.mode === "chat" || (operation.input?.mode === "contact" && operation.freshReply)) &&
+          !operation.input.trespassReaction &&
+          !operation.committed;
         const answer = await request<{ session: SceneView; recordEvents?: RoomRecordEvent[] }>(path, {
           method: "POST",
           signal: AbortSignal.timeout(300_000),
           body: JSON.stringify({
             ...operation.input,
             sessionId: room.id,
-            submissionId: operation.id,
+            submissionId: replaceFailedTurn ? createVillagesClientId() : operation.id,
+            ...(replaceFailedTurn ? { replaceOfOperationId: operation.id } : {}),
             operationId: operation.id,
             ...(operation.input?.trespassReaction ? { reactionId: operation.id } : {}),
             expectedSceneRevision: room.sceneRevision ?? 0,

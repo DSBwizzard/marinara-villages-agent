@@ -145,6 +145,5 @@ export type PreparationScreenController = {
   >;
   readonly preparationProblem: FoundingState["preparationProblem"];
   readonly retryPreparation: ReturnType<typeof useRetryPreparation>;
-  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person";
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 };

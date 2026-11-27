@@ -63,7 +63,6 @@ export type SceneScreenController = {
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
   readonly sendRoom: ReturnType<typeof useSendRoom>["sendRoom"];
   readonly turnRecovery?: ReturnType<typeof useSendRoom>["turnRecovery"];
-  readonly checkSavedReply?: () => Promise<void>;
   readonly setMailboxOpen: ScenesState["setMailboxOpen"];
   readonly setRoom: React.ActionDispatch<
     [next: React.SetStateAction<import("../../../shared/contracts/village").SceneView>]

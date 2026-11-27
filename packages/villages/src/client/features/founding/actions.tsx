@@ -535,11 +535,9 @@ export function useFoundVillage(ports: {
       });
       setSnapshot(founded);
       setDraftReady(false);
+      setScreen((current) => (current === "setup" ? "preparing" : current));
       await draftSaveQueue.current;
       await removeDeviceDraft(API_PATH).catch(() => undefined);
-      setScreen((current) =>
-        current === "setup" ? (founded.foundingPreparation?.canPlay ? "home" : "preparing") : current,
-      );
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "The village could not be founded."));
     } finally {

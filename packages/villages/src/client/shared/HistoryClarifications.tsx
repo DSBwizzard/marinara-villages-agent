@@ -1,14 +1,16 @@
 import { ELEMENT_TAG } from "./constants.js";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { RelationshipInspectView } from "../../shared/contracts/relationships.js";
 type Conflict = RelationshipInspectView["conflicts"][number];
 export function HistoryClarifications({
   conflicts,
   onSubmit,
   disabled = false,
+  sourceSummary = <summary>Source details</summary>,
 }: {
   conflicts: Conflict[];
   disabled?: boolean;
+  sourceSummary?: ReactNode;
   onSubmit: (conflict: Conflict, text: string) => Promise<void>;
 }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -55,7 +57,7 @@ export function HistoryClarifications({
               </button>
             </form>
             <details>
-              <summary>Source details</summary>
+              {sourceSummary}
               <pre>{conflict.sourceIds.join("\n")}</pre>
             </details>
           </article>

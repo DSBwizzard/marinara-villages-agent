@@ -110,9 +110,9 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const root = page.locator(".villages-forging-preparing");
-    await expect(root.getByRole("heading", { name: "Preparing Village" })).toBeVisible();
-    await expect(root.getByRole("button", { name: "Enter Village" })).toHaveCount(0);
-    const details = root.getByRole("region", { name: "Preparation details" });
+    await expect(root.getByRole("heading", { name: "Preparing your village" })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Enter village", exact: true })).toHaveCount(0);
+    const details = root.getByRole("region", { name: "Current preparation" });
     await expect(details).toBeVisible();
     await expect(details).toContainText("Waiting for Fixture System to write starting venue details");
     await expect(details).toContainText("Attempt 1");
@@ -137,8 +137,16 @@ await withBrowser(browser, async () => {
       currentVenueId: "",
       currentZoneId: "",
       privateSpacesReady: 4,
+      currentTask: "routine",
+      attempt: 4,
+      completedIds: ["feddy"],
     };
     await expect(details).toContainText("Waiting for Fixture System to write an Agenda for Aqua");
+    await expect(root.getByRole("row", { name: /Aqua/ })).toContainText("Attempt 4");
+    await expect(root.getByRole("columnheader", { name: "Initial Wish" })).toBeVisible();
+    await expect(root.getByRole("status").filter({ hasText: "1 of 3 residents ready" })).toBeVisible();
+    if (screenshotDir && width !== 320)
+      await page.screenshot({ path: resolve(screenshotDir, `resident-preparation-${width}.png`) });
     snapshot.foundingPreparation = {
       status: "pending",
       canPlay: false,
@@ -155,6 +163,8 @@ await withBrowser(browser, async () => {
     };
     await expect(root.getByRole("button", { name: "Retry failed", exact: true })).toBeVisible();
     await expect(root.getByRole("alert")).toContainText("Output was truncated");
+    const connections = root.getByText("Change connections", { exact: true });
+    await expect(connections).toHaveCSS("list-style-type", "none");
     await expect(root).not.toContainText("Completed work is saved");
     await root.getByRole("button", { name: "Retry failed", exact: true }).click();
     await expect.poll(() => retries).toBe(1);
@@ -252,8 +262,10 @@ await withBrowser(browser, async () => {
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await expect(root).toBeVisible();
-    await expect(root.getByRole("heading", { name: "Starting history, needs review" })).toBeVisible();
+    const history = root.getByRole("region", { name: "Starting history" });
+    await expect(history).toContainText("Needs review");
     assert.equal(inspected, 0, "Private history is read only after explicit Inspect");
+    await expect(root.getByText("Inspect starting history", { exact: true })).toHaveCSS("list-style-type", "none");
     await root.getByRole("button", { name: "Retry starting history", exact: true }).click();
     await expect.poll(() => retries).toBe(3);
     await expect(root.getByText("Starting history output was truncated.")).toBeVisible();
@@ -276,6 +288,9 @@ await withBrowser(browser, async () => {
     snapshot.backgroundWork[0].status = "completed";
     snapshot.foundingPreparation.startingHistoryReady = true;
     snapshot.foundingPreparation.canPlay = true;
+    await expect(root.getByText(/Station Fields is ready for you/)).toBeVisible();
+    await root.getByRole("button", { name: "Next", exact: true }).click();
+    await root.getByRole("button", { name: "Enter village", exact: true }).click();
     await expect(root).toHaveCount(0);
     await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
     assert.equal(clarified, 1, "One explicit clarification uses the existing source-bound route");

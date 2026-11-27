@@ -2,12 +2,18 @@ import { z } from "zod";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { readNarrationReply } from "./narration-contract.js";
 import { asRecord } from "./coerce.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { withinVisitorHours } from "./venue-access.js";
+import { badGateway } from "./errors.js";
+import type { VillageVenue } from "../models/world.js";
 
 export function sceneVisitOptions(
   access: NarrationReadset["access"],
   placeId: string,
   localIds: string[],
   localZoneIds: string[],
+  calendar?: NarrationReadset["calendar"],
+  currentVenue?: VillageVenue,
 ) {
   return access
     .flatMap(({ venueId, name, authorities }) =>
@@ -24,7 +30,29 @@ export function sceneVisitOptions(
                     Array.isArray(zone.policy.visitorHours) ||
                     (zone.policy.visitorHours === "inherit" && !!venuePolicy?.visitorHours)),
               )
-              .map(({ id, name: room }) => ({ venueId, name, actorId, zoneId: id, room }))
+              .flatMap(({ id, name: room, policy, manages }) => {
+                const current = currentVenue?.zones?.find((zone) => zone.id === id);
+                const hours = (current?.access ?? policy)?.visitorHours;
+                const inherited = currentVenue?.access?.visitorHours ?? venuePolicy?.visitorHours;
+                const schedule = Array.isArray(hours) ? hours : hours === "inherit" ? inherited : null;
+                const afterHours =
+                  venueId === placeId &&
+                  !!calendar &&
+                  !!schedule &&
+                  !withinVisitorHours(schedule, new ZonedDate(calendar.instant, calendar.timeZone));
+                return afterHours && !manages
+                  ? []
+                  : [
+                      {
+                        venueId,
+                        name,
+                        actorId,
+                        zoneId: id,
+                        room,
+                        ...(afterHours ? { afterHours: true as const } : {}),
+                      },
+                    ];
+              })
           : [],
       ),
     )
@@ -47,15 +75,22 @@ export function sceneVisitCommand(
   readset: NarrationReadset,
   value: unknown,
 ) {
-  if (
-    !readset.sceneVisitOptions ||
-    reply.halt ||
-    reply.commands.some((row) => asRecord(row).type !== "npc.introduce") ||
-    value == null
-  )
+  if (value === undefined) return undefined;
+  const refuse = () => {
+    if (readset.strictSceneReply && !readset.taggedSceneReply)
+      throw badGateway("The invitation needs a listed option and its spoken line.");
     return undefined;
-  const parsed = visitReply.safeParse(value);
-  if (!parsed.success) return undefined;
+  };
+  if (!readset.sceneVisitOptions || reply.halt) return refuse();
+  if (!readset.strictSceneReply && reply.commands.some((row) => asRecord(row).type !== "npc.introduce"))
+    return undefined;
+  const tagged = readset.taggedSceneReply ? asRecord(value) : undefined;
+  const parsed = visitReply.safeParse(
+    tagged && typeof tagged.segment === "string"
+      ? { ...tagged, segment: reply.segments.findIndex((line) => line.id === tagged.segment) + 1 }
+      : value,
+  );
+  if (!parsed.success) return refuse();
   const choice = readset.sceneVisitOptions[parsed.data.option - 1];
   const line = reply.segments[parsed.data.segment - 1];
   if (
@@ -65,7 +100,18 @@ export function sceneVisitCommand(
     line.presentation === "aside" ||
     (line.delivery === "whisper" && line.targetId !== "player")
   )
-    return undefined;
+    return refuse();
+  if (
+    reply.commands.some((value) => {
+      const command = asRecord(value);
+      return (
+        (command.type === "access.decide" || command.type === "permission.grant") &&
+        command.by === choice.actorId &&
+        command.at === line.id
+      );
+    })
+  )
+    return refuse();
   const ids = new Set([...reply.keep, ...reply.commands].map((row) => asRecord(row).id));
   let id = "scene-visit";
   for (let index = 1; ids.has(id); index++) id = "scene-visit-" + index;
@@ -78,7 +124,11 @@ export function sceneVisitCommand(
     venue: choice.venueId,
     zone: choice.zoneId,
     decision: {
-      outcome: choice.venueId === readset.source.scene.placeId ? "invite-now" : "invite-later",
+      outcome: choice.afterHours
+        ? "invite-outside-hours"
+        : choice.venueId === readset.source.scene.placeId
+          ? "invite-now"
+          : "invite-later",
       visitor: "player",
       accompanies: parsed.data.escort,
     },

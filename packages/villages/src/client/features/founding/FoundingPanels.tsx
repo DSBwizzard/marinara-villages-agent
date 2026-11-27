@@ -41,6 +41,33 @@ export function newSetupVenue(id: string, x: number, y: number, playerHome = fal
   return { ...venue, layout: "common", spaces: [startingZone(venue, false)], privateSpaces: [] };
 }
 
+export const FOUNDING_MAP_FAILED = "Couldn’t generate the map";
+export const FOUNDING_MAP_DETAILS_REQUIRED = "Enter Map details before generating its image.";
+
+export function foundingMapFailure(error: unknown): string {
+  if (typeof error !== "string") return FOUNDING_MAP_FAILED + ".";
+  const engine = error.match(/^The Engine refused \/api\/characters\/avatar-generation \(([45]\d{2})\)(?:\.|: (.*))$/);
+  if (!engine) return FOUNDING_MAP_FAILED + ".";
+  const detail = engine[2] ?? "";
+  const provider = detail.match(/^.{1,80}? failed \(([45]\d{2})\)(?:[^:]*: (.*))?$/);
+  const codeBody = provider?.[2] ?? detail.match(/^OpenRouter returned an error: (.*)$/)?.[1];
+  let code = provider ? `HTTP ${provider[1]}` : `Engine ${engine[1]}`;
+  if (codeBody) {
+    try {
+      const body = JSON.parse(codeBody);
+      const value = body?.error?.code ?? body?.code;
+      if (typeof value === "number" || typeof value === "string") {
+        const token = String(value);
+        if (/^[45]\d{2}$/.test(token)) code = `HTTP ${token}`;
+        else if (/^[a-z][a-z0-9_-]{0,47}$/i.test(token)) code = token;
+      }
+    } catch {
+      // The Engine can return plain text or truncate the provider's JSON.
+    }
+  }
+  return `${FOUNDING_MAP_FAILED} (${code}).`;
+}
+
 export async function requestSetupMapReceipt(path: string, init?: RequestInit): Promise<SetupMapReceipt> {
   const controller = new AbortController();
   // Admission is small; a completed receipt can carry several MB over a phone connection.

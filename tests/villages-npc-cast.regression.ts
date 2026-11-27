@@ -143,6 +143,20 @@ await runCase("npc-cast/bounded-retrieval", () => {
     "appearance lookup finds an older unlisted person before proposing a new identity",
   );
   assert.equal(Object.keys(context.npcs).length, 8);
+  const ids = Object.keys(f.state.worldPlaces.npcs);
+  const unmet = ids.find((id) => !Object.hasOwn(context.npcs, id))!;
+  const remaining = capturePlaceContext(
+    f.state,
+    f.state.venues[0].id,
+    [],
+    "I approach the man in the red velvet suit.",
+    ids.filter((id) => id !== unmet),
+  );
+  assert.deepEqual(
+    Object.keys(remaining.npcs),
+    [unmet],
+    "known people cannot crowd the unmet NPC out of the shortlist",
+  );
   const references = worldCharacterReferences(f.state, {
     placeId: f.state.venues[0].id,
     mapId: f.mapId,

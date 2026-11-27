@@ -1,6 +1,7 @@
 /** Tests audited to use process-local state, read-only package outputs and owned temporary data.
  * Source/dependency edits do not change resource ownership. Declare new shared resources here.
  * Unclassified tests remain exclusive until their fixtures have been inspected.
+ * Retained storage runs exclusively to avoid timing out alongside other history workloads.
  */
 export const isolatedTests = new Set([
   "tests/villages-mixed-use.regression.ts",
@@ -16,8 +17,6 @@ export const isolatedTests = new Set([
   "tests/villages-scene-generation-contract.regression.ts",
   // Pure Memories rules and deterministic process-local histories; no runtime or saved worlds.
   "tests/villages-memories-scale.regression.ts",
-  // Reviewed: per-process document Maps, Fastify.inject and read-only packaged server inputs.
-  "tests/villages-retained-storage.regression.ts",
   "tests/villages-scene-submission-pages.regression.ts",
   "tests/villages-repair.regression.ts",
   "tests/villages-departure-history.regression.ts",

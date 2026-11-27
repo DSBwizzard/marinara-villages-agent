@@ -11,12 +11,14 @@ export function FoundingGuide({
   replies,
   scene = false,
   inactive = false,
+  paginate,
   lineRef,
 }: {
   children: string;
   replies?: ReactNode;
   scene?: boolean;
   inactive?: boolean;
+  paginate?: boolean;
   lineRef?: Ref<HTMLParagraphElement>;
 }) {
   return (
@@ -27,7 +29,7 @@ export function FoundingGuide({
       inert={inactive || undefined}
     >
       {scene ? null : <img src={foundingMariSprite("neutral")} alt="" />}
-      <FoundingReader text={children} lineRef={lineRef}>
+      <FoundingReader text={children} paginate={paginate} lineRef={lineRef}>
         {replies ? <div className="villages-founding-replies">{replies}</div> : null}
       </FoundingReader>
     </aside>

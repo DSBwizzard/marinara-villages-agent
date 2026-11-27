@@ -377,7 +377,7 @@ export function ExplorationScreen({
                     const point = placeSpot(place);
                     if (point)
                       setNavigationView((current) => ({
-                        zoom: current?.zoom ?? 1,
+                        zoom: current?.zoom,
                         centerX: point.x,
                         centerY: point.y,
                       }));
@@ -417,14 +417,16 @@ export function ExplorationScreen({
                 <div className={`${ELEMENT_TAG}-map-tools`}>
                   <button
                     type="button"
-                    aria-label="Choose map"
+                    aria-label={selectedMap ? `Switch map, ${selectedMap.name}` : "Switch map"}
                     ref={mapChoice}
                     disabled={busy}
                     onClick={() => setShowAllMaps(true)}
                   >
                     <MapIcon name="map" />
-                    <span>{selectedMap?.name ?? "Maps"}</span>
-                    <span aria-hidden="true">▾</span>
+                    <span>
+                      <strong>Switch map</strong>
+                      {selectedMap ? <small>{selectedMap.name}</small> : null}
+                    </span>
                   </button>
                   <details
                     onClick={(event) => {
@@ -455,7 +457,6 @@ export function ExplorationScreen({
               <div className={`${ELEMENT_TAG}-home-map-viewport`}>
                 <MapStage
                   inert={!!arrival}
-                  navigationControlsOnMobile={navigatorOpen}
                   key={selectedMap?.id}
                   lighting={lighting}
                   src={townMapImage || null}
@@ -525,6 +526,7 @@ export function ExplorationScreen({
                   }}
                   mobile={mobile}
                   exploration
+                  gameplayNavigation
                   navigationView={navigationView}
                   onNavigationView={setNavigationView}
                   keyboardPlacementId={markerDraft?.selected}

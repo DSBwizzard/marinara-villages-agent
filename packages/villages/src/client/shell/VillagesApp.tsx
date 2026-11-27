@@ -347,7 +347,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     return true;
   };
   return (
-    <VillagesFrame controller={navigation}>
+    <VillagesFrame controller={navigation} mapVisible={controller.screen === "home" && active === null}>
       <DeskLeaveGuard value={guardRegistration}>
         <DeskWorkspace
           active={active}
@@ -560,7 +560,13 @@ function VillageDestinations({ controller, daylight, people, openMapVenue, arriv
         </RetainedView>
       ))}
       {people}
-      {screen === "preparing" ? <PreparationScreen controller={controller} storybookDaylight={daylight} /> : null}
+      {screen === "preparing" ? (
+        <PreparationScreen
+          controller={controller}
+          onEnter={() => controller.setScreen("home")}
+          storybookDaylight={daylight}
+        />
+      ) : null}
       {screen === "setup" ? (
         <FoundingScreen
           controller={controller}

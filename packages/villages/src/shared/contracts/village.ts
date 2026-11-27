@@ -695,8 +695,8 @@ type RoomParticipant = {
   /** What they were doing at that hour, in this village's terms, or `""`. */
   doing: string;
 };
-export type RoomOperation = {
-  failureCause?: string;
+export type RoomOperation = import("./scene-failure-diagnostic.js").SceneFailureMetadata & {
+  freshReply?: true;
   acceptance?: "pending" | "held" | "applied" | "abandoned";
   committed?: boolean;
   replyReady?: boolean;
@@ -773,6 +773,7 @@ export type SceneView = {
   lines: RoomLine[];
   /** Active lines contain one complete published reply, or the latest arrival. */
   liveReplyId?: string;
+  replyWarning?: "expression" | "detail";
   playback: Omit<import("./scene-playback.js").ScenePlaybackWindow, "lines" | "participants">;
   latestTurn?: { id: string; at: string; published: boolean };
   retryReply?: { token: string };

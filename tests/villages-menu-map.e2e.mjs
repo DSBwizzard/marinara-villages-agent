@@ -130,11 +130,14 @@ await withBrowser(browser, async () => {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     };
     await mount();
+    const switchMap = page.getByRole("button", { name: /^Switch map(?:, |$)/ });
     const mapImage = (name) => page.getByRole("img", { name: "A map of " + name + ".", exact: true });
     const places = page.getByRole("region", { name: "Locations directory" });
     await expect(page.getByRole("combobox", { name: "Displayed map" })).toHaveCount(0);
     await expect(places).toHaveCount(0);
     await expect(mapImage("Maple House")).toBeVisible();
+    await expect(switchMap).toHaveAccessibleName("Switch map, Maple House");
+    await expect(switchMap.getByText("Switch map", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Mailbox · Unread mail", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Lore activity/ })).toHaveCount(0);
     await expect(page.locator("." + P + "-maps-toolbar")).toHaveCount(0);
@@ -211,12 +214,13 @@ await withBrowser(browser, async () => {
     assert.equal(state.settings.venues[0].presentation.x, 0.51, "keyboard places an unplaced Venue");
     assert.equal(state.settings.venues[0].presentation.y, 0.5);
     writes.length = 0;
-    await page.getByRole("button", { name: "Choose map", exact: true }).click();
+    await switchMap.click();
     await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeFocused();
     await expect(page.locator("." + P + "-maps-grid button")).toHaveCount(2);
     await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
     await expect(mapImage("Maple Street")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Choose map", exact: true })).toBeFocused();
+    await expect(switchMap).toBeFocused();
+    await expect(switchMap).toHaveAccessibleName("Switch map, Maple Street");
     await expect(places).toHaveCount(0);
     await page
       .getByRole("navigation", { name: "Village exploration" })
@@ -232,7 +236,7 @@ await withBrowser(browser, async () => {
     await mount();
     await expect(mapImage("Maple Street")).toBeVisible();
     await expect(places).toHaveCount(0);
-    await page.getByRole("button", { name: "Choose map", exact: true }).click();
+    await switchMap.click();
     await page.getByRole("button", { name: "Manage maps", exact: true }).click();
     await page.getByRole("button", { name: "Add map", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Map details", exact: true })).toHaveValue(
@@ -274,7 +278,7 @@ await withBrowser(browser, async () => {
       db.close();
     });
     await mount();
-    await page.getByRole("button", { name: "Choose map", exact: true }).click();
+    await switchMap.click();
     await page.getByRole("button", { name: "Manage maps", exact: true }).click();
     await page.getByRole("button", { name: "Add map", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Map name", exact: true })).toHaveValue("Riverside");
@@ -358,7 +362,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Map", exact: true }).click();
     await expect(places).toHaveCount(0);
-    await page.getByRole("button", { name: "Choose map", exact: true }).click();
+    await switchMap.click();
     await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
     await expect(mapImage("Maple Street")).toBeVisible();
     await expect(places).toHaveCount(0);
@@ -374,7 +378,7 @@ await withBrowser(browser, async () => {
     assert.equal(writes.length, beforeBrowsing, "map browsing preserves the active Scene without world commands");
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Map", exact: true }).click();
-    await page.getByRole("button", { name: "Choose map", exact: true }).click();
+    await switchMap.click();
     mkdirSync(".build-tmp/multiple-maps", { recursive: true });
     await page.screenshot({ path: resolve(".build-tmp/multiple-maps/overview-" + width + ".png") });
     assert.ok((await page.locator("." + P + "-maps-overview").boundingBox()).width <= width);
