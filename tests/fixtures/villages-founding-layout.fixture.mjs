@@ -3005,7 +3005,7 @@ export async function verifyFoundingLayout(group) {
         await showVenuePin("founding-home:player");
         const camera = await reviewMap.locator("img").getAttribute("style");
         const homeMarker = root.locator('[data-pin-id="founding-home:player"]');
-        await homeMarker.locator(".marinara-capability-villages-map-point").click();
+        await homeMarker.press("Enter");
         await expect(sheet.getByRole("button", { name: "About", exact: true })).toBeVisible();
         await expect(sheet.getByRole("button", { name: "Zones", exact: true })).toBeVisible();
         await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toBeVisible();
