@@ -8,10 +8,8 @@ export function readAgendaPurpose(value: unknown): AgendaPurpose | undefined {
 
 export function restingAgendaBlock(block: Pick<VillageAgendaBlock, "activity" | "purpose"> | null): boolean {
   if (block?.purpose) return block.purpose === "rest";
-  // Older blocks lack a purpose. Recognize only common explicit legacy rest labels.
-  return /^(?:sleep(?:ing)?|asleep|hibernat(?:e|ing)|dormant)(?:$|\s+(?:in|at|until|through|for)\b)/iu.test(
-    block?.activity.trim() ?? "",
-  );
+  // Keep the saved meaning for blocks written before the typed purpose existed.
+  return /\b(?:sleep(?:ing)?|asleep|hibernate|hibernating|dormant)\b/iu.test(block?.activity ?? "");
 }
 
 /** Only optional, uncommitted village time may be reassigned. */

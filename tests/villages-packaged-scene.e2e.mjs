@@ -333,7 +333,7 @@ await withBrowser({ close: server.stop }, async () => {
     await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
     await composer.fill("The bay opens at sunrise.");
     rejectFirstReply = "json";
-    await page.getByText("Whisper a reminder", { exact: true }).click();
+    await page.getByLabel("Whisper a reminder", { exact: true }).click();
     await page.getByRole("button", { name: "Remind Mara", exact: true }).click();
     await expect.poll(() => turns.at(-1).input.rememberFor).toBe("mara");
     await expect(composer).toHaveValue("The bay opens at sunrise.");
@@ -343,7 +343,7 @@ await withBrowser({ close: server.stop }, async () => {
     assert.equal(turns.at(-1).input.rememberFor, undefined, "An edited draft can be sent as ordinary dialogue");
     await expect(composer).toHaveValue("");
     await composer.fill("Winter tea is at noon.");
-    await page.getByText("Whisper a reminder", { exact: true }).click();
+    await page.getByLabel("Whisper a reminder", { exact: true }).click();
     await page.getByRole("button", { name: "Remind Mara", exact: true }).click();
     await expect.poll(() => server.scene().submissions.at(-1)?.rememberFor).toBe("mara");
     await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("applied");

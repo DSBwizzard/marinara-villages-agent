@@ -617,6 +617,7 @@ export function RoomPanel({
   const canCompose = canDraft && !historyOpen && (!canReadNext || busy || !!error || !!turnRecovery);
   const canRetryReply = canCompose && !canReadNext && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
   const canSend = canCompose && !historyOpen && !busy && !contactRecovery;
+  const canRemind = canSend && !!draft.trim();
   const retryingReminder =
     room.operation?.input?.rememberFor &&
     room.operation.input.message === draft &&
@@ -1385,16 +1386,6 @@ export function RoomPanel({
                 </button>
               </div>
             ) : null}
-            {onRemember && activeParticipants.length && canSend && draft.trim() ? (
-              <details>
-                <summary>Whisper a reminder</summary>
-                {activeParticipants.map(({ characterId, name }) => (
-                  <button key={characterId} type="button" onClick={() => onRemember(characterId)}>
-                    Remind {name}
-                  </button>
-                ))}
-              </details>
-            ) : null}
             <div className={`${ELEMENT_TAG}-composer-row`}>
               <span className={`${ELEMENT_TAG}-chat-input`}>
                 <textarea
@@ -1425,6 +1416,35 @@ export function RoomPanel({
                 >
                   <SceneControlIcon name={busy ? "sending" : "send"} />
                 </button>
+                {onRemember && activeParticipants.length ? (
+                  <details className={`${ELEMENT_TAG}-scene-reminder`}>
+                    <summary
+                      aria-label="Whisper a reminder"
+                      aria-disabled={!canRemind}
+                      onClick={(event) => {
+                        if (!canRemind) event.preventDefault();
+                      }}
+                    >
+                      Remind
+                    </summary>
+                    {canRemind ? (
+                      <div className={`${ELEMENT_TAG}-room-actions-menu ${ELEMENT_TAG}-scene-reminder-targets`}>
+                        {activeParticipants.map(({ characterId, name }) => (
+                          <button
+                            key={characterId}
+                            type="button"
+                            onClick={(event) => {
+                              event.currentTarget.closest("details")?.removeAttribute("open");
+                              onRemember(characterId);
+                            }}
+                          >
+                            Remind {name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </details>
+                ) : null}
               </span>
               <button
                 type="button"

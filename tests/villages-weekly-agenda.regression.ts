@@ -357,6 +357,14 @@ await runCase("weekly-agenda/compact-context", () => {
   assert(shared.agendaOptions.some((slot) => slot.actorId === other.characterId && slot.time.date === tomorrow));
   assert(shared.agendaOptions.every((slot) => slot.time.zoneId !== "store"));
   assert(!JSON.stringify(agendaWeek(world, "mara", when, true)).includes("recentChanges"));
+
+  const storedRest = { ...day[1]!, activity: "Settling down to sleep" };
+  agenda.plannedDays[tomorrow] = [day[0]!, storedRest, day[2]!];
+  assert.deepEqual(sceneAgendaContext(world, cast, when, "mill", knownPlaces).available?.mara?.[tomorrow], []);
+  agenda.plannedDays[tomorrow] = [day[0]!, { ...storedRest, purpose: "ordinary" as const }, day[2]!];
+  assert.deepEqual(sceneAgendaContext(world, cast, when, "mill", knownPlaces).available?.mara?.[tomorrow], [
+    [720, 900],
+  ]);
 });
 
 await runCase("weekly-agenda/scene-scheduling", async () => {
