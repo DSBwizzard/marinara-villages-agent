@@ -20,7 +20,7 @@ type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: s
 type Section = RepairPersonSection;
 type RecordTopic = RepairTopic | "all";
 type AgendaPick = { index: number | "new"; token?: string };
-type View = "hub" | "list" | "edit" | "review" | "done" | "history" | "checkpoints";
+type View = "hub" | "loading" | "list" | "edit" | "review" | "restored" | "history" | "checkpoints";
 export function useRepairController(
   active: boolean,
   onApplied: (kind: RepairReview["kind"]) => Promise<{ title: string; text: string } | null>,
@@ -49,6 +49,8 @@ export function useRepairController(
     [checkpointTitle, setCheckpointTitle] = useState("");
   const [restoreAcknowledged, setRestoreAcknowledged] = useState(false),
     [preservedDraft, setPreservedDraft] = useState<{ title: string; text: string } | null>(null);
+  const [notice, setNotice] = useState("");
+  const [collectionQuery, setCollectionQuery] = useState("");
   const epoch = useRef(0),
     operation = useRef(0),
     world = useRef(""),
@@ -56,6 +58,7 @@ export function useRepairController(
   const pending = useRef<RepairRequest | null>(null),
     checkpointRequest = useRef<{ title: string; operationId: string } | null>(null);
   const reviewRef = useRef<Pick<RepairReview, "id" | "token"> | null>(null);
+  const savedRefresh = useRef<((ticket: number) => Promise<void>) | null>(null);
   const abandonReview = () => {
     const retained = reviewRef.current;
     reviewRef.current = null;
@@ -63,17 +66,19 @@ export function useRepairController(
     pending.current = null;
     setReview(null);
   };
-  const recordKey = (id: string, pick: AgendaPick | undefined) =>
-    JSON.stringify([world.current, person?.id ?? "", id, pick?.index]);
+  const recordKey = (id: string, pick: AgendaPick | undefined, who = person) =>
+    JSON.stringify([world.current, who?.id ?? "", id, pick?.index]);
   const draftKey = (
     id: string,
     pick: AgendaPick | undefined,
     action = draftActions[recordKey(id, pick)] ?? (pick?.index === "new" ? "add-activity" : "correct"),
-  ) => JSON.stringify([recordKey(id, pick), action]);
+    who = person,
+  ) => JSON.stringify([recordKey(id, pick, who), action]);
   const editorFields = (record: RepairRecord, pick: AgendaPick | undefined) =>
     record.agendaDay ? record.fields.filter((field) => field.key.endsWith(`:${pick?.index}`)) : record.fields;
   const current = (ticket: number) => epoch.current === ticket;
   const invalidate = () => {
+    savedRefresh.current = null;
     abandonReview();
     setAgendaPick(undefined);
     epoch.current++;
@@ -84,6 +89,7 @@ export function useRepairController(
     setTotal(0);
     setFailure(undefined);
     setRestoreAcknowledged(false);
+    setNotice("");
   };
   const acceptIndex = (result: RepairIndex, ticket: number) => {
     if (!current(ticket)) return;
@@ -103,6 +109,7 @@ export function useRepairController(
     }
     world.current = identity;
     setIndex(result);
+    setPerson((prior) => (prior ? (result.people.find((entry) => entry.id === prior.id) ?? prior) : null));
   };
   const readIndex = async (historyOffset = 0, checkpointOffset = 0) => {
     const ticket = epoch.current;
@@ -135,6 +142,7 @@ export function useRepairController(
           setView("hub");
           setIndex(result);
           checkpointRequest.current = null;
+          savedRefresh.current = null;
           return;
         }
         world.current = identity;
@@ -146,10 +154,11 @@ export function useRepairController(
       });
     return () => abort.abort();
   }, [active]);
-  const act = async (fn: (ticket: number) => Promise<void>) => {
+  const act = async (fn: (ticket: number) => Promise<unknown>) => {
     const ticket = epoch.current,
       id = ++operation.current;
     setFailure(undefined);
+    setNotice("");
     setBusy(true);
     try {
       await fn(ticket);
@@ -184,18 +193,43 @@ export function useRepairController(
     setCreation(result.creation ?? result.records.find((row) => row.creating) ?? null);
     setOffset(start);
     setTotal(result.total);
+    return result;
   };
-  const load = (nextTopic: RecordTopic = topic, start = 0, search = query) => {
-    if (reviewRef.current) {
-      abandonReview();
-      epoch.current++;
-    }
-    return act(async (ticket) => {
+  const showRecords = async (
+    nextTopic: RecordTopic,
+    start: number,
+    search: string,
+    who: RepairPerson | null,
+    part: Section,
+    ticket: number,
+    openId?: string,
+  ) => {
+    const page = await fetchRecords(nextTopic, start, search, who, part, ticket);
+    if (!current(ticket)) return;
+    const id =
+      openId ??
+      (who && part === "home"
+        ? (page?.records.find((row) => row.id.startsWith('["home",')) ?? page?.records[0])?.id
+        : undefined);
+    if (id) await fetchRecord(id, ticket, undefined, false, who);
+    else {
+      setSelected(null);
+      setAgendaPick(undefined);
       setView(nextTopic === "restore" ? "checkpoints" : "list");
-      await fetchRecords(nextTopic, start, search, person, section, ticket);
+    }
+  };
+  const load = (nextTopic: RecordTopic = topic, start = 0, search = collectionQuery, openId?: string) => {
+    savedRefresh.current = null;
+    abandonReview();
+    epoch.current++;
+    setView("loading");
+    return act(async (ticket) => {
+      await showRecords(nextTopic, start, search, person, section, ticket, openId);
     });
   };
   const searchRecords = (search: string, start = 0, status = memoryState) => {
+    savedRefresh.current = null;
+    setCollectionQuery(search);
     setMemoryState(status);
     abandonReview();
     epoch.current++;
@@ -208,12 +242,13 @@ export function useRepairController(
     setPlacePath([]);
     setSection("memories");
     setQuery(search);
+    setCollectionQuery(search);
     setTopic(nextTopic);
     collection.current = nextTopic === "restore" ? "checkpoints" : "list";
-    setView(collection.current);
+    setView("loading");
     return act(async (ticket) => {
       await readIndex();
-      await fetchRecords(nextTopic, 0, search, null, "memories", ticket);
+      await showRecords(nextTopic, 0, search, null, "memories", ticket);
     });
   };
   const choosePerson = (who: RepairPerson, part: Section = "memories") => {
@@ -222,21 +257,23 @@ export function useRepairController(
     setTopic("people");
     setSection(part);
     setQuery("");
+    setCollectionQuery("");
     collection.current = "list";
-    setView("list");
+    setView("loading");
     return act(async (ticket) => {
       await readIndex();
-      await fetchRecords("people", 0, "", who, part, ticket);
+      await showRecords("people", 0, "", who, part, ticket);
     });
   };
   const chooseSection = (part: Section) => {
     invalidate();
     setSection(part);
     setQuery("");
-    setView("list");
+    setCollectionQuery("");
+    setView("loading");
     return act(async (ticket) => {
       await readIndex();
-      await fetchRecords(topic, 0, "", person, part, ticket);
+      await showRecords(topic, 0, "", person, part, ticket);
     });
   };
   const showHub = () => {
@@ -254,10 +291,16 @@ export function useRepairController(
     setView("history");
     return act(() => readIndex());
   };
-  const fetchRecord = async (id: string, ticket: number, pick: AgendaPick | undefined, resetDraft = false) => {
+  const fetchRecord = async (
+    id: string,
+    ticket: number,
+    pick: AgendaPick | undefined,
+    resetDraft = false,
+    who = person,
+  ) => {
     if (!current(ticket)) return;
     const record = await request<RepairRecord>(
-      `/repair/record?id=${encodeURIComponent(id)}${person ? `&personId=${encodeURIComponent(person.id)}` : ""}`,
+      `/repair/record?id=${encodeURIComponent(id)}${who ? `&personId=${encodeURIComponent(who.id)}` : ""}`,
     );
     if (pick)
       record.actions = record.actions.filter((action) =>
@@ -266,21 +309,27 @@ export function useRepairController(
     if (!current(ticket)) return;
     if (pick && record.token !== pick.token) {
       await fetchRecords(topic, 0, "", person, section, ticket);
+      if (current(ticket)) {
+        setSelected(null);
+        setAgendaPick(undefined);
+        setView("list");
+      }
       throw new Error("This date changed. Select the activity again.");
     }
     setSelected(record);
+    setAgendaPick(pick);
     setView(pick ? "list" : "edit");
-    const rememberedAction = draftActions[recordKey(id, pick)];
+    const rememberedAction = draftActions[recordKey(id, pick, who)];
     const action =
         pick?.index === "new"
           ? "add-activity"
           : record.actions.some((option) => option.id === rememberedAction && option.id !== "add-activity")
             ? rememberedAction!
             : (record.actions[0]?.id ?? ""),
-      key = draftKey(id, pick, action),
-      focus = record.people?.find((p) => p.id === person?.id),
+      key = draftKey(id, pick, action, who),
+      focus = record.people?.find((p) => p.id === who?.id),
       values = Object.fromEntries(editorFields(record, pick).map((f) => [f.key, f.value]));
-    setDraftActions((prior) => ({ ...prior, [recordKey(id, pick)]: action }));
+    setDraftActions((prior) => ({ ...prior, [recordKey(id, pick, who)]: action }));
     setDrafts((prior) =>
       prior[key] && !resetDraft
         ? prior
@@ -303,17 +352,9 @@ export function useRepairController(
     setFailure(undefined);
   };
   const open = (id: string, pick?: AgendaPick) => {
-    if (pick) {
-      closeAgendaEditor();
-      setAgendaPick(pick);
-    } else {
-      abandonReview();
-      epoch.current++;
-      if (view !== "edit") setSelected(null);
-      setAgendaPick(undefined);
-      setFailure(undefined);
-      setView("edit");
-    }
+    savedRefresh.current = null;
+    abandonReview();
+    epoch.current++;
     return act((ticket) => fetchRecord(id, ticket, pick));
   };
   const draft = selected ? drafts[draftKey(selected.id, agendaPick)] : undefined;
@@ -368,6 +409,7 @@ export function useRepairController(
     abandonReview();
     epoch.current++;
     setFailure(undefined);
+    setNotice("");
   };
   const prepare = () => {
     if (!selected || !draft || !canReview) return;
@@ -415,10 +457,48 @@ export function useRepairController(
           });
         }
         pending.current = null;
-        await readIndex();
-        const kept = await onApplied(review.kind);
-        if (kept) setPreservedDraft(kept);
-        if (current(ticket)) setView("done");
+        if (review.kind !== "restore") {
+          setReview(null);
+          setSelected(null);
+          setAgendaPick(undefined);
+          setView("loading");
+        }
+        const refresh = async (refreshTicket: number) => {
+          try {
+            await readIndex();
+            if (!current(refreshTicket)) return;
+            const kept = await onApplied(review.kind);
+            if (!current(refreshTicket)) return;
+            if (kept) setPreservedDraft(kept);
+            if (review.kind === "restore") setView("restored");
+            else {
+              const page = await fetchRecords(topic, offset, collectionQuery, person, section, refreshTicket);
+              if (!current(refreshTicket)) return;
+              const contains = (rows: RepairBrowseItem[]): boolean =>
+                rows.some((row) => row.id === selected?.id || contains(row.children ?? []));
+              if (
+                selected &&
+                !selected.creating &&
+                !selected.agendaDay &&
+                (page?.records.some((row) => row.id === selected.id) || contains(page?.directory ?? []))
+              )
+                await fetchRecord(selected.id, refreshTicket, undefined, true);
+              else if (person && section === "home")
+                await showRecords(topic, offset, collectionQuery, person, section, refreshTicket);
+              else setView(collection.current);
+              if (current(refreshTicket)) {
+                savedRefresh.current = null;
+                setNotice("Saved");
+              }
+            }
+          } catch (cause) {
+            if (review.kind !== "restore")
+              throw new Error("Changes saved. Could not refresh this page. Try again.", { cause });
+            throw cause;
+          }
+        };
+        if (review.kind !== "restore") savedRefresh.current = refresh;
+        await refresh(ticket);
       } finally {
         setSaving(false);
       }
@@ -488,7 +568,9 @@ export function useRepairController(
       },
     }));
     setFailure(undefined);
+    setNotice("");
   };
+  const selectionEpoch = epoch.current;
   return {
     index,
     topic,
@@ -518,6 +600,13 @@ export function useRepairController(
     setCheckpointTitle,
     restoreAcknowledged,
     preservedDraft,
+    notice,
+    retrySavedRefresh: savedRefresh.current
+      ? () => {
+          const retry = savedRefresh.current;
+          return retry ? act(retry) : Promise.resolve();
+        }
+      : undefined,
     setRestoreAcknowledged,
     load,
     searchRecords,
@@ -528,7 +617,9 @@ export function useRepairController(
     showHistory,
     open,
     refreshSelected: () =>
-      selected ? act((ticket) => fetchRecord(selected.id, ticket, agendaPick, true)) : Promise.resolve(),
+      selected && current(selectionEpoch)
+        ? act((ticket) => fetchRecord(selected.id, ticket, agendaPick, true))
+        : Promise.resolve(),
     closeAgendaEditor,
     update,
     discard,
@@ -551,8 +642,14 @@ export function useRepairController(
         setView(selected && !agendaPick ? "edit" : collection.current);
       }
     },
-    historyPage: (start: number) => act(() => readIndex(start, index?.checkpointOffset ?? 0)),
-    checkpointPage: (start: number) => act(() => readIndex(index?.historyOffset ?? 0, start)),
+    historyPage: (start: number) => {
+      epoch.current++;
+      return act(() => readIndex(start, index?.checkpointOffset ?? 0));
+    },
+    checkpointPage: (start: number) => {
+      epoch.current++;
+      return act(() => readIndex(index?.historyOffset ?? 0, start));
+    },
   };
 }
 export type RepairController = ReturnType<typeof useRepairController>;
