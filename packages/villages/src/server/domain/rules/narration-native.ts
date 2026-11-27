@@ -242,7 +242,14 @@ export function prepareNarrationNative(
       }
     })
     .filter((row) => row !== undefined)
-    .toSorted((a, b) => a.segment - b.segment || a.index - b.index);
+    .toSorted(
+      (a, b) =>
+        (readset.playerNavigation === "conclude"
+          ? Number(a.command.type === "scene.end") - Number(b.command.type === "scene.end")
+          : 0) ||
+        a.segment - b.segment ||
+        a.index - b.index,
+    );
   // Tentative positions grant nothing: every crossing is an essential validated dependency before publication.
   const planned = commands.flatMap(({ command, effect, segment }) => {
     if (
@@ -290,6 +297,14 @@ export function prepareNarrationNative(
   function apply(candidate: VillageState, row: (typeof commands)[number]) {
     const { command, effect } = row;
     const sources = command.source.map((ref) => bindNarrationSource(ref, context));
+    const beat = reply.segments[row.segment];
+    if (readset.taggedSceneReply && beat.kind === "dialogue" && beat.offerWork)
+      memoryRequire(
+        sources.every((source) =>
+          source.perceptions.some((person) => person.actorId === "player" && person.channel === "words"),
+        ),
+        "the Player must hear the Work proposal",
+      );
     if (effect.id === reply.visitCommandId)
       memoryRequire(narrationWitnesses(sources).includes("player"), "the Player must hear the visit invitation");
     memoryRequire(
@@ -436,7 +451,17 @@ export function prepareNarrationNative(
         : applyNarrationMove(candidate, command, readset, context, sources, receiptId, row.segment);
     }
     if (command.type === "scene.end" || command.type === "contact.end")
-      return applyNarrationScene(candidate, command, readset, context, sources, receiptId, row.segment);
+      return applyNarrationScene(
+        candidate,
+        command,
+        readset,
+        context,
+        sources,
+        receiptId,
+        command.type === "scene.end" && readset.playerNavigation === "conclude"
+          ? context.lines.length - 1
+          : row.segment,
+      );
     if (command.type === "place.discover") {
       const kind = "discovery",
         limit = kind === "discovery" ? 2 : 8;

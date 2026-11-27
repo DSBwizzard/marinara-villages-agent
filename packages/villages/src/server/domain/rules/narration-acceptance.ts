@@ -832,6 +832,7 @@ export function acceptNarrationContinuity(
                   (beat, index) =>
                     beat.kind === "dialogue" &&
                     beat.offerAppointment === true &&
+                    (!(readset.taggedSceneReply && beat.compactAppointment) || id === "decision-" + beat.id) &&
                     source.lines[index]?.id === proof.unitId,
                 ),
               )

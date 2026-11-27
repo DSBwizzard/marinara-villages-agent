@@ -40,6 +40,7 @@ export type NarrationReadset = {
   explicitNpcIntroduction?: true;
   relaxedNarrationProse?: true;
   explicitSceneEvidence?: true;
+  compactSceneDecisions?: true;
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;

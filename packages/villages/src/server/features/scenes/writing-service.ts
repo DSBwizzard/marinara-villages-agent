@@ -426,12 +426,20 @@ export function createSceneWriting({
         venueWritingDirection(village.narrationStyle, player.name, !nativeCommands),
       ]),
       format: blocksFor([
-        tagged ? TAGGED_SCENE_FORMAT : nativeCommands ? SCENE_NARRATION_FORMAT : ORDINARY_SCENE_FORMAT,
+        scene.visitorIntroduction
+          ? 'Return one JSON object with segments only. Narration is {"kind":"narration","text":"..."}. Mari speaks with {"kind":"dialogue","speakerId":"__professor_mari__","text":"..."}. Omit evidence and audience fields.'
+          : tagged
+            ? TAGGED_SCENE_FORMAT
+            : nativeCommands
+              ? SCENE_NARRATION_FORMAT
+              : ORDINARY_SCENE_FORMAT,
         tagged
           ? 'Use an optional [keep]: {"for":["resident-id"],"class":"information","text":"Complete lasting meaning."} after its evidence. For a Wish spoken to the player: [keep]: {"owner":"resident-id","for":["resident-id","player"],"class":"desire","text":"What they want and any conditions."} List only actual knowers, and keep only meaningful changes. Use supplied IDs to revise or close existing meanings. A promise alone does not fulfill a Wish. Private evidence cannot teach another person. Room facts use for:"room". Follow supplied Forget and Correct protections.'
           : nativeCommands
             ? SCENE_NARRATION_KEEP
-            : ORDINARY_SCENE_KEEP,
+            : scene.visitorIntroduction
+              ? ""
+              : ORDINARY_SCENE_KEEP,
         scoredRelationships ? RELATIONSHIP_DIRECTION : "",
         scoredRelationships ? (nativeCommands ? RELATIONSHIP_KEEP : SCENE_RELATIONSHIP_KEEP) : "",
       ]),
@@ -497,7 +505,7 @@ export function createSceneWriting({
         !npcIntroduction
           ? ""
           : tagged
-            ? 'Follow the player’s intent in narration or dialogue. If they seek an unfamiliar person, use an npcArrivalCandidate they have not met or create one new named NPC. Reserve npcReturnCandidate for a familiar encounter that fits the turn. Show the visible arrival with Narration!: text. Then use [command]: {"type":"npc.admit","existingId":"supplied-id"} and [supplied-id]: text for a supplied candidate. Add "returning":true to that command only for an npcReturnCandidate. For a new named person, use [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."} and [new:baker]: text. A candidate is not already present. A passerby can appear briefly in narration.'
+            ? 'Follow the player’s intent. A candidate is absent until admitted. For a familiar encounter use [return supplied-id]: with nothing after the colon and copy an npcReturnCandidate ID. The game renders the visible arrival. Follow it with [supplied-id]: their words. Never write IDs or speaker labels inside the prose. If the player seeks someone unfamiliar, use Narration!: arrival prose followed by [command]: {"type":"npc.admit","existingId":"supplied-id"} for an npcArrivalCandidate or [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."} for a fresh NPC, then use the same ID or localKey for their dialogue. A passerby can appear briefly in narration.'
             : nativeCommands
               ? NARRATION_NATIVE
               : narrationNpcCommands(positions),
@@ -572,6 +580,9 @@ export function createSceneWriting({
               JSON.stringify(followingMenu)
             : "",
           (nativeCommands || tagged) && !requestedMemory && housing ? NARRATION_HOUSING_COMMANDS : "",
+          tagged && showAccess && !requestedMemory
+            ? 'To propose a Work shift for a current Villager, use one line: [resident-id] [work]: {"characterId":"worker-villager-id","activity":"Serve customers","zoneId":"supplied-zone","accessZoneIds":["supplied-zone"],"days":["Friday"],"startMinute":420,"endMinute":600}. Include the work Zone and every Zone on the route from Entrance. The game supplies the spoken proposal and Work control. Keep exact terms on this line. Work cannot hire or pay the player. A resident can discuss helping or offer a one-time joint appointment in the Agenda.'
+            : "",
           context.codeRequestedMemory
             ? tagged
               ? "The game records the exact requested fact. Use [speaker-id] [remember]: text to acknowledge it only if the record is accepted. Keep any other offers pending."
@@ -657,7 +668,9 @@ export function createSceneWriting({
                     : []),
                   ...(agendaVenues.length
                     ? [
-                        'For a joint plan use a commitment offer for both parties, about:[actorId], agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use a supplied Venue/Zone. Cite each actual decision with act. In tagged replies, use [resident-id] [appointment]: with nothing after the colon for the resident’s offer or acceptance, followed by its [keep]. The game supplies the actual words and the player confirms in the Agenda. Use a fitted alias for an existing offer.',
+                        tagged
+                          ? 'For the resident’s offer or acceptance of a specific joint appointment, use one line: [resident-id] [appointment]: {"activity":"Walk together","time":{"date":"YYYY-MM-DD","startMinute":960,"endMinute":990,"venueId":"supplied-venue","zoneId":"supplied-zone"}}. Use actual future terms and a supplied Venue/Zone. Include protection if required by the supplied constraints. The game supplies the words and the Agenda confirmation. Ordinary speech can discuss interest, availability or refusal. Keep definite times and promises for this appointment on its tagged line.'
+                          : 'For a joint plan use a commitment offer for both parties, about:[actorId], agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use a supplied Venue/Zone. Cite each actual decision with act.',
                       ]
                     : []),
                   JSON.stringify({ agendaOptions, ...agendaFacts, ...(agendaVenues.length ? { agendaVenues } : {}) }),
@@ -743,6 +756,7 @@ export function createSceneWriting({
               taggedSceneReply: true as const,
               npcSpeakerNames,
               explicitNpcIntroduction: true as const,
+              compactSceneDecisions: true as const,
               relaxedNarrationProse: true as const,
             }
           : {}),

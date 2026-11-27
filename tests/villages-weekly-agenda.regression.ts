@@ -338,58 +338,62 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
       assert(agenda, `turn ${calls + 1} uses fitted schedule evidence`);
       const packet = JSON.parse(agenda);
       const schedule = { ...time, zoneId: "common" };
-      const reply =
-        ++calls === 1
-          ? {
-              segments: [{ kind: "dialogue", speakerId: "mara", text: "I sort maps here from nine until eleven." }],
-              keep: [
-                {
-                  for: ["player"],
-                  about: ["mara"],
-                  class: "information",
-                  text: "Mara sorts maps here today from nine until eleven.",
-                  source: [{ segment: 1 }],
-                  agenda: {
-                    actorId: "mara",
-                    kind: "told",
-                    time: { ...schedule, date: "2026-11-10", startMinute: 540, endMinute: 660 },
-                  },
-                },
-              ],
-            }
-          : {
-              segments: [
-                {
-                  kind: "dialogue",
-                  speakerId: "mara",
-                  text: "Appointment offered.",
-                  offerAppointment: true,
-                  requires: ["resident-slot"],
-                },
-              ],
-              keep: [
-                {
-                  for: ["player", "mara"],
-                  about: ["mara"],
-                  id: "resident-slot",
-                  class: "commitment",
-                  text: "Look through maps at The Mill tomorrow from noon to one.",
-                  offer: { proposer: "player", participants: ["player", "mara"] },
-                  source: [
-                    { input: offer, ground: { kind: "spoken", to: ["mara"] }, act: "offer" },
-                    { segment: 1, act: "accept" },
-                  ],
-                  agenda: { actorId: "mara", kind: "offer", time: schedule, activity: "Look through maps" },
-                },
-              ],
-            };
-      if (calls === 1) {
-        assert(packet.agendaOptions.some((slot: { activity: string }) => slot.activity === "Sort maps"));
-        assert(packet.agendaVenues.some((venue: { id: string }) => venue.id === "mill"));
-      } else {
+      if (calls > 0) {
         assert(packet.agendaOptions.some((slot: { time: { date: string } }) => slot.time.date === tomorrow));
         assert(packet.agendaVenues.some((venue: { id: string }) => venue.id === "mill"));
+        const valid = ++calls === 2;
+        return {
+          content:
+            "[mara] [appointment]: " +
+            JSON.stringify({
+              activity: "Look through maps",
+              time: valid ? schedule : { ...schedule, zoneId: "unfitted-zone" },
+            }) +
+            (valid
+              ? "\nNarration: A breeze lifts a page.\n[keep]: " +
+                JSON.stringify({
+                  id: "another-time",
+                  for: ["mara", "player"],
+                  about: ["mara"],
+                  class: "commitment",
+                  text: "Mara offers another appointment two hours later.",
+                  offer: { proposer: "mara", participants: ["mara", "player"] },
+                  agenda: {
+                    actorId: "mara",
+                    kind: "offer",
+                    activity: "Look through maps",
+                    time: {
+                      ...schedule,
+                      startMinute: schedule.startMinute + 120,
+                      endMinute: schedule.endMinute + 120,
+                    },
+                  },
+                  source: [{ segment: 1, act: "offer" }],
+                })
+              : ""),
+          finishReason: "stop",
+        };
       }
+      calls++;
+      const reply = {
+        segments: [{ kind: "dialogue", speakerId: "mara", text: "I sort maps here from nine until eleven." }],
+        keep: [
+          {
+            for: ["player"],
+            about: ["mara"],
+            class: "information",
+            text: "Mara sorts maps here today from nine until eleven.",
+            source: [{ segment: 1 }],
+            agenda: {
+              actorId: "mara",
+              kind: "told",
+              time: { ...schedule, date: "2026-11-10", startMinute: 540, endMinute: 660 },
+            },
+          },
+        ],
+      };
+      assert(packet.agendaOptions.some((slot: { activity: string }) => slot.activity === "Sort maps"));
+      assert(packet.agendaVenues.some((venue: { id: string }) => venue.id === "mill"));
       return { content: JSON.stringify(reply), finishReason: "stop" };
     };
     try {
@@ -410,11 +414,18 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
         assert.equal(result.statusCode, 200, result.body);
         const { acceptance } = host.scene().submissions.at(-1)!;
         assert.equal(acceptance.status, "applied");
-        assert.deepEqual(acceptance.rejected, []);
+        assert.deepEqual(
+          acceptance.rejected.map(({ id }) => id),
+          calls === 2 ? ["another-time"] : [],
+        );
       }
       const state = fixtureVillageState(host.records.get("villages-village").data, host.records);
       const returned = agendaWeek(state, "mara", new Date(), false);
       assert.equal(returned.days[1].blocks.length, 0);
+      assert.deepEqual(
+        returned.pending?.map(({ time }) => time.startMinute),
+        [time.startMinute],
+      );
       const confirmation = await host.app.inject({
         method: "POST",
         url: "/api/villages/agendas/mara/appointments",
@@ -448,7 +459,27 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
         });
         assert.equal(stale.statusCode, 409, stale.body);
       }
-      assert.equal(calls, 2);
+      const unfitted = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: {
+          sessionId: "browser",
+          submissionId: randomUUID(),
+          message: "Could we move tomorrow's meeting elsewhere?",
+          mode: "chat",
+          targetId: "",
+          expectedSceneRevision: host.scene().sceneRevision,
+        },
+      });
+      assert.equal(unfitted.statusCode, 200, unfitted.body);
+      assert(
+        unfitted
+          .json()
+          .session.lines.some(({ content }: { content: string }) => content === "The appointment is still unsettled."),
+      );
+      const current = fixtureVillageState(host.records.get("villages-village").data, host.records);
+      assert.equal(agendaWeek(current, "mara", new Date(), false).pending, undefined);
+      assert.equal(calls, 3);
     } finally {
       await host.stop();
     }

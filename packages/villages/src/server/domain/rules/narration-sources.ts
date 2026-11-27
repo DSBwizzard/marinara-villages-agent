@@ -219,12 +219,26 @@ export function readSceneNarrationReply(
   continuity: ContinuityCollection,
 ) {
   const visit = raw.visit;
+  if (readset.source.scene.visitorIntroduction && Array.isArray(raw.segments)) {
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value) => {
+        const row = asRecord(value);
+        if (!Object.hasOwn(row, "perceive")) return value;
+        // The tutorial's audience comes from the Scene, never from a model annotation.
+        const { perceive: _perceive, ...beat } = row;
+        return beat;
+      }),
+    };
+  }
   if (Array.isArray(raw.segments) && raw.segments.some((value) => asRecord(value).offerAppointment === true)) {
     raw = {
       ...raw,
       segments: raw.segments.map((value) => {
         const beat = asRecord(value);
-        return beat.kind === "dialogue" && beat.offerAppointment === true
+        return beat.kind === "dialogue" &&
+          beat.offerAppointment === true &&
+          !(readset.taggedSceneReply && beat.compactAppointment)
           ? { ...beat, text: "I can make the time shown in my Agenda. Confirm it there if it works for you." }
           : value;
       }),
@@ -241,7 +255,13 @@ export function readSceneNarrationReply(
         raw.segments.length > 0 &&
         raw.segments.every((value) => {
           const row = asRecord(value);
-          return row.kind === "dialogue" && row.speakerId === recipient && !row.introduceName && !row.offerAppointment;
+          return (
+            row.kind === "dialogue" &&
+            row.speakerId === recipient &&
+            !row.introduceName &&
+            !row.offerAppointment &&
+            !row.offerWork
+          );
         }),
       "only the reminder recipient can reply",
     );

@@ -211,7 +211,10 @@ await runCase("gm-effects/relationship-answer", async () => {
           segments: [
             said(ending ? "See you around." : "It's good to talk."),
             ...(ending && native
-              ? [{ id: "exit", kind: "narration", text: "You head out.", requires: ["close"] }]
+              ? [
+                  { id: "exit", kind: "narration", text: "You head out.", requires: ["close"] },
+                  { id: "last", kind: "narration", text: "Behind you, the light falls across the bench." },
+                ]
               : []),
           ],
           ...(ending && native
@@ -274,6 +277,7 @@ await runCase("gm-effects/relationship-answer", async () => {
       const ending = await send(true);
       assert.equal(ending.statusCode, 200, ending.body);
       assert.equal(host.scene().status, "closed");
+      if (native) assert(host.scene().lines.some((line) => line.content.includes("the light falls across the bench")));
       const closingEdge = await edge();
       assert.equal(closingEdge.answer, undefined);
       assert.equal(closingEdge.score, 3);

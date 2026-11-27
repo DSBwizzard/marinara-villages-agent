@@ -98,6 +98,7 @@ function fixture() {
     input = "I privately worry. Hello.",
     operation = "native-npc",
     capturedAt = at,
+    distinguishNpcMeetings = false,
   ) => {
     const context = narrationContinuityContext(
       state,
@@ -106,6 +107,8 @@ function fixture() {
       operation,
       input,
       capturedAt,
+      false,
+      distinguishNpcMeetings,
     );
     return {
       raw,
@@ -212,6 +215,36 @@ await runCase("npc-admission/tagged-turn", () => {
     assert.equal(result.episode?.commandReceipts[0]?.admission?.npc.id, id);
     assert.equal(Object.keys(f.state.worldPlaces.npcs).length, count);
     assert(acceptNarration(f.state, publication, "tagged-return", at).replayed);
+    const next = f.publication({}, "I look for the familiar host.", "compact-return", at, true);
+    const captured = {
+      ...next.readset,
+      taggedSceneReply: true as const,
+      explicitNpcIntroduction: true as const,
+      npcSpeakerNames: {},
+    };
+    assert(captured.npcCandidates.some((row) => row.npc.id === id && row.met));
+    const compact = [
+      `Narration: [${id}] waits near the doorway before admission.`,
+      'Narration: ["Unknown Visitor"]: "I am secretly here."',
+      `[return ${id}]:`,
+      `Narration: [${id}] turns toward you.`,
+      `[${id}]: Good to see you again.`,
+    ].join("\n");
+    const fitted = decodeTaggedSceneReply(compact, captured).value!;
+    const returned = acceptNarration(
+      f.state,
+      { raw: fitted, readset: captured, responseDigest: memoryHash(compact) },
+      "compact-return",
+      at,
+    );
+    assert(!returned.held, JSON.stringify(returned.rejected));
+    assert.deepEqual(
+      returned.episode!.segments.map((line) => line.content),
+      [f.existing.label + " comes into view.", "turns toward you.", "Good to see you again."],
+    );
+    applyAcceptedSceneDelta(f.scene, returned.episode!);
+    assert(f.scene.participants.some((person) => person.characterId === id));
+    assert.equal(Object.keys(f.state.worldPlaces.npcs).length, count);
   }
   const f = fixture(),
     readset = f.publication({}).readset;

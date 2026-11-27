@@ -164,7 +164,12 @@ assert.deepEqual(scene.lines, tutorial, "The fixed tutorial appends only once");
 const bookendReadset = { ...readset, visitorIntroductionFarewell: true as const };
 const bookendRaw = {
   segments: [
-    { kind: "dialogue", speakerId: PROFESSOR_MARI_ID, text: "A garden! You even remembered the outside." },
+    {
+      kind: "dialogue",
+      speakerId: PROFESSOR_MARI_ID,
+      text: "A garden! You even remembered the outside.",
+      perceive: { kind: "private", by: ["unlisted-actor"] },
+    },
     {
       kind: "dialogue",
       speakerId: PROFESSOR_MARI_ID,
@@ -210,6 +215,8 @@ const bookends = structuredClone(scene);
 bookends.lines = structuredClone(accepted.episode!.segments);
 appendVisitorIntroductionTutorial(bookends, bookends.lines.at(-1)!.id);
 assert.equal(bookends.lines[0].content, bookendRaw.segments[0].text);
+assert(bookends.lines[0].heardBy.includes("player"));
+assert(!bookends.lines[0].heardBy.includes("unlisted-actor"));
 assert.equal(bookends.lines[1].content, "Wondering why I'm here?");
 assert.equal(bookends.lines.at(-2)!.content, bookendRaw.segments[1].text);
 assert.equal(bookends.lines.length, 10, "One generated pair surrounds the seven fixed paragraphs and closing beat");

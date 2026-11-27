@@ -1,4 +1,6 @@
 import { asRecord } from "./coerce.js";
+import { agendaEvidence } from "../decoding/agenda-codec.js";
+import { venueWorkSchema, workTime } from "../../../shared/helpers/venue-work.js";
 import { npcNameKey } from "./npc-index.js";
 import { NARRATION_SEGMENT_CHARACTERS, readNarrationReply } from "./narration-contract.js";
 import { parseSceneObject } from "./scene-json-syntax.js";
@@ -21,6 +23,9 @@ const isEffectLabel = (value: unknown): value is string =>
 const controlPrefix = /^\s*!?\s*(keep|command|visit|halt|cue)(?:[\s:\]]|$)/iu;
 const actionPrefix = /^\s*!?\s*(action)(?=[ \t]+[+-]?\d)/iu;
 const quotedSpeakerHeader = /^([^:\r\n]{1,100}):\s*(["“].*["”])$/u;
+const privateNpcHandle = /\[((?:npc|new):[A-Za-z0-9_.:-]+)\]/gu;
+const npcHandle = /^(?:npc|new):[A-Za-z0-9_.:-]+$/u;
+const agendaTerms = agendaEvidence.omit({ actorId: true, kind: true });
 type Beat = { id: string; kind: "narration" | "dialogue"; text: string; requires: string[] } & Record<string, unknown>;
 
 function plainNarration(
@@ -126,6 +131,22 @@ export function decodeTaggedSceneReply(
   const bind = (beat: Beat, id: string) => {
     beat.requires = [...beat.requires.filter((value) => value !== "missing-" + beat.id), id];
   };
+  const registerArrival = (effect: Record<string, unknown>, id: string, defaultLocalKey: string) => {
+    const candidate = readset.npcCandidates.find(({ npc }) => npc.id === effect.existingId)?.npc;
+    if (candidate && effect.localKey === undefined) effect.localKey = defaultLocalKey;
+    if (typeof effect.localKey !== "string" || newcomers.has(effect.localKey)) return;
+    newcomers.set(effect.localKey, id);
+    if (candidate && !newcomers.has(candidate.id)) newcomers.set(candidate.id, id);
+    if (!readset.npcSpeakerNames) return;
+    const label = candidate?.label ?? effect.label;
+    const name = candidate?.name ?? effect.name;
+    if (typeof label === "string") addAlias(label, effect.localKey);
+    if (typeof name === "string") {
+      addAlias(name, effect.localKey, name);
+      knownNames.set(effect.localKey, name);
+      if (candidate) knownNames.set(candidate.id, name);
+    }
+  };
   for (const value of content.split(/\r?\n/u)) {
     const line = value.trim();
     if (!line) continue;
@@ -223,7 +244,12 @@ export function decodeTaggedSceneReply(
       const mayUseId =
         suppliedId !== "remember-fact" ||
         (control === "keep" && readset.requestedMemory && !readset.codeRequestedMemory);
-      if (mayUseId && isEffectLabel(suppliedId) && !ids.has(suppliedId) && !/^(missing|bad-visit)-/u.test(suppliedId))
+      if (
+        mayUseId &&
+        isEffectLabel(suppliedId) &&
+        !ids.has(suppliedId) &&
+        !/^(missing|bad-visit|decision|arrival)-/u.test(suppliedId)
+      )
         id = suppliedId;
       ids.add(id);
       const requires = proposal?.requires;
@@ -239,7 +265,7 @@ export function decodeTaggedSceneReply(
         (control !== "keep" || slot.kind !== "offer" || slot.actorId !== anchor.speakerId)
       )
         continue;
-      if (anchor && (control === "command" || marked)) bind(anchor, id);
+      if (anchor && anchor !== actionAnchor && (control === "command" || marked)) bind(anchor, id);
       if (control === "keep") effect.independent = true;
       if (anchor && control === "command") effect.at = anchor.id;
       if (anchor && proposal && !invalid) {
@@ -259,24 +285,8 @@ export function decodeTaggedSceneReply(
           },
         ];
       }
-      if (control === "command" && effect.type === "npc.admit") {
-        const returning = readset.npcCandidates.find(({ npc }) => npc.id === effect.existingId)?.npc;
-        if (returning && effect.localKey === undefined) effect.localKey = "new:returning-" + effectIndex;
-        if (typeof effect.localKey === "string" && !newcomers.has(effect.localKey)) {
-          newcomers.set(effect.localKey, id);
-          if (returning && !newcomers.has(returning.id)) newcomers.set(returning.id, id);
-          if (readset.npcSpeakerNames) {
-            const label = returning?.label ?? effect.label;
-            const name = returning?.name ?? effect.name;
-            if (typeof label === "string") addAlias(label, effect.localKey);
-            if (typeof name === "string") {
-              addAlias(name, effect.localKey, name);
-              knownNames.set(effect.localKey, name);
-              if (returning) knownNames.set(returning.id, name);
-            }
-          }
-        }
-      }
+      if (control === "command" && effect.type === "npc.admit")
+        registerArrival(effect, id, "new:returning-" + effectIndex);
       list.push(effect);
       // A malformed control may spill private text onto later lines.
       if (!proposal) break;
@@ -288,13 +298,59 @@ export function decodeTaggedSceneReply(
     positions.push(id);
     const introduction = !!readset.explicitNpcIntroduction && meta.includes("introduce");
     const appointment = !!readset.explicitSceneEvidence && meta.includes("appointment");
-    if ((!text && !introduction && !appointment) || text.length > NARRATION_SEGMENT_CHARACTERS || /^[{`]/u.test(text))
+    const work = !!readset.explicitSceneEvidence && meta.includes("work");
+    const returnId = readset.explicitNpcIntroduction && speaker?.startsWith("return ") && speaker.slice(7);
+    if (
+      (!text && !introduction && !appointment && !work && !returnId) ||
+      text.length > NARRATION_SEGMENT_CHARACTERS ||
+      (!(appointment || work) && /^[{`]/u.test(text))
+    )
       continue;
     const markedSpeaker = !!speaker?.startsWith("!");
-    marked = narration === "!" || markedSpeaker || appointment;
+    marked = narration === "!" || markedSpeaker || appointment || work;
     const requirements = marked ? ["missing-" + id] : [];
+    if (returnId) {
+      const candidate = readset.npcCandidates.find((entry) => entry.npc.id === returnId && entry.met);
+      const effectId = "arrival-" + id;
+      if (
+        !candidate ||
+        meta.length ||
+        newcomers.has(returnId) ||
+        ids.has(effectId) ||
+        commands.length + Number(!!visit) >= 16
+      ) {
+        issue = "unknown_speaker";
+        continue;
+      }
+      const effect = {
+        id: effectId,
+        at: id,
+        type: "npc.admit",
+        existingId: returnId,
+        returning: true,
+        source: [{ segment: id, perceive: { kind: "seen", by: ["player"] } }],
+      };
+      ids.add(effectId);
+      commands.push(effect);
+      registerArrival(effect, effectId, "new:" + effectId);
+      anchor = { id, kind: "narration", text: `${candidate.npc.label} comes into view.`, requires: [effectId] };
+      actionAnchor = anchor;
+      segments.push(anchor);
+      continue;
+    }
     if (narration !== undefined) {
-      if (introduction || appointment) continue;
+      if (introduction || appointment || work) continue;
+      if (readset.explicitNpcIntroduction && /^\[[^\]\r\n]+\]\s*:/u.test(text)) {
+        issue = "invalid_dialogue_tag";
+        continue;
+      }
+      const handles = readset.explicitNpcIntroduction
+        ? [...text.matchAll(privateNpcHandle)].map((part) => part[1])
+        : [];
+      if (handles.some((actor) => !speakers.has(actor) && !newcomers.has(actor))) {
+        issue = "unknown_speaker";
+        continue;
+      }
       const actors = meta[0]?.startsWith("actors ") ? meta[0].slice(7).trim().split(/\s+/u) : [];
       if (
         meta.length &&
@@ -305,11 +361,13 @@ export function decodeTaggedSceneReply(
           !actors.every((actor) => actor === "player" || speakers.has(actor) || newcomers.has(actor)))
       )
         continue;
-      for (const actor of actors) {
+      for (const actor of [...actors, ...handles]) {
         const admission = newcomers.get(actor);
         if (admission && !requirements.includes(admission)) requirements.push(admission);
       }
-      anchor = { id, kind: "narration", text, requires: requirements, ...(actors.length ? { actors } : {}) };
+      const prose = handles.length ? text.replace(privateNpcHandle, "").trim() : text;
+      if (!prose) continue;
+      anchor = { id, kind: "narration", text: prose, requires: requirements, ...(actors.length ? { actors } : {}) };
     } else {
       const token = markedSpeaker ? speaker.slice(1) : speaker;
       const action =
@@ -337,7 +395,10 @@ export function decodeTaggedSceneReply(
       }
       if (admission) requirements.push(admission);
       const introducedName = introduction ? knownNames.get(speakerId) : undefined;
-      if ((introduction && (text || !introducedName || choice || appointment)) || (appointment && (text || choice))) {
+      if (
+        (introduction && (text || !introducedName || choice || appointment || work)) ||
+        ((appointment || work) && (choice || admission || (appointment && work)))
+      ) {
         issue = "invalid_dialogue_tag";
         continue;
       }
@@ -345,9 +406,15 @@ export function decodeTaggedSceneReply(
         id,
         kind: "dialogue",
         speakerId,
-        text: introducedName ? `My name is ${introducedName}.` : appointment ? "Appointment offered." : text,
+        text: introducedName
+          ? `My name is ${introducedName}.`
+          : appointment
+            ? "Appointment offered."
+            : work
+              ? "I've put the shift terms in Work for review."
+              : text,
         requires: requirements,
-        ...(choice ? { targetId: "player" } : {}),
+        ...(choice || work ? { targetId: "player" } : {}),
       };
       let valid = true;
       for (const tag of meta) {
@@ -358,6 +425,7 @@ export function decodeTaggedSceneReply(
         else if (tag === "aside" && !beat.presentation) beat.presentation = "aside";
         else if (tag === "introduce" && introduction && !beat.introduceName) beat.introduceName = true;
         else if (tag === "appointment" && appointment && !beat.offerAppointment) beat.offerAppointment = true;
+        else if (tag === "work" && work && !beat.offerWork) beat.offerWork = true;
         else if (kind === "name" && !readset.explicitNpcIntroduction && index >= 0 && target && !beat.speakerLabel)
           beat.speakerLabel = target;
         else if (
@@ -375,11 +443,68 @@ export function decodeTaggedSceneReply(
         } else if (tag === "remember" && readset.requestedMemory) requirements.push("remember-fact");
         else valid = false;
       }
-      if (!valid || (choice?.kind === "visit" && beat.presentation === "aside")) {
+      if (
+        !valid ||
+        (choice?.kind === "visit" && beat.presentation === "aside") ||
+        ((appointment || work) && (beat.presentation === "aside" || (beat.targetId && beat.targetId !== "player")))
+      ) {
         issue = "invalid_dialogue_tag";
         continue;
       }
       if (!readset.explicitNpcIntroduction && alias?.name && !beat.speakerLabel) beat.speakerLabel = alias.name;
+      if ((appointment && (text || readset.compactSceneDecisions)) || work) {
+        if (appointment) beat.compactAppointment = true;
+        // These beats own their effect and exact spoken evidence.
+        const record = text ? parsePrivateRecord(text) : null;
+        const effectId = "decision-" + beat.id;
+        if (record && !ids.has(effectId) && (appointment ? keep.length < 32 : commands.length + Number(!!visit) < 16)) {
+          const source = [{ segment: id, act: "offer" }];
+          if (appointment && readset.agendaVenues?.length) {
+            const { protection, ...fields } = record;
+            const terms = agendaTerms.safeParse(fields);
+            if (terms.success) {
+              const { activity, time } = terms.data;
+              const people = [speakerId, "player"];
+              const when = `${time.date} from ${workTime(time.startMinute)} to ${workTime(time.endMinute)}`;
+              keep.push({
+                id: effectId,
+                for: people,
+                about: [speakerId],
+                class: "commitment",
+                text: `${activity} on ${when}.`,
+                offer: { proposer: speakerId, participants: people },
+                agenda: { actorId: speakerId, kind: "offer", ...terms.data },
+                source,
+                ...(protection === undefined ? {} : { protection }),
+              });
+              beat.text = `I can meet on ${when}. Confirm the appointment in my Agenda if it works for you.`;
+              beat.targetId = "player";
+              ids.add(effectId);
+              bind(beat, effectId);
+            }
+          } else if (work && readset.access.some((row) => row.venueId === scene.placeId)) {
+            const terms = venueWorkSchema.safeParse(record);
+            if (terms.success && terms.data.characterId !== "player") {
+              commands.push({
+                id: effectId,
+                type: "access.decide",
+                by: speakerId,
+                venue: scene.placeId,
+                zone: null,
+                at: id,
+                source,
+                decision: {
+                  outcome: "access-management",
+                  management: { action: "work-propose", characterId: terms.data.characterId, terms: terms.data },
+                },
+              });
+              ids.add(effectId);
+              bind(beat, effectId);
+            }
+          }
+        }
+        actionAnchor = beat;
+      }
       if (choice) {
         if (choice.kind === "visit") {
           visit = { segment: id, option: choice.option, escort };
@@ -415,7 +540,7 @@ export function decodeTaggedSceneReply(
         speakers.has(label) ||
         aliases.has(aliasKey(label)) ||
         ambiguous.has(aliasKey(label)) ||
-        /^new:/u.test(label),
+        npcHandle.test(label),
     );
     const narration = plain.narration;
     if (narration) return { value: { segments: narration }, repaired: true };
@@ -464,8 +589,20 @@ export function pruneTaggedSceneReply(raw: Record<string, unknown>, failed: Set<
     if (next.length === retained.length) break;
     retained = next;
   }
-  if (!retained.length) return null;
   const survives = new Set(retained.map((beat) => beat.id));
+  const projected = segments.flatMap<Beat>((beat) => {
+    if (survives.has(beat.id)) return [beat];
+    if ((!beat.offerAppointment && !beat.offerWork) || !beat.requires.some((id) => excluded.has(id))) return [];
+    return [
+      {
+        id: beat.id,
+        kind: "narration",
+        text: beat.offerAppointment ? "The appointment is still unsettled." : "The work offer is still unsettled.",
+        requires: [],
+      },
+    ];
+  });
+  if (!projected.length) return null;
   const remaining = commands.filter((row) => !excluded.has(String(row.id)) && survives.has(String(row.at)));
   const notes = keep.filter((row) => {
     const id = String(row.id);
@@ -482,5 +619,5 @@ export function pruneTaggedSceneReply(raw: Record<string, unknown>, failed: Set<
     (!raw.visit || keepVisit)
   )
     return null;
-  return { segments: retained, commands: remaining, keep: notes, ...(keepVisit ? { visit } : {}) };
+  return { segments: projected, commands: remaining, keep: notes, ...(keepVisit ? { visit } : {}) };
 }
