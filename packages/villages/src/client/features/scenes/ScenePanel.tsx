@@ -534,7 +534,7 @@ export function RoomPanel({
     }
   }, [replyKey, checkpoint, ownsBookmark, sceneReading.anchor, sceneReading.enterAtEnd]);
   const reveal = at === 0 && ownsBookmark(checkpoint.current.bookmark) && !!checkpoint.current.bookmark?.reveal;
-  const readingPages = useReadingPages(step?.text ?? "", step?.key ?? replyKey, readingRef, sceneReading, reveal);
+  const readingPages = useReadingPages(step?.text ?? "", step?.key ?? replyKey, readingRef, sceneReading, { reveal });
   const canReadNext = readingPages.revealing || at < steps.length - 1 || readingPages.index < readingPages.count - 1;
   const introductionActive = !!room.visitorIntroduction && !ended && room.status === "active" && steps.length > 0;
   useLayoutEffect(() => {

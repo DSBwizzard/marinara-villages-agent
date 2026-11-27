@@ -10,7 +10,7 @@ import { useFocusRevision } from "../../shared/activity.js";
 import { measureImage } from "../../shared/presentation.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
 import {
-  FOUNDING_MAP_FAILED,
+  foundingMapFailure,
   requestSetupMapReceipt,
   SETUP_MAX_VILLAGER_COUNT,
   SETUP_MIN_VILLAGER_COUNT,
@@ -329,7 +329,7 @@ export function useFoundingMapReceipt(ports: {
           setSetupMapProblem(
             receipt.status === "interrupted"
               ? "Map generation stopped. This attempt may have been billed."
-              : FOUNDING_MAP_FAILED,
+              : foundingMapFailure(receipt.error),
           );
           updateSetupMapRequest(null);
           setSetupMapBusy(false);
