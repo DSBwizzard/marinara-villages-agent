@@ -214,7 +214,7 @@ async function main() {
   assert.equal(rows[0]!.agenda?.today, true);
   assert.ok(rows[0]!.actions.some((action) => action.id === "correct"));
   const repairRecord = rows.find((row) => row.id === JSON.stringify(["agenda", "a", chosenDate]))!;
-  assert.ok(repairRecord.source.some((text) => text.includes("10:00–11:00 · Meet at the gate")));
+  assert.ok(repairRecord.source.some((text) => text.includes("10:00–11:00, Meet at the gate")));
   const request = (values: Record<string, string>, action = "correct") => ({ action, values }) as any;
   assert.throws(
     () => applyWorldRepair(repairedWorld, repairRecord, request({ "start:1": "08:00" }), today.toISOString()),

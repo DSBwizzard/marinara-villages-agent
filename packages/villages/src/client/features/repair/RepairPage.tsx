@@ -528,6 +528,8 @@ export function RepairPage({
         ? "Add memory"
         : "Memory"
       : (selected?.title ?? "");
+  const collectionSearch =
+    c.section === "relationships" ? "Find a relationship" : c.section === "wishes" ? "Find a wish" : "Find a memory";
   const reviewPageSize = compact ? 1 : small ? 1 : 3;
   const reviewPages = [
     ...(c.review?.changes ?? []),
@@ -654,12 +656,14 @@ export function RepairPage({
             </div>
           </header>
         ) : (
-          <h1>
+          <h1 className="repair-context-title">
             {isHistory
               ? "Repair history"
               : isSnapshots
                 ? "Village snapshots"
-                : (areas.find(([id]) => id === area)?.[1] ?? "Search results")}
+                : editing && selected && !selected.people
+                  ? selected.title
+                  : (areas.find(([id]) => id === area)?.[1] ?? "Search results")}
           </h1>
         )}
         {c.person && c.view !== "review" ? (
@@ -1124,8 +1128,8 @@ export function RepairPage({
                   <input
                     autoComplete="off"
                     type="search"
-                    aria-label="Find a memory"
-                    placeholder="Find a memory"
+                    aria-label={collectionSearch}
+                    placeholder={collectionSearch}
                     value={recordQuery}
                     onChange={(event) => {
                       setRecordQuery(event.target.value);
@@ -1320,6 +1324,7 @@ export function RepairPage({
                         onChange={(value) => changeValue(field, value)}
                         rows={proseRows}
                         hideLabel={
+                          !selected.id.startsWith('["relationship",') &&
                           fieldGroups[currentStep]?.length === 1 &&
                           (isMemory || stepTitle(fieldGroups[currentStep]!) === field.label)
                         }

@@ -1,5 +1,6 @@
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
 export const REPAIR_STYLES = `
+.villages-repair .repair-context-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .villages-repair{--repair-bg:#23272a;--repair-paper:#1b1e20;--repair-ink:#eceae3;--repair-muted:#b9bcbf;--repair-line:#424a50;--repair-control:#68767d;--repair-primary:#eda967;--repair-onprimary:#271e17;--repair-focus:#b1d9f6;display:flex;flex-direction:column;height:100%;min-height:0;width:100%;background:var(--repair-bg);color:var(--repair-ink);color-scheme:dark;font:16px/1.45 "Segoe UI",system-ui,sans-serif}
 .villages-repair *{box-sizing:border-box;overflow-wrap:anywhere}
 .villages-repair svg{width:21px;height:21px;flex:none}

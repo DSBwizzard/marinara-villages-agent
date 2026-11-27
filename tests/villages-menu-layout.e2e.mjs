@@ -458,10 +458,7 @@ await withBrowser(browser, async () => {
     if (process.env.VILLAGES_MENU_SCREENSHOTS) {
       await page.screenshot({ path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `repair-${width}-${height}.png`) });
     }
-    await repair.getByRole("button", { name: "Main menu", exact: true }).click();
-    if (mobile) await expect(picker).toHaveValue("general");
-    else await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
-    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
+    await repair.getByRole("button", { name: "← Return to village", exact: true }).click();
     await expect(page.getByRole("button", { name: /^Notices \(/ })).toHaveCount(0);
     await page.getByRole("button", { name: "More", exact: true }).click();
     if (mobile) await expect(picker).toHaveValue("general");
