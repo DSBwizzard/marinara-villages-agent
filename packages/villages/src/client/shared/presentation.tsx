@@ -1,3 +1,4 @@
+import { PictureReadFailure } from "../../shared/helpers/town-map-upload.js";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import type { SceneView, VillageSnapshot, VillageVenue } from "../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "./constants.js";
@@ -378,7 +379,7 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("That picture could not be read."));
+    reader.onerror = () => reject(new PictureReadFailure("unreadable", "That picture could not be read."));
     reader.readAsDataURL(file);
   });
 }
@@ -396,7 +397,7 @@ export function measureImage(src: string): Promise<{ width: number; height: numb
     const image = new Image();
     const timer = window.setTimeout(() => {
       image.onload = image.onerror = null;
-      reject(new Error("The picture is taking too long to open. Try again."));
+      reject(new PictureReadFailure("timeout", "The picture is taking too long to open. Try again."));
     }, 30_000);
     image.onload = () => {
       window.clearTimeout(timer);
@@ -404,7 +405,7 @@ export function measureImage(src: string): Promise<{ width: number; height: numb
     };
     image.onerror = () => {
       window.clearTimeout(timer);
-      reject(new Error("That picture could not be read."));
+      reject(new PictureReadFailure("unreadable", "That picture could not be read."));
     };
     image.src = src;
   });

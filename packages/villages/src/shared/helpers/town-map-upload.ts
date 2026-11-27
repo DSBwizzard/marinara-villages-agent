@@ -2,10 +2,19 @@ export const MAP_UPLOAD_UNREADABLE =
   "A Villages map should be a readable image. We couldn't open this file. Try a PNG, JPG or WebP copy.";
 export const MAP_UPLOAD_FALLBACK = "We couldn't use this image as a Villages map. Try another image.";
 
-/** Translate known file-reading failures only; preserve other specific validation errors. */
-export function townMapUploadError(message: string): string {
-  if (message === "That picture could not be read.") return MAP_UPLOAD_UNREADABLE;
-  if (message === "The picture is taking too long to open. Try again.")
+export class PictureReadFailure extends Error {
+  constructor(
+    readonly kind: "unreadable" | "timeout",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export function townMapUploadError(cause: unknown, message: string): string {
+  if (!(cause instanceof PictureReadFailure)) return message;
+  if (cause.kind === "unreadable") return MAP_UPLOAD_UNREADABLE;
+  if (cause.kind === "timeout")
     return "This image is taking too long to open. Try uploading it again, or choose a smaller copy.";
   return message;
 }
