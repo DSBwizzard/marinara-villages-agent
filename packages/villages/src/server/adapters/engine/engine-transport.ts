@@ -1,4 +1,4 @@
-import { EngineRefusal, VillagesRequestError } from "../../domain/rules/errors.js";
+import { VillagesRequestError } from "../../domain/rules/errors.js";
 
 // Villages — the Engine's own API, called over loopback.
 //
@@ -119,8 +119,8 @@ async function villageEngineFetch(path: string, init: RequestInit): Promise<Resp
   }
   if (!response.ok) {
     const detail = await readEngineRefusal(response);
-    throw new EngineRefusal(
-      response.status,
+    throw new VillagesRequestError(
+      502,
       `The Engine refused ${path} (${response.status})${detail.length > 0 ? `: ${detail}` : "."}`,
     );
   }
@@ -195,7 +195,7 @@ export async function deleteVillageSpriteFile(assetId: string, expression: strin
   try {
     await villageEngineFetch(`/api/sprites/${assetId}/${expression}`, { method: "DELETE" });
   } catch (error) {
-    if (error instanceof EngineRefusal && error.engineStatus === 404) return;
+    if (error instanceof Error && error.message.includes("(404)")) return;
     throw error;
   }
 }

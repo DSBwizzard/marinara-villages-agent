@@ -34,8 +34,6 @@ await withBrowser(browser, async () => {
     const fixture = structuredClone(snapshot);
     const cast = residents.map((person, index) => (index === 1 ? { ...person, characterId: "npc:eli" } : person));
     fixture.settings.playerPersonaName = "Riley";
-    fixture.settings.characterSpeechColors = true;
-    fixture.villagers[0].dialogueColor = "linear-gradient(red, blue)";
     const main = {
       id: "main",
       role: "assistant",
@@ -274,9 +272,6 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Save me the good chair.");
     await page.getByRole("button", { name: "Close Transcript", exact: true }).click();
     // Long speech remains complete and scrollable, while the dock stays unchanged.
-    await load();
-    await expect(band).toContainText("Save me the good chair.");
-    const dockBeforeLongAside = await dock.boundingBox();
     asides[0].content = "**A long aside with every word preserved.** ".repeat(35);
     asides[0].asideFor = "main";
     session.lines[2] = asides[0];
@@ -293,23 +288,7 @@ await withBrowser(browser, async () => {
       assert.ok(scrolled > 0, "the bubble pair can be scrolled without moving the dock");
       assert.equal(await text.locator("strong").count(), 35, "all Markdown and content survive");
     }
-    assert.deepEqual(await dock.boundingBox(), dockBeforeLongAside);
-
-    main.content = '"The kettle is ready." Mara lifts the lid. "Have some."';
-    asides[0].content = "That kettle sounds furious.";
-    asides[1].content = '"Save me the good chair." Eli leans in. "Please."';
-    await load();
-    const direction = reading.locator("[data-scene-direction]");
-    await expect(direction).toHaveText("Mara lifts the lid.");
-    assert(await direction.evaluate((node) => node.parentElement.style.webkitTextFillColor === "transparent"));
-    const paint = await direction.evaluate((node) => {
-      const style = getComputedStyle(node);
-      return { fill: style.webkitTextFillColor, color: style.color };
-    });
-    assert.equal(paint.fill, paint.color);
-    assert.notEqual(paint.color, "rgba(0, 0, 0, 0)", "The stage direction keeps a readable foreground");
-    await expect(band.locator('[data-register="whisper"] [data-scene-direction]')).toHaveText("Eli leans in.");
-    await expect(reading.getByText("Eli leans in.", { exact: true })).toHaveCount(0);
+    assert.deepEqual(await dock.boundingBox(), before.dock);
     assert.deepEqual(errors, []);
     await page.close();
   }

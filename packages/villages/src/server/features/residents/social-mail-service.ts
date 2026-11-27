@@ -24,7 +24,7 @@ import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
-import { PERSONAL_LETTER_INSTRUCTION } from "../../domain/rules/personal-letter.js";
+import { assertPersonalLetter, PERSONAL_LETTER_INSTRUCTION } from "../../domain/rules/personal-letter.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
 import { RELATIONSHIP_DIRECTION, RELATIONSHIP_KEEP } from "../../domain/rules/narration-contract.js";
@@ -88,12 +88,9 @@ function parseReply(
 ): PersonalMailResult {
   if (answer.finishReason === "length")
     throw new Error("Personal reply reached its output limit. The saved response is retained.");
-  const decoded = extractModelJsonObject(answer);
-  const { replyVisitPreference, ...envelope } = decoded ?? {};
-  const raw = replySchema.parse(envelope);
-  // Accept the observed misplaced field only as the same typed decision with the same exact evidence.
-  const misplaced = raw.reply.visitPreference === undefined;
-  const proposed = visitPreference.safeParse(misplaced ? replyVisitPreference : raw.reply.visitPreference);
+  const raw = replySchema.parse(extractModelJsonObject(answer));
+  assertPersonalLetter(raw.reply.text, input.residentName);
+  const proposed = visitPreference.safeParse(raw.reply.visitPreference);
   const preference =
     input.visitor &&
     proposed.success &&
@@ -105,9 +102,7 @@ function parseReply(
     replyText: raw.reply.text,
     incomingMeaning: { keep: raw.incoming?.keep ?? [], requires: raw.incoming?.requires ?? [] },
     replyMeaning: { keep: raw.reply.keep ?? [], requires: raw.reply.requires ?? [] },
-    responseDigest: memoryHash(
-      misplaced && preference ? { ...raw, reply: { ...raw.reply, visitPreference: preference } } : raw,
-    ),
+    responseDigest: memoryHash(raw),
     ...(preference ? { visitPreference: preference } : {}),
   };
 }
@@ -314,7 +309,7 @@ export function createSocialMail(ports: SocialMailPorts) {
               "\n\n" +
               input.identity +
               (input.visitor
-                ? '\nThe addressee visits town occasionally. Decide freely about an explicit invitation or request for distance. For an agreement, put visitPreference inside reply next to text, as in {"reply":{"text":"...","visitPreference":{"kind":"invite","requestQuote":"exact incoming words","replyQuote":"exact agreeing words from reply.text"}}}. Use kind "space" for accepted distance. This field saves the visit decision. Keep it out of keep and requires. An invitation improves the chance of a visit during the next three days. Accepted distance keeps them away for seven days. Give no fixed arrival. Omit visitPreference for a refusal, ambiguity or casual mention.'
+                ? '\nThe addressee visits town occasionally and uses the same relationship rules as a Villager. If the player explicitly asks them to visit or asks for distance, decide freely in character. If they agree, reply.visitPreference may be {kind:"invite"|"space",requestQuote:"exact words from this incoming letter",replyQuote:"exact agreeing words from this reply"}. A visit agreement only improves the chance of a visit during the coming three days. A request for distance they accept keeps them away for seven days. Give no fixed arrival or assurance. Omit the field for a refusal, ambiguity, or casual mention.'
                 : ""),
           },
           {
@@ -378,6 +373,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     apply: (state, raw, savedResult: unknown) => {
       const input = readPersonalMailInput(raw),
         result = resultSchema.parse(savedResult) as PersonalMailResult;
+      assertPersonalLetter(result.replyText, input.residentName);
       acceptMailExchange(
         state,
         {

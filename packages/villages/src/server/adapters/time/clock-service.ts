@@ -135,7 +135,7 @@ export function createVillageClock(
             advanced = false;
             const clock = state.clock;
             if (JSON.stringify([state.seed, state.setupAt]) !== request.worldId || !clock)
-              throw conflict("The Village changed. Refresh its clock before advancing time.", "CLOCK_CHANGED");
+              throw conflict("The Village changed. Refresh its clock before advancing time.");
             if (!state.foundedAt) throw badRequest("Found a Village before advancing time.");
             committed = clock;
             const receipt =
@@ -147,7 +147,7 @@ export function createVillageClock(
               return false;
             }
             if (clock.revision !== request.revision)
-              throw conflict("Time already changed. Refresh the clock before advancing again.", "CLOCK_CHANGED");
+              throw conflict("Time already changed. Refresh the clock before advancing again.");
             const wall = sources.wall();
             const offset = (clock.advanceMs ?? 0) + request.milliseconds;
             const target = wall + offset;

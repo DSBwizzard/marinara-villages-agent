@@ -4,14 +4,13 @@ import type { RoomLine } from "../../../shared/contracts/village.js";
 import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { drawVillagesNodes, renderVillagesMarkdown } from "../../shared/presentation.js";
+import { renderVillagesMarkdown } from "../../shared/presentation.js";
 import { SceneErrorChip } from "./scene-errors.js";
 import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
 import { SceneActionIcon } from "./SceneActionIcon.js";
 import { SceneFace } from "./SceneFace.js";
 import { ReaderBook } from "../../shared/DialogueReader.js";
 import type { Portrait, PortraitMap } from "../../shared/types.js";
-import { isAttributedSceneDialogue, sceneDialogueNodes } from "./scene-dialogue.js";
 
 type MessageStyle = {
   playerName: string;
@@ -31,7 +30,6 @@ export function SceneMessage({
 }: MessageStyle & { line: RoomLine }) {
   const narration = line.role !== "user" && (line.kind === "narration" || line.speakerId === "__venue_scene__");
   const name = line.role === "user" ? playerName : narration ? "Narration" : line.name || "Resident";
-  const key = `message-${line.id ?? "line"}-`;
   return (
     <article
       className={`${ELEMENT_TAG}-scene-message`}
@@ -76,9 +74,7 @@ export function SceneMessage({
           className={`${ELEMENT_TAG}-chat-vn-text`}
           style={narration || line.role === "user" ? undefined : speechStyle(line.speakerId)}
         >
-          {isAttributedSceneDialogue(line)
-            ? drawVillagesNodes(sceneDialogueNodes(line.content), key)
-            : renderVillagesMarkdown(line.content, key)}
+          {renderVillagesMarkdown(line.content, `message-${line.id ?? "line"}-`)}
         </div>
       </div>
     </article>

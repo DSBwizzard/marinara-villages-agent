@@ -39,9 +39,8 @@
 // than in pieces, because the block rules are what the Engine's own stylesheet
 // scopes to `.mari-message-content`, which this tab is not.
 
-/** Inline presentation marks. The Scene reader adds its direction mark after parsing Markdown. */
-export type VillagesMarkdownStyle =
-  "italic" | "bold" | "bold-italic" | "underline" | "strikethrough" | "highlight" | "scene-direction";
+/** The inline syntax a villager may rely on. Every value is one tag in the entry. */
+export type VillagesMarkdownStyle = "italic" | "bold" | "bold-italic" | "underline" | "strikethrough" | "highlight";
 
 /**
  * One piece of a villager's line.

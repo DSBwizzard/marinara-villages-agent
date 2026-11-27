@@ -10,6 +10,7 @@ import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-at
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { acceptResidentLetter } from "../../domain/rules/mail-delivery.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { assertPersonalLetter } from "../../domain/rules/personal-letter.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residenceProposal } from "../../domain/rules/residence-agreement.js";
 import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
@@ -570,6 +571,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       if (proposal.mail) {
         const from = continuityActor(next, proposal.mail.senderId)!,
           to = continuityActor(next, "player")!;
+        assertPersonalLetter(
+          proposal.mail.text,
+          input.context.residents.find((row) => row.characterId === from.id)?.name,
+        );
         const letterId = "resident-mail-" + memoryHash([state.seed, opportunity.id]).slice(0, 32);
         acceptResidentLetter(
           next,

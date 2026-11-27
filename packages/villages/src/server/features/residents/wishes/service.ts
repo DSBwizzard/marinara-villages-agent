@@ -60,32 +60,20 @@ export function createWishes(ports: Ports) {
         memoryHash(context.continuity.protections) === memoryHash(continuityConstraints(state.continuity, [owner])),
       "initial Wish constraints changed",
     );
-    const admitted = await ports.mutateVillageState(
-      (live) => {
-        const marker = live.foundingPreparation;
-        memoryRequire(
-          live.seed === state.seed &&
-            marker?.tasksVersion === 1 &&
-            marker.status === "pending" &&
-            context.sourceRevision === foundingTaskRevision(live, characterId, "routine") &&
-            foundingTaskRevision(live, characterId, "wish") === revision,
-          "initial Wish context changed before admission",
-        );
-        marker.tasks ??= {};
-        const tasks = (marker.tasks[characterId] ??= {});
-        if (tasks.wish?.status !== "completed" && tasks.wish?.revision !== revision)
-          tasks.wish = {
-            contract: 1,
-            revision,
-            jobId: foundingSlot("wish", characterId),
-            status: "running",
-            attempt: 1,
-            error: "",
-          };
-      },
-      { memories: true },
-    );
-    if (admitted.foundingPreparation?.tasks?.[characterId]?.wish?.status === "completed") return;
+    await ports.mutateVillageState((live) => {
+      const marker = live.foundingPreparation;
+      memoryRequire(live.seed === state.seed && marker?.status === "pending", "preparation changed");
+      marker.tasks ??= {};
+      marker.tasks[characterId] ??= {};
+      marker.tasks[characterId].wish ??= {
+        contract: 1,
+        revision,
+        jobId: foundingSlot("wish", characterId),
+        status: "pending",
+        attempt: 0,
+        error: "",
+      };
+    });
     await ports.queueBackgroundJob({
       kind: "wish",
       subjectId: characterId,

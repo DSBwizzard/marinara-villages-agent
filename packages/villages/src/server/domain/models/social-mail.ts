@@ -33,7 +33,6 @@ export type MailboxMessage = {
   status: "pending" | "delivered" | "cancelled" | "undeliverable";
   deliveredAt?: string;
   readAt?: string;
-  withheld?: "protection-changed";
   replyTo?: string;
   error?: string;
   admissionFailed?: true;

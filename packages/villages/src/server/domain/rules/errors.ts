@@ -16,16 +16,6 @@ export class VillagesRequestError extends Error {
   }
 }
 
-/** Preserve the upstream status while the package route still reports a gateway failure. */
-export class EngineRefusal extends VillagesRequestError {
-  constructor(
-    readonly engineStatus: number,
-    message: string,
-  ) {
-    super(502, message);
-  }
-}
-
 export function badRequest(message: string, code?: string): VillagesRequestError {
   return new VillagesRequestError(400, message, code);
 }

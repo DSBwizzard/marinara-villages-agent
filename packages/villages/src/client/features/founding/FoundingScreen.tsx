@@ -1,4 +1,3 @@
-import { foundingConnectionUnavailable } from "./suggestion-request.js";
 import { FoundingVenueReview } from "./FoundingVenueReview.js";
 import { FoundingArrangements } from "./FoundingArrangements.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
@@ -194,8 +193,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       : "") ||
     "";
   const venueConnectionUnavailable =
-    setupStep === FOUNDING_STEP.Venues &&
-    foundingConnectionUnavailable(rawSetupProblem, setupWorkspace.suggestionRequest?.failureCode);
+    setupStep === FOUNDING_STEP.Venues && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
   const setupProblem = venueConnectionUnavailable
     ? "The System connection is unavailable. Choose another model or review it in Engine."
     : rawSetupProblem;

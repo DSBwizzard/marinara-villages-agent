@@ -67,7 +67,7 @@ export function hasUnreadMail(state: MailboxState | undefined) {
   return (
     !!state &&
     Object.values(state.messages).some(
-      (message) => message.to.id === "player" && message.status === "delivered" && !message.readAt && !message.withheld,
+      (message) => message.to.id === "player" && message.status === "delivered" && !message.readAt,
     )
   );
 }
@@ -151,15 +151,13 @@ export function createMailboxPresentation(village: VillageState, state: MailboxS
       at: message.at,
       status: message.status,
       read: !!message.readAt,
-      ...(message.withheld ? { withheld: message.withheld } : {}),
       replyPending:
         message.from.id === "player" &&
         message.status === "pending" &&
         (!job || !["failed", "interrupted"].includes(job.status)),
       retryAvailable,
-      error: message.withheld
-        ? "This letter is unavailable after a memory correction or deletion."
-        : message.status === "undeliverable"
+      error:
+        message.status === "undeliverable"
           ? message.error
           : retryAvailable
             ? "Letter processing needs attention."

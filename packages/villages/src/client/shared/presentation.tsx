@@ -1,4 +1,3 @@
-import { PictureReadFailure } from "../../shared/helpers/town-map-upload.js";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import type { SceneView, VillageSnapshot, VillageVenue } from "../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "./constants.js";
@@ -147,7 +146,7 @@ export function drawVillagesNodes(nodes: readonly VillagesMarkdownNode[], keyPre
   });
 }
 
-/** Bold-italic uses the same two nested elements as the Engine. */
+/** The six marks, one element each. Bold-italic is the two the Engine nests. */
 function drawVillagesStyled(node: VillagesStyledNode, at: string) {
   const children = drawVillagesNodes(node.children, `${at}-`);
   switch (node.style) {
@@ -165,12 +164,6 @@ function drawVillagesStyled(node: VillagesStyledNode, at: string) {
       return <u key={at}>{children}</u>;
     case "strikethrough":
       return <del key={at}>{children}</del>;
-    case "scene-direction":
-      return (
-        <em key={at} data-scene-direction="true">
-          {children}
-        </em>
-      );
     default:
       return (
         <mark key={at} className={`${ELEMENT_TAG}-chat-md-highlight`}>
@@ -385,7 +378,7 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new PictureReadFailure("unreadable", "That picture could not be read."));
+    reader.onerror = () => reject(new Error("That picture could not be read."));
     reader.readAsDataURL(file);
   });
 }
@@ -403,7 +396,7 @@ export function measureImage(src: string): Promise<{ width: number; height: numb
     const image = new Image();
     const timer = window.setTimeout(() => {
       image.onload = image.onerror = null;
-      reject(new PictureReadFailure("timeout", "The picture is taking too long to open. Try again."));
+      reject(new Error("The picture is taking too long to open. Try again."));
     }, 30_000);
     image.onload = () => {
       window.clearTimeout(timer);
@@ -411,7 +404,7 @@ export function measureImage(src: string): Promise<{ width: number; height: numb
     };
     image.onerror = () => {
       window.clearTimeout(timer);
-      reject(new PictureReadFailure("unreadable", "That picture could not be read."));
+      reject(new Error("That picture could not be read."));
     };
     image.src = src;
   });

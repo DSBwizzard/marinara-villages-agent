@@ -10,7 +10,7 @@ export function settleTripsForAttendance(state: VillageState, at: Date, mutate: 
   return mutate(
     (current) => {
       if (villageWorldScope(current) !== scope || current.clock?.revision !== state.clock?.revision)
-        throw conflict("The Village clock changed. Refresh the Village.", "CLOCK_CHANGED");
+        throw conflict("The Village clock changed. Refresh the Village.");
       settleVisitorTrip(current, at);
     },
     { memories: true },

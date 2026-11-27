@@ -26,7 +26,7 @@ import {
   spriteMood,
 } from "../../../shared/helpers/sprite-variants.js";
 import { asRecord, asString } from "../../domain/rules/coerce.js";
-import { badRequest, conflict, badGateway, notFound, EngineRefusal } from "../../domain/rules/errors.js";
+import { badRequest, conflict, badGateway, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { automaticVisitorSprites } from "../../domain/rules/visitor-sprites.js";
 import { withMariSpriteDefaults } from "../../domain/rules/professor-mari.js";
@@ -137,7 +137,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
         );
       response = catalog.sprites;
     } catch (error) {
-      if (!(error instanceof EngineRefusal) || error.engineStatus !== 404) throw error;
+      if (!(error instanceof VillagesRequestError) || !error.message.includes("(404)")) throw error;
       response = await ports.villageEngineJson("/api/sprites/" + key, { signal });
     }
     if (!Array.isArray(response)) throw badGateway("The Engine returned an invalid sprite list.");

@@ -16,7 +16,6 @@ export type PersonalMailSummary = {
   at: string;
   status: "pending" | "applying" | "delivered" | "cancelled" | "undeliverable";
   read: boolean;
-  withheld?: "protection-changed";
   replyPending: boolean;
   error?: string;
   retryAvailable: boolean;

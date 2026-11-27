@@ -395,7 +395,6 @@ export function Mailbox({
     selected &&
     selected.message.fromId !== "player" &&
     selected.message.status === "delivered" &&
-    !selected.message.withheld &&
     !selected.message.read
       ? selected.message.id
       : "";
@@ -722,11 +721,9 @@ export function Mailbox({
                   <span>
                     <strong>{thread.residentName}</strong>
                     <small>
-                      {message.withheld
-                        ? "Unavailable"
-                        : message.fromId !== "player" && !message.read
-                          ? `New · ${new Date(message.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
-                          : message.preview}
+                      {message.fromId !== "player" && !message.read
+                        ? `New · ${new Date(message.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                        : message.preview}
                     </small>
                   </span>
                 </button>
@@ -849,7 +846,7 @@ export function Mailbox({
               </section>
             ) : selected ? (
               <>
-                {selected.message.withheld ? null : selected.message.fromId !== "player" && !selected.message.read ? (
+                {selected.message.fromId !== "player" && !selected.message.read ? (
                   <p role="status">Opening letter…</p>
                 ) : (
                   <LetterPages

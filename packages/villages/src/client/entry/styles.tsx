@@ -555,13 +555,6 @@ ${DISCLOSURE_STYLES}
   color: var(--marinara-chat-chrome-panel-text, var(--foreground));
 }
 .${ELEMENT_TAG}-chat-vn-aside[data-register="whisper"] .${ELEMENT_TAG}-chat-vn-aside-text { font-style: italic; }
-.${ELEMENT_TAG}-chat-vn-text [data-scene-direction="true"],
-.${ELEMENT_TAG}-chat-vn-aside-text [data-scene-direction="true"] {
-  display: block;
-  color: var(--marinara-chat-chrome-panel-text, var(--foreground));
-  -webkit-text-fill-color: currentColor;
-  font-weight: normal;
-}
 .${ELEMENT_TAG}-chat-vn-beat {
   margin: 0; align-self: flex-start; max-width: 100%;
   padding: .5rem .625rem; border-radius: .625rem;

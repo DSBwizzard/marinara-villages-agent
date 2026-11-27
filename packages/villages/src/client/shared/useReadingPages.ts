@@ -34,7 +34,6 @@ function measurementNodes(nodes: readonly VillagesMarkdownNode[]): DocumentFragm
                 underline: "u",
                 strikethrough: "del",
                 highlight: "mark",
-                "scene-direction": "em",
               } as const
             )[node.style];
     const element = document.createElement(name);
@@ -45,7 +44,6 @@ function measurementNodes(nodes: readonly VillagesMarkdownNode[]): DocumentFragm
         element.append(emphasis);
       } else element.append(measurementNodes(node.children));
       if (node.style === "highlight") element.className = tag + "-chat-md-highlight";
-      if (node.style === "scene-direction") element.dataset.sceneDirection = "true";
     } else {
       element.textContent = node.text;
       element.className = tag + "-chat-md-" + node.kind;
@@ -63,13 +61,9 @@ export function useReadingPages(
   readingKey: string,
   readingRef: RefObject<HTMLDivElement | null>,
   position?: ReadingPosition,
-  {
-    reveal = false,
-    paginate = true,
-    parse = parseVillagesInlineMarkdown,
-  }: { reveal?: boolean; paginate?: boolean; parse?: typeof parseVillagesInlineMarkdown } = {},
+  { reveal = false, paginate = true }: { reveal?: boolean; paginate?: boolean } = {},
 ) {
-  const nodes = useMemo(() => parse(text), [parse, text]);
+  const nodes = useMemo(() => parseVillagesInlineMarkdown(text), [text]);
   const length = readingText(nodes).length;
   const [layout, setLayout] = useState<{ key: string; pages: ReadingPage[] }>({ key: "", pages: [] });
   const localCheckpoint = useRef({ cursor: { key: "", offset: 0 } });

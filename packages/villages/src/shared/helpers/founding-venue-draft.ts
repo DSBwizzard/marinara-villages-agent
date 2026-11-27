@@ -24,7 +24,7 @@ export function applyFoundingVenueDraft(venue: VillageVenue, plan: FoundingVenue
       ...base,
       ownerId: prior?.ownerId ?? "",
       access: prior?.access ?? zone.access ?? draftZonePolicy(venue, {}, zone.private),
-      ...zoneDayNightDefault(zone.dayNight),
+      ...(zone.description !== base.description ? zoneDayNightDefault(zone.dayNight) : {}),
       name: zone.name,
       purpose: zone.purpose,
       description: zone.description,
@@ -37,7 +37,7 @@ export function applyFoundingVenueDraft(venue: VillageVenue, plan: FoundingVenue
   const spaces = zones.filter((zone) => !plan.zones!.find((draft) => draft.id === zone.id)!.private);
   return {
     ...venue,
-    ...zoneDayNightDefault(plan.dayNight),
+    ...(plan.description !== venue.description ? zoneDayNightDefault(plan.dayNight) : {}),
     name: plan.name,
     venueType: plan.venueType,
     form: plan.form,

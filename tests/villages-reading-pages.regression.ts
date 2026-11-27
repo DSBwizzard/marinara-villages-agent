@@ -1,59 +1,10 @@
 import assert from "node:assert/strict";
-import {
-  isAttributedSceneDialogue,
-  sceneDialogueNodes,
-} from "../packages/villages/src/client/features/scenes/scene-dialogue.js";
 import { parseVillagesInlineMarkdown } from "../packages/villages/src/client/shared/villages-inline-markdown.js";
 import {
   paginateReading,
   readingText,
   sliceReadingNodes,
 } from "../packages/villages/src/client/shared/villages-reading-pages.js";
-
-for (const source of [
-  '"Come in." *She opens the door.* "Watch the step."',
-  "“It’s open.” She checks the latch. “I said ‘come in’.”",
-  "「どうぞ」彼女は扉を開けた。「足元にご注意を」",
-]) {
-  const nodes = sceneDialogueNodes(source);
-  const original = readingText(parseVillagesInlineMarkdown(source));
-  assert.deepEqual(
-    nodes.map((node) => (node.kind === "styled" ? node.style : node.kind)),
-    ["text", "scene-direction", "text"],
-  );
-  assert.equal(readingText(nodes), original);
-  const pages = paginateReading(nodes, (start, end) => end - start <= 15);
-  assert.equal(pages.map(({ start, end }) => readingText(sliceReadingNodes(nodes, start, end))).join(""), original);
-  assert(
-    pages.some(({ start, end }) =>
-      sliceReadingNodes(nodes, start, end).some((node) => node.kind === "styled" && node.style === "scene-direction"),
-    ),
-  );
-}
-
-for (const source of [
-  'We call it "the board." I brought it.',
-  "“Tea” or “coffee”?",
-  "“Tea” or “coffee”",
-  "“Red”, “blue”, “green”",
-  "“First.”\n\nShe puts down the note.\n\n“Second.”",
-  '"Come in." She opens the door.',
-  '"Come in." She opens the door. "Watch the step.',
-  '"He said "really" out loud." She opens the door. "Watch the step."',
-  '"Read `\"sample\"`." She nods. "Keep going."',
-  '"Read [\"sample\"](https://example.com)." She nods. "Keep going."',
-  "“He said “right here” already.” She nods. “Keep going.”",
-  '"The word is \\"example\\"." She nods. "Keep going."',
-])
-  assert.deepEqual(sceneDialogueNodes(source), parseVillagesInlineMarkdown(source));
-const paragraphs = "“Wait.” She puts down the note. “Now.”\n\nThe ink is dry.";
-const formatted = sceneDialogueNodes(paragraphs);
-assert.equal(readingText(formatted), paragraphs);
-assert.equal(formatted.filter((node) => node.kind === "styled" && node.style === "scene-direction").length, 1);
-assert(isAttributedSceneDialogue({ role: "assistant", kind: "whisper", speakerId: "resident" }));
-assert(!isAttributedSceneDialogue({ role: "user", kind: "dialogue", speakerId: "player" }));
-assert(!isAttributedSceneDialogue({ role: "assistant", kind: "narration", speakerId: "__venue_scene__" }));
-assert(!isAttributedSceneDialogue({ role: "assistant", kind: "dialogue", speakerId: "__venue_scene__" }));
 
 const source =
   "First sentence. **A longer bold sentence with *nested emphasis* inside it continues for several words.** Last sentence.";

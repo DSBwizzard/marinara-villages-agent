@@ -75,19 +75,9 @@ await withBrowser(browser, async () => {
       });
     const first = await pending();
     await expect(page.getByRole("button", { name: "Close Transcript", exact: true })).toBeEnabled();
-    const initial = payload(80, { olderCursor: "older-80" });
-    Object.assign(initial.lines[1], {
-      kind: "whisper",
-      targetId: "player",
-      content: "“Open it.” She folds the note. “Keep it here.”",
-    });
-    await finish(first, initial);
+    await finish(first, payload(80, { olderCursor: "older-80" }));
     await expect(rows).toHaveCount(40);
     await expect(rows.first()).toContainText("Exact paragraph 80");
-    const whisper = page.locator('[data-line-id="line-81"]');
-    await expect(whisper).toHaveAttribute("data-delivery", "whisper");
-    await expect(whisper.locator("[data-scene-direction]")).toHaveText("She folds the note.");
-    await expect(whisper).toContainText("to you");
     await expect(page.getByRole("button", { name: "Refresh", exact: true })).toHaveCount(0);
     await expect(page.locator(".marinara-capability-villages-chat-vn-portrait img")).toHaveCount(2);
     await expect(page.locator(".marinara-capability-villages-chat-vn-portrait img").first()).toHaveAttribute(

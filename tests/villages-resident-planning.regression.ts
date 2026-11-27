@@ -330,27 +330,6 @@ await runCase("resident-planning/mail", async () => {
   } finally {
     storage.release();
   }
-  const protectedMail = fixture();
-  await protectedMail.service.reconcile(protectedMail.now);
-  const protectedInput = protectedMail.queued[0].input;
-  protectedMail.payload({ mail: { senderId: "mara", text: "A cobalt vessel is on my shelf. — Mara" } });
-  const protectedResult = await protectedMail.service.handler.generate(protectedInput);
-  protectedMail.service.handler.apply(protectedMail.state, protectedInput, protectedResult, { retrying: false });
-  const unread = Object.values(protectedMail.state.mailbox.messages)[0];
-  assert.equal(unread.reading!.keep.length, 0);
-  protectedMail.correct();
-  const beforeOpening = structuredClone(protectedMail.state.episodes);
-  readDeliveredLetter(protectedMail.state, unread.id, new Date().toISOString());
-  const withheld = protectedMail.state.mailbox.messages[unread.id];
-  assert.equal(withheld.withheld, "protection-changed");
-  assert.equal(withheld.readAt, undefined);
-  assert.equal(withheld.text, unread.text);
-  assert.deepEqual(withheld.reading, unread.reading);
-  assert.deepEqual(protectedMail.state.episodes, beforeOpening);
-  const lastRevision = protectedMail.state.mailbox.revision;
-  readDeliveredLetter(protectedMail.state, unread.id, new Date().toISOString());
-  assert.equal(protectedMail.state.mailbox.revision, lastRevision);
-  assert.equal(protectedMail.calls.length, 1);
 });
 await runCase("resident-planning/pre-spend", async () => {
   for (const changed of ["room", "attendance"]) {
