@@ -86,7 +86,7 @@ await withBrowser(browser, async () => {
     await expect(returnButton).toBeVisible();
     const menuChip = await chip.boundingBox();
     assert.ok(mapChip.x < 20, "the chip stays on the left on the Map");
-    assert.ok(width - menuChip.x - menuChip.width < 20, "the menu chip sits at the right edge");
+    assert.ok(menuChip.x < 20 && menuChip.y < 20, "the menu chip sits in the top-left corner");
     await chip.click();
     await expect(page.getByText("1 of 2 ready", { exact: true })).toBeVisible();
     await returnButton.click({ trial: true });
@@ -96,6 +96,21 @@ await withBrowser(browser, async () => {
     await page.keyboard.press("Escape");
     await expect(chip).toHaveAttribute("aria-expanded", "false");
     await expect(chip).toBeFocused();
+    agenda = {
+      ...agenda,
+      failure: {
+        name: "Mara",
+        message: "The model reply was cut short. Retry to finish preparing Mara’s Agenda.",
+        id: "failed-agenda",
+        expectedAttempt: 1,
+        expectedInstanceId: "attempt-one",
+      },
+    };
+    await page.getByRole("button", { name: "Agenda preparation needs attention" }).click({ timeout: 8000 });
+    await expect(page.getByRole("button", { name: "Retry Mara" })).toBeVisible();
+    await returnButton.click({ trial: true });
+    await menuNavigation.getByRole("button", { name: "Projects", exact: true }).click({ trial: true });
+    delete agenda.failure;
     await menuNavigation.getByRole("button", { name: "Settings", exact: true }).click();
     const sections = page.getByRole("combobox", { name: "Section", exact: true });
     if (width <= 700) await sections.selectOption("repair");
@@ -105,7 +120,7 @@ await withBrowser(browser, async () => {
     await expect(chip).toHaveCount(0);
     await repair.getByRole("button", { name: "Main menu", exact: true }).click();
     await expect(repair).toBeHidden();
-    await expect(chip).toBeVisible();
+    await expect(chip).toBeVisible({ timeout: 8000 });
     agenda.expired = true;
     await expect(chip).toBeVisible();
     await expect(dialog).toBeHidden();

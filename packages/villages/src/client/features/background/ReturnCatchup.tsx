@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { AgendaCatchupView, ReturnCatchupView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { AgendaWaiting } from "../../shared/agenda-access.js";
+import { ELEMENT_TAG } from "../../shared/constants.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 
@@ -160,7 +161,13 @@ export function ReturnCatchup({
         .villages-catchup-card small { color:#bdc8e2; line-height:1.4; }
         .villages-catchup-card .villages-zone-map-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
         .villages-agenda-activity { position:absolute; z-index:25; top:7.25rem; left:.875rem; color:#f0dfbc; font:14px/1.4 system-ui,sans-serif; }
-        .villages-agenda-activity[data-menu] { top:.875rem; right:.875rem; left:auto; }
+        .villages-agenda-activity[data-menu] { top:.875rem; }
+        .villages-frame:has(.villages-agenda-activity[data-menu]) .${ELEMENT_TAG}-desk-workspace[data-desk]:not([data-desk="none"]) {
+          padding-top:4.75rem;
+        }
+        .villages-frame:has(.villages-agenda-activity[data-menu][data-failed] .villages-agenda-details) .${ELEMENT_TAG}-desk-workspace[data-desk]:not([data-desk="none"]) {
+          padding-top:10rem;
+        }
         .villages-agenda-activity .villages-agenda-chip { display:grid; place-items:center; width:44px; height:44px; padding:0; border:1px solid #a39b8480; border-radius:.65rem; background:#393047; color:inherit; box-shadow:0 .25rem .75rem #0004; cursor:pointer; }
         .villages-agenda-chip[aria-expanded=true] { border-color:#b6aa95; }
         .villages-agenda-glyph { position:relative; width:24px; height:24px; }
@@ -169,9 +176,12 @@ export function ReturnCatchup({
         @keyframes villages-agenda-spin { to { transform:rotate(360deg); } }
         @media(prefers-reduced-motion:reduce) { .villages-agenda-spinner { animation:none; } }
         .villages-agenda-details { position:absolute; left:0; top:calc(100% + .5rem); box-sizing:border-box; width:max-content; max-width:min(22rem,calc(100vw - 2rem)); display:grid; gap:.3rem; padding:.65rem .85rem; background:#393047; border:1px solid #a39b8480; border-radius:.65rem; box-shadow:0 .75rem 2rem #0005; }
-        .villages-agenda-activity[data-menu] .villages-agenda-details { right:0; left:auto; }
-        @media(max-width:727px) {
-          .villages-agenda-activity[data-menu] { top:7.25rem; }
+        .villages-agenda-activity[data-menu] .villages-agenda-details {
+          left:calc(100% + .5rem);
+          top:0;
+          max-width:min(22rem,calc(100vw - 5rem));
+          max-height:8.5rem;
+          overflow:auto;
         }
         .villages-agenda-details small { color:#d0c1b3; }
         .villages-agenda-details p { margin:0; }
@@ -183,7 +193,12 @@ export function ReturnCatchup({
           </p>
         ) : null}
         {enabled && agenda && !modal && !repair ? (
-          <div className="villages-agenda-activity" data-menu={menu || undefined} ref={activity}>
+          <div
+            className="villages-agenda-activity"
+            data-menu={menu || undefined}
+            data-failed={!!agenda.failure || undefined}
+            ref={activity}
+          >
             <button
               type="button"
               className="villages-agenda-chip"

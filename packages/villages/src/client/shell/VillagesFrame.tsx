@@ -28,7 +28,7 @@ export function VillagesFrame({
         ),
       }}
     >
-      <div style={{ position: "relative", height: "100%" }}>
+      <div className="villages-frame" style={{ position: "relative", height: "100%" }}>
         <ReturnCatchup
           key={controller.snapshot?.worldScope ?? ""}
           enabled={controller.visible && !!controller.snapshot?.isFounded && controller.screen !== "preparing"}
