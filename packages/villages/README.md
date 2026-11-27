@@ -246,7 +246,7 @@ Short named steps keep each editor within the window. **Previous**, **Next**, **
 
 **Repair history** is a compact When / Action / Target / Change list. Open an entry for its recorded changes. It has no Undo controls; make another reviewed correction when necessary. **World → Village snapshots** offers named manual snapshots, deletion and reviewed whole-Village restoration. Restoration requires an explicit replacement acknowledgment and settled Scene/recovery work. It saves the current world first and preserves spending, time and replay protection. Internal recovery and automatic safety snapshots retain existing compatibility behavior.
 
-Opening REPAIR and applying ordinary corrections preserve unfinished Scenes, accepted history and drafts. Leaving a review releases its server preview while keeping the edit draft. If a preview expires, review again before saving. A restored snapshot can reopen its saved idle Scene under its original temporal contract; a draft from another Scene remains available to copy. [REPAIR implementation scope](../../docs/repair.md) distinguishes this interface foundation from remaining domain editors and scheduled snapshots.
+Opening REPAIR and applying ordinary corrections preserve unfinished Scenes, accepted history and drafts. Leaving a review releases its server preview while keeping the edit draft. If a preview expires, review again before saving. A restored snapshot can reopen its saved idle Scene under its original temporal contract; a draft from another Scene remains available to copy. See the [REPAIR implementation scope](../../docs/repair.md) for supported controls and delivery details.
 
 ## Wishes and Projects
 
