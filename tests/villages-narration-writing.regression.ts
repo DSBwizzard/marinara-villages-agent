@@ -320,7 +320,7 @@ await runCase("narration-writing/new-encounter", async () => {
   const newWithMaraPresent = await turn("mara-present", request, "Narration: Shoppers mill about.");
   assert(newWithMaraPresent.publication.readset.source.scene.contactGeneration?.actorIds?.includes(f.id));
   assert(newWithMaraPresent.prompt.includes(request));
-  assert.match(newWithMaraPresent.prompt, /If they seek an unfamiliar person/u);
+  assert.match(newWithMaraPresent.prompt, /"localKey":"new:[^"]+"/u);
 
   f.scene.activeIds = [];
   f.scene.participants = [];

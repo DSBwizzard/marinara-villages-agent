@@ -266,6 +266,43 @@ await runCase("narration-acceptance/requested-memory", () => {
     savedDirect.sources[0].perceptions.map(({ actorId }) => actorId),
     [direct.id],
   );
+  const noisy = fixture("I’ll mark the index with a blue ribbon. Please keep that between us.");
+  const noisyReply = noisy.publication(
+    {
+      segments: [
+        {
+          kind: "dialogue",
+          speakerId: noisy.id,
+          text: "I've remembered it and passed it on.",
+          requires: ["extra-note"],
+        },
+      ],
+      keep: [{ ...noisy.keep, id: "extra-note", for: ["player"] }],
+    },
+    "noisy-reminder",
+    true,
+    noisy.id,
+  );
+  assert.equal(noisyReply.readset.codeRequestedMemory, true);
+  const recoveredReminder = acceptNarrationContinuity(noisy.state, noisyReply, "noisy-reminder", later);
+  assert.equal(recoveredReminder.held, false);
+  assert.deepEqual(
+    recoveredReminder.episode!.segments.map(({ kind, speakerId, targetId, content }) => ({
+      kind,
+      speakerId,
+      targetId,
+      content,
+    })),
+    [{ kind: "whisper", speakerId: noisy.id, targetId: "player", content: "I'll remember that." }],
+  );
+  assert.deepEqual(
+    noisy.state.continuity.versions.map(({ text }) => text),
+    ["Player said: " + noisy.input],
+  );
+  assert.deepEqual(
+    noisy.state.continuity.versions[0].sources[0].perceptions.map(({ actorId }) => actorId),
+    [noisy.id],
+  );
   assert.throws(() => direct.publication({}, "operation", true, "absent"), /someone in this Zone/);
   const group = fixture(`"Remember this: ${fact}."`, true);
   const other = Object.keys(group.state.worldPlaces.npcs)[0];

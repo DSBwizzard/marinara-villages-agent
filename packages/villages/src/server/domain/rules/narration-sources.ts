@@ -246,14 +246,15 @@ export function readSceneNarrationReply(
   }
   const recipient = readset.source.rememberFor;
   if (recipient) {
+    const segments = raw.segments;
     memoryRequire(
       !raw.halt && !visit && (!Array.isArray(raw.commands) || raw.commands.length === 0),
       "a reminder reply cannot change the Scene",
     );
     memoryRequire(
-      Array.isArray(raw.segments) &&
-        raw.segments.length > 0 &&
-        raw.segments.every((value) => {
+      Array.isArray(segments) &&
+        segments.length > 0 &&
+        segments.every((value) => {
           const row = asRecord(value);
           return (
             row.kind === "dialogue" &&
@@ -266,15 +267,20 @@ export function readSceneNarrationReply(
       "only the reminder recipient can reply",
     );
     const keeps = Array.isArray(raw.keep) ? raw.keep : [];
-    memoryRequire(
-      readset.codeRequestedMemory
-        ? keeps.length === 0
-        : keeps.length === 1 && asRecord(keeps[0]).id === "remember-fact",
-      "a reminder reply can only save the explicit reminder",
-    );
+    if (!readset.codeRequestedMemory)
+      memoryRequire(
+        keeps.length === 1 && asRecord(keeps[0]).id === "remember-fact",
+        "a reminder reply can only save the explicit reminder",
+      );
+    // This capture already authorizes one exact private reminder. Extra notes and the prose that may depend on them
+    // carry no authority. Use a plain acknowledgment tied to the actual saved reminder.
+    const recover = readset.codeRequestedMemory && keeps.length > 0;
+    const privateReply = recover
+      ? [{ kind: "dialogue", speakerId: recipient, text: "I'll remember that.", requires: ["remember-fact"] }]
+      : segments;
     raw = {
-      ...raw,
-      segments: raw.segments.map((value) => {
+      ...(recover ? {} : raw),
+      segments: privateReply.map((value) => {
         const { presentation: _presentation, ...row } = asRecord(value);
         return { ...row, delivery: "whisper", targetId: "player" };
       }),
