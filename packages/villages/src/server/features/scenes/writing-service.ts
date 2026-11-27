@@ -624,7 +624,7 @@ export function createSceneWriting({
               {
                 evidenceId: "native-access",
                 text: narrationAccessPrompt(access, scene.placeId, localVisitZones, !tagged && !nativeCommands),
-                optional: "memory" as const,
+                ...(!canInviteForVisit ? { optional: "memory" as const } : {}),
               },
             ]
           : []),
@@ -716,7 +716,7 @@ export function createSceneWriting({
                 JSON.stringify(followingMenu)
               : "") +
             (sceneSpeechActions.length
-              ? "\nBefore writing talk about crossing, following or entry, check the choices above. If someone settles that decision this turn, use [action N]: with the matching number and leave its text empty. A yes or no in ordinary dialogue alone leaves the decision unsettled. If no numbered choice fits, leave the plan open in ordinary dialogue. Use separate speaker lines for other subjects."
+              ? "\nFor a definite answer about accompanying the player or letting them enter, choose the matching number above and write [action N]: with no text after the colon. A yes or no in ordinary dialogue leaves the choice unsettled. If none fits, leave the plan open. Use the dedicated command for an actual crossing or outing-wide sneaking agreement."
               : "")
           : 'Return "segments" and any "keep" or "commands" in one JSON object.'),
     );
