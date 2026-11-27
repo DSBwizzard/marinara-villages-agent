@@ -35,6 +35,7 @@ export function VillagesFrame({
           onSettled={controller.loadSnapshot}
           onBack={() => void controller.goHome()}
           menu={menu}
+          repair={controller.screen === "menu" && controller.menuPage === "repair"}
         >
           <LoreActivity
             key={controller.snapshot?.worldScope ?? ""}

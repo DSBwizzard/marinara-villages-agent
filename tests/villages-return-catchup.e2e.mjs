@@ -40,6 +40,20 @@ await withBrowser(browser, async () => {
         }
         value = { batch, agenda };
       } else if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
+      else if (path.endsWith("/repair"))
+        value = {
+          seed: fixture.worldScope,
+          identity: fixture.worldScope,
+          records: [],
+          history: [],
+          historyOffset: 0,
+          historyTotal: 0,
+          checkpoints: [],
+          checkpointOffset: 0,
+          checkpointTotal: 0,
+          people: [],
+          sceneOpen: false,
+        };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
       await fulfill(route, { status: 200, json: value });
@@ -71,8 +85,8 @@ await withBrowser(browser, async () => {
     const returnButton = page.getByRole("button", { name: /Return to village|← Village/, exact: true });
     await expect(returnButton).toBeVisible();
     const menuChip = await chip.boundingBox();
-    assert.equal(menuChip.x, mapChip.x);
-    assert.ok(menuChip.y < mapChip.y && mapChip.y - menuChip.y <= 18);
+    assert.ok(mapChip.x < 20, "the chip stays on the left on the Map");
+    assert.ok(width - menuChip.x - menuChip.width < 20, "the menu chip sits at the right edge");
     await chip.click();
     await expect(page.getByText("1 of 2 ready", { exact: true })).toBeVisible();
     await returnButton.click({ trial: true });
@@ -82,6 +96,16 @@ await withBrowser(browser, async () => {
     await page.keyboard.press("Escape");
     await expect(chip).toHaveAttribute("aria-expanded", "false");
     await expect(chip).toBeFocused();
+    await menuNavigation.getByRole("button", { name: "Settings", exact: true }).click();
+    const sections = page.getByRole("combobox", { name: "Section", exact: true });
+    if (width <= 700) await sections.selectOption("repair");
+    else await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+    const repair = page.locator(".villages-repair");
+    await expect(repair).toBeVisible();
+    await expect(chip).toHaveCount(0);
+    await repair.getByRole("button", { name: "Main menu", exact: true }).click();
+    await expect(repair).toBeHidden();
+    await expect(chip).toBeVisible();
     agenda.expired = true;
     await expect(chip).toBeVisible();
     await expect(dialog).toBeHidden();
