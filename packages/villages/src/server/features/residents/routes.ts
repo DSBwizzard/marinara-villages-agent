@@ -311,10 +311,13 @@ export function registerAgendaRoutes(engine: FastifyInstance) {
           throw badRequest("Choose an agenda request identity.");
         const id = readCharacterId(request.params.characterId);
         if (request.body.rebuild === true) {
-          const ids = request.body.characterIds;
-          if (!Array.isArray(ids) || !ids.includes(id) || ids.length > 12 || new Set(ids).size !== ids.length)
+          const scope = request.body.characterIds;
+          if (!Array.isArray(scope) || scope.length > 12)
             throw badRequest("Choose distinct residents whose Agendas should be rebuilt.");
-          await rebuildResidentAgendas(ids.map(readCharacterId), request.body.actionId);
+          const ids = scope.map(readCharacterId);
+          if (!ids.includes(id) || new Set(ids).size !== ids.length)
+            throw badRequest("Choose distinct residents whose Agendas should be rebuilt.");
+          await rebuildResidentAgendas(ids, request.body.actionId);
           return reply.code(202).send({ actionId: request.body.actionId });
         }
         await clearVillagerAgenda(id, request.body.actionId);

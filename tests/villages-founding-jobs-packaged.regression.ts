@@ -340,6 +340,12 @@ try {
       payload: { actionId: "fresh-sleep", rebuild: true, characterIds: ["a", "b"] },
     });
   const completedMarker = structuredClone(records.get("villages-village").data.foundingPreparation);
+  const duplicateScope = await app.inject({
+    method: "POST",
+    url: "/api/villages/agendas/a/regenerate",
+    payload: { actionId: "duplicate-scope", rebuild: true, characterIds: ["a", " a "] },
+  });
+  assert.equal(duplicateScope.statusCode, 400);
   const rebuilt = await rebuild();
   assert.equal(rebuilt.statusCode, 202, rebuilt.body);
   assert.equal((await rebuild()).statusCode, 202, "An identical admission reuses the pending request");
