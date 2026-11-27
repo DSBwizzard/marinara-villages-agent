@@ -2138,4 +2138,103 @@ await runCase("narration-writing/ambiguous-recall-fallback", async () => {
     f.messages().map(({ content }) => content.replace(/"calendar":\{[^}]*\}/u, '"calendar":{}'));
   assert.deepEqual(normalized(off), normalized(fallback));
   failed.dispose();
+
+  const f = fixture();
+  const earlier = "The awning should clear the Hearth doors.";
+  const privateWords = "A private ledger records a hidden commission.";
+  const privateReport = "A doorway report is kept for the current exchange.";
+  const shown = "I unfold a drawing of a roof over the church entrance.";
+  for (const [id, sceneId, rows] of [
+    [
+      "sketch",
+      "hearth",
+      [
+        [earlier, [f.id, "player"]],
+        [privateWords, [f.id]],
+        [privateReport, [f.id, "player"]],
+      ],
+    ],
+    ["recent-lodging", "earlier-trail", [["The alms rooms are near the stair.", [f.id, "player"]]]],
+    ["lodging", f.scene.id, [["The room has been warm enough.", [f.id, "player"]]]],
+  ] as const) {
+    const segments: AcceptedEpisode["segments"] = rows.map(([content, heardBy], index) => ({
+      id: id + "-" + index,
+      role: "assistant",
+      kind: "dialogue",
+      speakerId: f.id,
+      name: "Mara",
+      at,
+      zoneId: "parlor",
+      content,
+      heardBy: [...heardBy],
+      ...(content === privateReport ? { contactReport: true } : {}),
+    }));
+    const show = id === "sketch";
+    const privateInput = show ? shown + " Earlier private draft." : "Current private draft.";
+    const capture = narrationContinuityContext(f.state, { ...f.scene, id: sceneId }, f.venue, id, privateInput, at);
+    const grounding = show
+      ? [
+          bindNarrationSource(
+            {
+              input: shown,
+              ground: { kind: "visible-action", to: [f.id, "player"] },
+            },
+            { ...capture.source, episodeId: id, labels: {}, lines: [], native: {}, moves: [] },
+          ),
+        ]
+      : [];
+    f.state.episodes = appendEpisode(
+      f.state.episodes,
+      {
+        format: 1,
+        id,
+        seed: f.state.seed,
+        sceneId,
+        submissionId: id,
+        operationId: id,
+        capturedAt: at,
+        acceptedAt: at,
+        admittedContinuityRevision: 0,
+        privateInput,
+        responseDigest: memoryHash(segments),
+        actors: [f.id, "player"].map((id) => ({
+          id,
+          incarnation: continuityActor(f.state, id)!.incarnation,
+          zoneId: "parlor",
+        })),
+        segments,
+        grounding,
+        continuityVersionIds: [],
+        offered: [],
+        commandReceipts: [],
+        dependencies: {},
+      },
+      f.state.seed,
+    );
+  }
+  f.respondWith(`[${f.id}]: Are you asking about the awning at the Hearth?`);
+  const reply = await f.writing.generate(
+    f.scene,
+    '"What would it take to get it started?"',
+    "chat",
+    undefined,
+    undefined,
+    undefined,
+    true,
+  );
+  const prompt = f
+    .messages()
+    .map(({ content }) => content)
+    .join("\n");
+  assert(prompt.includes(earlier));
+  assert(prompt.includes(shown));
+  assert(!prompt.includes(privateWords));
+  assert(!prompt.includes(privateReport));
+  assert(!prompt.includes("Earlier private draft."));
+  assert(!Object.values(reply.readset.source.historical).some(({ episodeId }) => episodeId === "sketch"));
+  assert(!reply.readset.projects.length, "recalled conversation cannot supply native Project authority");
+  const accepted = acceptNarration(f.state, reply, "callback", reply.readset.capturedAt);
+  assert.equal(accepted.held, false);
+  assert.deepEqual(accepted.rejected, []);
+  assert.equal(f.calls.purchases, 1);
 });

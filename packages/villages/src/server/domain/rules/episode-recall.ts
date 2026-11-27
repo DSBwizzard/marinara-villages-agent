@@ -17,7 +17,7 @@ export function projectEpisodeRecall(
   holders: Actor[],
   actors: Actor[],
   contextScopes: Map<string, string>,
-  sourceAlias: () => string,
+  sourceAlias: (() => string) | undefined,
   suppliedLines?: ReadonlySet<string>,
 ) {
   const part = {
@@ -29,13 +29,32 @@ export function projectEpisodeRecall(
   for (const holder of holders) {
     const own = actorEpisodeView(episode, state.continuity, holder, state.episodes);
     if (!own) continue;
-    const witnessedLines = suppliedLines ? own.segments.filter((line) => suppliedLines.has(line.id)) : own.segments;
+    const witnessedLines = suppliedLines
+      ? own.segments.filter(
+          (line) =>
+            suppliedLines.has(line.id) &&
+            (sourceAlias ||
+              view.segments.some(
+                (shared) =>
+                  shared.id === line.id &&
+                  "text" in shared &&
+                  shared.text === line.text &&
+                  shared.perceivedBy[holder.id] === line.channel,
+              )),
+        )
+      : own.segments;
+    const input = sourceAlias
+      ? own.input
+      : own.input.filter((row) =>
+          view.groundedInput.some((shared) => shared.for === holder.id && shared.id === row.id),
+        );
+    const letters = sourceAlias ? own.letters : [];
     const eligible = episode.grounding.flatMap((source) => {
       try {
         const projected = actorContinuityEvidence(source, holder.id);
-        return own.input.some((row) => row.id === source.id) ||
+        return input.some((row) => row.id === source.id) ||
           (source.kind === "written" &&
-            own.letters.some((row) => row.id === source.unitId && row.text === projected.excerpt)) ||
+            letters.some((row) => row.id === source.unitId && row.text === projected.excerpt)) ||
           witnessedLines.some(
             (row) =>
               row.id === source.unitId &&
@@ -53,7 +72,7 @@ export function projectEpisodeRecall(
         const source = recallEpisodeSpeech(episode, segment.id, state.continuity, holder, state.episodes);
         if (source) eligible.push(source);
       }
-    for (const letter of own.letters)
+    for (const letter of letters)
       if (!eligible.some((source) => source.unitId === letter.id)) {
         const source = recallEpisodeMail(episode, letter.id, state.continuity, holder, state.episodes);
         if (source) eligible.push(source);
@@ -71,11 +90,12 @@ export function projectEpisodeRecall(
           .map((row) => episodeUnit(episode, row.id)),
       ]),
     ];
-    for (const source of eligible) {
-      const ref = sourceAlias();
-      part.sources[ref] = source;
-      aliases.push({ ref, holder: holder.id, evidence: source });
-    }
+    if (sourceAlias)
+      for (const source of eligible) {
+        const ref = sourceAlias();
+        part.sources[ref] = source;
+        aliases.push({ ref, holder: holder.id, evidence: source });
+      }
   }
   const segments = view.segments.flatMap((line) => {
     if (!("gmOnlyText" in line)) return [line];

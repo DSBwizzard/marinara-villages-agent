@@ -419,7 +419,7 @@ export function narrationContinuityContext(
   const contextScopes = new Map(
     [...actors, ...npcCandidates.map((row) => row.holder)].map((holder) => [holder.id, holder.incarnation]),
   );
-  const historyPart = (view: (typeof history.episodes)[number], transcript: boolean): Part => {
+  const historyPart = (view: (typeof history.episodes)[number], transcript: boolean, sharedOnly = false): Part => {
     let localAlias = 0;
     const exchangeNumber = episodeOrder.get(view.id)! + 1,
       episode = state.episodes.records[exchangeNumber - 1],
@@ -431,8 +431,8 @@ export function narrationContinuityContext(
         sceneHolders,
         actors,
         transcript ? contextScopes : new Map(contextScopes),
-        () => `h:${exchangeNumber}.${++localAlias}`,
-        offeredView === view ? undefined : new Set(offeredView.segments.map((line) => line.id)),
+        sharedOnly ? undefined : () => `h:${exchangeNumber}.${++localAlias}`,
+        offeredView === view && !sharedOnly ? undefined : new Set(offeredView.segments.map((line) => line.id)),
       ),
       compact = compactSceneExchange(interaction, recall.sources, exchangeNumber, transcript);
     const text = JSON.stringify({
@@ -468,6 +468,41 @@ export function narrationContinuityContext(
     scene.visitEvent && opening
       ? []
       : [...(history.recallCandidates ?? []), ...(lastNpcExchange ? [lastNpcExchange] : [])];
+  const priorShared: (typeof history.episodes)[number][] = [];
+  if (!opening && writerIds.length)
+    for (const view of [...(history.linkedEpisodes?.values() ?? [])].reverse()) {
+      if (!view.sceneId || view.sceneId === scene.id || priorShared.some((prior) => prior.sceneId === view.sceneId))
+        continue;
+      const episode = episodesById.get(view.id)!;
+      const groundedInput = view.groundedInput.filter(
+        (row) =>
+          (row.channel === "words" || row.channel === "sight") &&
+          loreAudience.every((id) =>
+            view.groundedInput.some(
+              (other) =>
+                other.for === id && other.channel === row.channel && other.id === row.id && other.text === row.text,
+            ),
+          ),
+      );
+      const segments = view.segments.filter((line) => {
+        const channel = line.kind === "dialogue" ? "words" : line.kind === "narration" ? "sight" : undefined;
+        return (
+          channel &&
+          loreAudience.every((id) => line.perceivedBy[id] === channel) &&
+          episode.segments.some((saved) => saved.id === line.id && !saved.contactHidden && !saved.contactReport)
+        );
+      });
+      if (groundedInput.length || segments.length) {
+        const window = segments.length <= 3 ? segments : [...segments.slice(0, 2), segments.at(-1)!];
+        priorShared.push({
+          ...view,
+          groundedInput,
+          segments: window.map((line) => ({ ...line, projections: [] })),
+          letters: undefined,
+        });
+        if (priorShared.length === 2) break;
+      }
+    }
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
   for (const { npc, met } of npcCandidates)
@@ -835,6 +870,7 @@ export function narrationContinuityContext(
       }
     return [...linked.values()];
   };
+  const fittedRecallIds = new Set<string>();
   const tryOlder = (linksFirst = false) => {
     const links = scene.visitEvent && opening ? [] : linkedRecall();
     const direct = recallCandidates.filter(({ id }) => history.directRecallIds?.has(id));
@@ -842,11 +878,12 @@ export function narrationContinuityContext(
     for (const view of new Set(
       linksFirst ? [...direct, ...links, ...recallCandidates] : [...recallCandidates, ...links],
     )) {
-      if (transcriptIds.has(view.id)) continue;
+      if (transcriptIds.has(view.id) || fittedRecallIds.has(view.id)) continue;
       if (attempted++ === 8) break;
       const part = historyPart(view, false);
       if (!takeRecall(part)) continue;
       parts.push(part);
+      fittedRecallIds.add(view.id);
       return true;
     }
     return false;
@@ -860,6 +897,13 @@ export function narrationContinuityContext(
     if (takeRecall(part) && ++count === (recalledQuote ? 1 : 2) && !opening) break;
   }
   if (!opening && !recalledQuote) tryOlder(!asksForQuote);
+  if (!asksForQuote)
+    for (const view of priorShared) {
+      if (fittedRecallIds.has(view.id)) continue;
+      const part = historyPart(view, false, true);
+      part.readOnly = true;
+      if (takeRecall(part)) parts.push(part);
+    }
   for (const part of optional) if (part !== projectShortlist && !actorFact(part)) takeRecall(part);
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts
