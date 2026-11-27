@@ -1,5 +1,6 @@
 export type MobileMapSize = { width: number; height: number };
-export type MobileMapView = { zoom: number; centerX: number; centerY: number };
+export type MapNavigationView = { zoom?: number; centerX: number; centerY: number };
+export type MobileMapView = MapNavigationView & { zoom: number };
 export type MobileMapBox = { left: number; top: number; width: number; height: number };
 
 export function mobileGestureMoved(

@@ -377,7 +377,7 @@ export function ExplorationScreen({
                     const point = placeSpot(place);
                     if (point)
                       setNavigationView((current) => ({
-                        zoom: current?.zoom ?? 1,
+                        zoom: current?.zoom,
                         centerX: point.x,
                         centerY: point.y,
                       }));

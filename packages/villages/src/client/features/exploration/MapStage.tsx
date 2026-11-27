@@ -26,6 +26,7 @@ import {
   mobileMapBox,
   mobileMapGesture,
   mobileMaximumZoom,
+  type MapNavigationView,
   type MobileMapView,
   mobilePhotoScale,
 } from "./villages-mobile-map";
@@ -232,7 +233,7 @@ export function MapStage({
   navigationControlsWhilePlacing?: boolean;
   navigationSlider?: boolean;
   navigationFit?: "cover" | "contain";
-  navigationView?: MobileMapView | null;
+  navigationView?: MapNavigationView | null;
   onNavigationView?(next: MobileMapView | null): void;
   /** Show the village's photo cards while keeping desktop's fitted map. */
   photoPins?: boolean;
@@ -317,10 +318,12 @@ export function MapStage({
   const initialNavigationZoom = navigationFit === "contain" ? 1 : coverNavigationZoom;
   const savedCamera = exploration ? navigationView : mobileView;
   const mobileCurrent = useMemo(() => {
-    if (!savedCamera) return { zoom: initialNavigationZoom, centerX: 0.5, centerY: 0.5 };
-    return navigationSlider && savedCamera.zoom > maximumNavigationZoom
-      ? { ...savedCamera, zoom: maximumNavigationZoom }
-      : savedCamera;
+    const zoom = savedCamera?.zoom ?? initialNavigationZoom;
+    return {
+      zoom: navigationSlider ? Math.min(zoom, maximumNavigationZoom) : zoom,
+      centerX: savedCamera?.centerX ?? 0.5,
+      centerY: savedCamera?.centerY ?? 0.5,
+    };
   }, [initialNavigationZoom, maximumNavigationZoom, navigationSlider, savedCamera]);
   const sliderValue = Math.round(
     (100 * (mobileCurrent.zoom - minimumNavigationZoom)) / (maximumNavigationZoom - minimumNavigationZoom),
