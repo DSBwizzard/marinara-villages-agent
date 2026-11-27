@@ -81,6 +81,7 @@ export const villagesDefinition = {
     },
     assets: {
       paths: [
+        "repair-icon.png",
         ...letterFontAssets.filter((path) => path.endsWith(".json")),
         ...menuArtAssets,
         sceneSprite,
