@@ -65,9 +65,11 @@ const model: any = {
   model: "fixture",
   maxOutputTokens: 3000,
   fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
-  chatComplete: async (messages: any[]) => {
+  chatComplete: async (messages: { content: string }[], options?: { responseFormat?: { type: string } }) => {
     requests++;
-    prompt = JSON.parse(messages.at(-1).content);
+    if (options?.responseFormat?.type === "json_object" && !messages.some(({ content }) => /\bjson\b/iu.test(content)))
+      throw new Error("The provider rejected JSON mode without a JSON instruction.");
+    prompt = JSON.parse(messages.at(-1)!.content);
     if (failApply) state.narrativeConsequence = "gentle";
     return { content: JSON.stringify({ quiet: false, development: proposal }), finishReason: "stop" };
   },

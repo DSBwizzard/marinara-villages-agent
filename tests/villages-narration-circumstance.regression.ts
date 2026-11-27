@@ -22,6 +22,7 @@ import {
 import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
 import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { decodeTaggedSceneReply } from "../packages/villages/src/server/domain/rules/tagged-scene-reply.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { activityDate, reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
@@ -271,6 +272,31 @@ await runCase("narration-circumstance/room-damage", () => {
   };
   const repair = () =>
     acceptNarration(f.state, { raw, readset, responseDigest: memoryHash(raw) }, "repair-turn", repairAt);
+  const repairReadset = { ...readset, taggedSceneReply: true as const, authoritativeSceneBeats: true as const };
+  const taggedRepair = decodeTaggedSceneReply(
+    [
+      "Narration!: You seat a new pane in the frame and sweep away every shard.",
+      "[keep]: " + JSON.stringify({ id: "window", for: "room", replace: f.window.id, text: "An intact window." }),
+      "[keep]: " + JSON.stringify({ id: "glass", for: "room", replace: glass.id, text: null }),
+      "[command]: " +
+        JSON.stringify({
+          type: "circumstance",
+          conditions: [{ id: conditions[0].id, clear: true }],
+          requires: ["window", "glass"],
+        }),
+    ].join("\n"),
+    repairReadset,
+  ).value;
+  assert(taggedRepair);
+  const taggedState = structuredClone(f.state);
+  const taggedResult = acceptNarration(
+    taggedState,
+    { raw: taggedRepair, readset: repairReadset, responseDigest: memoryHash(taggedRepair) },
+    "repair-turn",
+    repairAt,
+  );
+  assert.equal(taggedResult.held, false, JSON.stringify(taggedResult.rejected));
+  assert.equal(taggedState.narrative!.conditions[0].clearedAt, repairAt);
   const entries = conditions[0].repairEntries!;
   conditions[0].repairEntries = [f.rug.id];
   assert.equal(
