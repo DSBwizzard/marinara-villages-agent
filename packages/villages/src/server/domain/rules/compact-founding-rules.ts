@@ -7,6 +7,7 @@ import { boundText, MAX_ROUTINE_SUMMARY_LENGTH } from "./prompt-preset.js";
 import { generatedIdentityDescription } from "./resident-description.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import { backgroundRevision } from "./background-revision.js";
+import { asRecord } from "./coerce.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { generatedAgendaActivityLabel } from "./agenda-plan.js";
 import { completeAgendaWeek, workingAgendaWeek, agendaDateKey } from "./agenda-week.js";
@@ -57,6 +58,7 @@ export type CompactFoundingContext = {
   characterId?: string;
   activityLabelFormat?: 1;
   starterWeekStart?: string;
+  starterRestFormat?: 1;
 };
 
 export type CompactFoundingResult = {
@@ -257,10 +259,22 @@ function parseStarterWeek(
     return invalid("The starter Agenda needs a summary and up to two recurring rest windows.");
   const restBlocks: VillageAgendaBlock[] = [];
   for (const rest of payload.rest) {
-    if (!Array.isArray(rest) || (rest.length !== 2 && rest.length !== 3))
-      return invalid("A starter Agenda rest window is invalid.");
-    const [activity, from, to] = rest.length === 2 ? ["Resting at home", ...rest] : rest;
+    let activity: unknown, from: unknown, to: unknown;
+    if (context.starterRestFormat === 1) {
+      const { kind, label, startMinute, endMinute } = asRecord(rest);
+      if (kind !== "sleep" && kind !== "nap" && kind !== "other")
+        return invalid("A starter Agenda rest window needs a valid kind.");
+      activity = kind === "sleep" ? "Sleeping" : kind === "nap" ? "Napping" : label;
+      from = startMinute;
+      to = endMinute;
+    } else {
+      if (!Array.isArray(rest) || (rest.length !== 2 && rest.length !== 3))
+        return invalid("A starter Agenda rest window is invalid.");
+      [activity, from, to] = rest.length === 2 ? ["Resting at home", ...rest] : rest;
+    }
     if (
+      typeof from !== "number" ||
+      typeof to !== "number" ||
       !Number.isInteger(from) ||
       !Number.isInteger(to) ||
       from < 0 ||

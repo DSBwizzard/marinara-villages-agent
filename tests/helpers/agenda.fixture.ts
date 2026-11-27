@@ -5,7 +5,7 @@ import { VILLAGE_WEEKDAYS } from "../../packages/villages/src/server/domain/rule
 
 export function starterAgendaReply(label = "Starter activity", place: number | string = 0) {
   return {
-    rest: [["Sleeping", 1320, 480]],
+    rest: [{ kind: "sleep", startMinute: 1320, endMinute: 480 }],
     starterDays: Array.from({ length: 7 }, (_, day) =>
       Array.from({ length: 8 }, (_, slot) => [`${label} ${day + 1}/${slot + 1}`, place]),
     ),

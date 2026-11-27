@@ -135,7 +135,8 @@ async function main() {
 
   assert.throws(() => parseCompactFounding({ ...payload(), rhythm: undefined }, context(null) as any), /rest windows/);
 
-  const starterContext = { ...context(null), starterWeekStart: "2026-11-11" };
+  const legacyStarterContext = { ...context(null), starterWeekStart: "2026-11-11" };
+  const starterContext = { ...legacyStarterContext, starterRestFormat: 1 as const };
   const starterReply = { ...payload(), ...starterAgendaReply() };
   const starter = parseCompactFounding(starterReply, starterContext).starterWeek!;
   const dates = new Set(starter.slots.map(({ date }) => date));
@@ -156,7 +157,7 @@ async function main() {
         index === 6 ? [["Sleeping at home", 0], ...day.slice(1)] : day,
       ),
     },
-    starterContext,
+    legacyStarterContext,
   );
   assert.deepEqual(
     unlabeled.agenda
@@ -179,9 +180,27 @@ async function main() {
     /Put recurring rest in the starter Agenda rest windows/,
   );
   assert.throws(
-    () => parseCompactFounding({ ...starterReply, rest: [[0, -1]] }, starterContext),
+    () => parseCompactFounding({ ...starterReply, rest: [[0, -1]] }, legacyStarterContext),
     /rest window is invalid/,
   );
+  const fixedActivities = (rest: unknown[]) =>
+    parseCompactFounding({ ...starterReply, rest }, starterContext)
+      .agenda.week!.Wednesday!.filter(({ essential }) => essential)
+      .map(({ activity }) => activity);
+  const earlySleep = { kind: "sleep", startMinute: 120, endMinute: 480 };
+  assert.deepEqual(
+    fixedActivities([
+      { ...earlySleep, label: "At home" },
+      { kind: "nap", startMinute: 800, endMinute: 830 },
+    ]),
+    ["Sleeping", "Napping"],
+  );
+  assert.deepEqual(
+    fixedActivities([earlySleep, { kind: "other", startMinute: 800, endMinute: 830, label: "Recharging in sunlight" }]),
+    ["Sleeping", "Recharging in sunlight"],
+  );
+  assert.throws(() => fixedActivities([{ kind: "other", startMinute: 800, endMinute: 830 }]), /short standalone label/);
+  assert.throws(() => fixedActivities([[120, 480]]), /valid kind/);
   assert.throws(
     () =>
       parseCompactFounding(

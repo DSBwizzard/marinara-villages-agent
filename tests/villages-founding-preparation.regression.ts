@@ -341,8 +341,8 @@ const release = configureVillagesRuntime({
             ...(mode === "routine-recovery-current" && actorId === "aqua"
               ? {
                   rest: [
-                    [0, 360],
-                    [1290, 1440],
+                    { kind: "sleep", startMinute: 0, endMinute: 360 },
+                    { kind: "sleep", startMinute: 1290, endMinute: 1440 },
                   ],
                 }
               : {}),

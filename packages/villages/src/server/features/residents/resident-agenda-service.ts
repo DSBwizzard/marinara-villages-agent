@@ -221,7 +221,11 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           ...context,
           activityLabelFormat: 1,
           ...(start
-            ? { starterWeekStart: agendaDateKey(start), venues: weeklyAgendaVenues(village, characterId, start) }
+            ? {
+                starterWeekStart: agendaDateKey(start),
+                starterRestFormat: 1 as const,
+                venues: weeklyAgendaVenues(village, characterId, start),
+              }
             : {}),
         },
       },
