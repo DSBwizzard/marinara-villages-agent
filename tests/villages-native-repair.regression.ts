@@ -1001,7 +1001,13 @@ await runCase("repair-familiar/targets", async () => {
   const f = await fixture();
   const before = await f.read();
   for (const id of ["mara", "leo"]) {
-    assert((await f.api.list("people", "", 0, id, "home")).records.every((record) => JSON.parse(record.id)[1] === id));
+    const arrangements = (await f.api.list("people", "", 0, id, "home")).records;
+    assert(arrangements.every((record) => JSON.parse(record.id)[1] === id));
+    assert.deepEqual(
+      arrangements.map((record) => JSON.parse(record.id)[0]),
+      ["home", "work"],
+      "Home precedes Work in the guided editor",
+    );
     assert((await f.api.list("people", "", 0, id, "details")).records.length > 0);
   }
   const places = await f.api.list("places", "", 0, undefined, undefined, true);

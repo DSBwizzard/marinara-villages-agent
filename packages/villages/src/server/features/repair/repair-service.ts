@@ -546,6 +546,8 @@ export function createRepairService(ports: RepairPorts) {
             .includes(w),
         ),
     );
+    if (topic === "people" && section === "home")
+      selected.sort((a, b) => Number(repairParts(a.id)[0] !== "home") - Number(repairParts(b.id)[0] !== "home"));
     return {
       records: selected.slice(offset, offset + 50).map((r) =>
         personName && memoryList
