@@ -738,6 +738,21 @@ try {
   assert.equal(greeted.status, "active");
   assert.equal(greeted.lines.find((line) => line.speakerId === "aqua")?.content, "Will you help set out the plates?");
   assert.equal(completions, beforeGathering + 1);
+  const resumed = (await request("/rooms/active")).session;
+  assert.deepEqual(resumed.activeIds, founded.activeIds, "The admitted cast is still present for the player's reply");
+  provide({ segments: [{ kind: "dialogue", speakerId: "aqua", text: "Two by the window, please." }] });
+  const answered = (
+    await request("/rooms/turn", {
+      sessionId: founded.id,
+      expectedSceneRevision: resumed.sceneRevision,
+      submissionId: "first-gathering-response",
+      mode: "chat",
+      targetId: "aqua",
+      message: '"Where do you want the plates?"',
+    })
+  ).session;
+  assert.equal(answered.lines.at(-1)?.content, "Two by the window, please.");
+  assert.equal(completions, beforeGathering + 2);
   assert.deepEqual((await request("/rooms/active")).session.activeIds, ["neighbor"], "Routine attendance resumes");
 
   const pendingEntry = clone(baseline);
@@ -806,7 +821,7 @@ try {
   assert.deepEqual(closedDenied.session.participants, []);
   assert.doesNotMatch(JSON.stringify(closedDenied), /Distant Resident|UNSEEN BEDROOM FURNITURE/);
   assert(storedVillage(records).venues[0].access!.permissions.every((grant) => grant.sceneId === null));
-  assert.equal(completions, beforeGathering + 1);
+  assert.equal(completions, beforeGathering + 2);
 
   // Restore only the synthetic documents between independent failure scenarios.
   for (const owner of ["outbox", "world"] as const) {

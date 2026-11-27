@@ -143,7 +143,19 @@ export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zon
 }
 
 export function projectLiveAttendance(village: VillageState, scene: VenueScene, venue: VillageVenue, now: Date) {
-  const sameRoutine = (id: string) => !!findNpc(village, id) || sameSceneRoutine(village, scene, id, now);
+  const foundingRoster =
+    matchesOpeningGathering(village, scene) &&
+    !scene.submissions.some((turn) => turn.id !== "greeting" && turn.acceptance.status === "applied")
+      ? village.opening!.residentIds
+      : [];
+  const gatheringIds = foundingRoster.filter((id) => {
+    const resident = village.villagers.find((person) => person.characterId === id);
+    const admitted = scene.continuity?.facts.villagers.find((person) => person.characterId === id);
+    return resident && (!admitted || admitted.incarnation === resident.incarnation);
+  });
+  const sameRoutine = (id: string) =>
+    (!foundingRoster.includes(id) || gatheringIds.includes(id)) &&
+    (!!findNpc(village, id) || sameSceneRoutine(village, scene, id, now));
   const accompanying = (scene.accompanying ?? []).filter((row) => sameRoutine(row.characterId));
   const positions = new Map(
     accompanying.flatMap((row) => {
@@ -171,19 +183,25 @@ export function projectLiveAttendance(village: VillageState, scene: VenueScene, 
     scene.status === "opening" &&
     zoneId &&
     !scene.submissions.length &&
-    matchesOpeningGathering(village, scene) &&
-    openingPlayspace(village, village.opening!.residentIds, now).some(
-      (row) => row.venueId === venue.id && row.zoneIds.includes(zoneId),
-    )
+    gatheringIds.length &&
+    openingPlayspace(village, gatheringIds, now).some((row) => row.venueId === venue.id && row.zoneIds.includes(zoneId))
   ) {
     // An unstarted gathering admits its own cast, including saves whose routine refresh already displaced it.
     attendance.occupants = gatheringCast(village, zoneId).filter(
-      (person) => !scene.departedIds?.includes(person.characterId),
+      (person) => gatheringIds.includes(person.characterId) && !scene.departedIds?.includes(person.characterId),
     );
   } else {
+    // Keep the admitted positions until the first reply or an actual Agenda transition.
+    if (foundingRoster.length)
+      attendance.occupants = attendance.occupants.filter(
+        (person) => gatheringIds.includes(person.characterId) && !sameRoutine(person.characterId),
+      );
     attendance.occupants.push(
       ...(scene.sceneAttendance?.occupants ?? []).filter(
-        (person) => !!findNpc(village, person.characterId) && !scene.departedIds?.includes(person.characterId),
+        (person) =>
+          !scene.departedIds?.includes(person.characterId) &&
+          (!!findNpc(village, person.characterId) ||
+            (gatheringIds.includes(person.characterId) && sameRoutine(person.characterId))),
       ),
     );
   }

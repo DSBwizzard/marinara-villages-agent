@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { fixture } from "./fixtures/villages-projects.fixture.js";
+import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { projectLiveAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import {
   initialOpening,
   openingView,
@@ -23,5 +27,62 @@ for (const count of [1, 2, 3]) {
   view.residentIds.push("outsider");
   assert.deepEqual(f.state().opening!.residentIds, ids, "public views do not mutate saved attendance");
   assert.throws(() => readOpening({ ...opening, version: 2 }), /Unsupported/);
+}
+{
+  const world = fixture().state();
+  const at = world.setupAt;
+  world.timeZone = "UTC";
+  world.opening = initialOpening(["a", "b"], "cafe", "opening");
+  world.opening.gatheringSceneId = "gathering";
+  const venue = world.venues[0]!;
+  const resident = world.villagers[0]!;
+  const blocks = [
+    { startMinute: 0, endMinute: 721, activity: "Rest", venueId: venue.id, zoneId: "exterior" },
+    { startMinute: 721, endMinute: 1440, activity: "Work", venueId: world.venues[1]!.id, zoneId: "exterior" },
+  ];
+  resident.agenda = agendaFixture({
+    day: blocks,
+    generatedAt: at,
+    activeDay: { dateKey: at.slice(0, 10), weekday: "Friday", blocks, scheduleInformed: false },
+  });
+  const participants = ["a", "b"].map((characterId) => ({ characterId, name: characterId, doing: "Gathering" }));
+  const scene = coerceSession({
+    version: 5,
+    id: "gathering",
+    openingGatheringId: "opening",
+    status: "active",
+    placeId: venue.id,
+    placeName: venue.name,
+    zoneId: "common",
+    area: "public",
+    villageSeed: world.seed,
+    startedAt: at,
+    lastActivityAt: at,
+    participants,
+    activeIds: ["a", "b"],
+    accompanying: [{ characterId: "a", zoneId: "exterior" }],
+    sceneAttendance: { capturedAt: at, occupants: participants.map((person) => ({ ...person, zoneId: "common" })) },
+  });
+  scene.continuity = captureSceneContinuity(world, scene, Date.parse(at));
+  const sameMoment = projectLiveAttendance(world, scene, venue, new Date(at));
+  assert.deepEqual(
+    sameMoment.attendance.occupants.map(({ characterId }) => characterId),
+    ["a", "b"],
+  );
+  assert.deepEqual(sameMoment.accompanying, [{ characterId: "a", zoneId: "exterior" }]);
+  const later = projectLiveAttendance(world, scene, venue, new Date(Date.parse(at) + 60_000));
+  assert.deepEqual(
+    later.attendance.occupants.map(({ characterId }) => characterId),
+    ["b"],
+    "A new Agenda block can move a founder away",
+  );
+  assert.deepEqual(later.accompanying, []);
+  resident.incarnation = "replacement";
+  const replaced = projectLiveAttendance(world, scene, venue, new Date(at));
+  assert.deepEqual(
+    replaced.attendance.occupants.map(({ characterId }) => characterId),
+    ["b"],
+  );
+  assert.deepEqual(replaced.accompanying, [], "A replacement cannot inherit an admitted founder's position");
 }
 console.log("Ordinary Founding gatherings preserve their saved identity without scripted Projects.");
