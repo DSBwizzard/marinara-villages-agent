@@ -741,7 +741,7 @@ export function QuickStartVenues({
       {drawer ? (
         <section className="villages-forging-card villages-quick-venue-list" aria-label="Venue list" hidden={open}>
           <h3>Venue list</h3>
-          <div className="villages-quick-zone-list">{cards}</div>
+          <div className="villages-venue-drawer-items">{cards}</div>
           {!open && (saveError || problem) ? (
             <p className="villages-venue-drawer-problem" role="alert">
               {saveError || problem}

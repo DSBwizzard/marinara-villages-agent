@@ -1037,6 +1037,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-venue-drawer-actions button { min-height:44px; padding:.35rem .65rem; }
 .villages-forging-v2 [data-venue-drawer] .villages-quick-venue-list { align-self:start; height:auto; padding:.65rem; background:var(--founding-field); }
 .villages-forging-v2 [data-venue-drawer] .villages-quick-venue-list h3 { margin:0; font-size:1rem; }
+.villages-venue-drawer-items { display:grid; gap:.4rem; }
 .villages-forging-v2 [data-venue-drawer] button.villages-venue-drawer-row {
   display:flex; align-items:center; gap:.65rem; width:100%; min-width:0; padding:0; border:0; background:transparent; text-align:left;
 }
