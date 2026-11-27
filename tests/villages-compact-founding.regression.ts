@@ -138,7 +138,12 @@ async function main() {
   const starterContext = { ...context(null), starterWeekStart: "2026-11-11" };
   const starterReply = { ...payload(), ...starterAgendaReply() };
   const starter = parseCompactFounding(starterReply, starterContext).starterWeek!;
-  assert.equal(new Set(starter.slots.map(({ date }) => date)).size, 7);
+  const dates = new Set(starter.slots.map(({ date }) => date));
+  assert.equal(dates.size, 7);
+  const timeLayouts = Array.from(dates, (date) =>
+    starter.slots.filter((slot) => slot.date === date).map(({ startMinute, endMinute }) => [startMinute, endMinute]),
+  );
+  assert.equal(new Set(timeLayouts.map((layout) => JSON.stringify(layout))).size, 7);
   assert.equal(starter.through, "2026-11-17");
   const unlabeled = parseCompactFounding(
     {

@@ -8,9 +8,12 @@ import { routineVenues } from "./prompt-preset.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { zoneActivityFits } from "./venue-presence.js";
 import { canOccupyZone, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { hashString } from "./village-clock.js";
 
 export const AGENDA_WEEK_DAYS = 7;
 const dayParts = [360, 720, 1020, 1440];
+const minActivityMinutes = 30;
+const maxActivityMinutes = 240;
 const openBlock = (block: VillageAgendaBlock) => flexibleAgendaBlock(block) && !restingAgendaBlock(block);
 
 export const agendaActivityKey = (activity: string) =>
@@ -89,24 +92,38 @@ function freeAgendaPeriods(agenda: VillageAgenda, date: Date) {
   return joined;
 }
 
-/** Plan contiguous stretches of free time, keeping activities within a part of the day. */
-export function weeklyAgendaSlots(agenda: VillageAgenda, date: Date) {
+/** Give each date its own rhythm within contiguous stretches of free time. */
+export function weeklyAgendaSlots(agenda: VillageAgenda, date: Date, residentId: string) {
+  const key = agendaDateKey(date);
   const periods = freeAgendaPeriods(agenda, date);
-  return dayParts.flatMap((end, part) => {
+  const slots = dayParts.flatMap((end, part) => {
     const start = dayParts[part - 1] ?? 0;
     return periods.flatMap((span) => {
       const from = Math.max(span.startMinute, start);
       const length = Math.min(span.endMinute, end) - from;
-      if (length < 30) return [];
-      const count = Math.ceil(length / 240);
+      if (length < minActivityMinutes) return [];
+      const count = Math.ceil(length / maxActivityMinutes);
       return Array.from({ length: count }, (_, index) => ({
-        date: agendaDateKey(date),
+        date: key,
         part,
         startMinute: from + Math.floor((index * length) / count),
         endMinute: from + Math.floor(((index + 1) * length) / count),
       }));
     });
   });
+  // Slide shared boundaries only where both blocks are flexible, in quarter-hour steps.
+  for (let index = 1; index < slots.length; index++) {
+    const previous = slots[index - 1]!;
+    const next = slots[index]!;
+    if (previous.endMinute !== next.startMinute) continue;
+    const earliest = Math.max(previous.startMinute + minActivityMinutes, next.endMinute - maxActivityMinutes);
+    const latest = Math.min(previous.startMinute + maxActivityMinutes, next.endMinute - minActivityMinutes);
+    const shift = ((hashString(`${residentId}:${key}:${next.startMinute}`) % 7) - 3) * 15;
+    const boundary = Math.max(earliest, Math.min(latest, next.startMinute + shift));
+    previous.endMinute = boundary;
+    next.startMinute = boundary;
+  }
+  return slots;
 }
 
 export type WeeklyAgendaSlot = ReturnType<typeof weeklyAgendaSlots>[number];
@@ -166,7 +183,7 @@ export function applyWeeklyAgenda(
       for (const available of livePeriods) {
         const startMinute = Math.max(available.startMinute, slot.startMinute, planToday ? todayAfter : 0);
         const endMinute = Math.min(available.endMinute, slot.endMinute);
-        if (endMinute - startMinute < 30) continue;
+        if (endMinute - startMinute < minActivityMinutes) continue;
         const [plan] = validateRoutineDay(
           [{ ...choice, startMinute, endMinute, flexible: true }],
           resident,

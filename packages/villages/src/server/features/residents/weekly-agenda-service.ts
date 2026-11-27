@@ -74,7 +74,7 @@ function captureWeek(state: VillageState, today: Date, start: Date, characterId?
       const slots = days.flatMap((day) =>
         characterId === undefined && agendaDateKey(day) <= preparedAgendaThrough(agenda)
           ? []
-          : weeklyAgendaSlots(agenda, day),
+          : weeklyAgendaSlots(agenda, day, resident.characterId),
       );
       if (!slots.length) return [];
       const recent = [

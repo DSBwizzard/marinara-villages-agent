@@ -20,13 +20,20 @@ export function composeAgenda(
       covered = Math.max(covered, block.endMinute);
     }
     if (!work && covered < reservation.endMinute) continue;
-    blocks = blocks.flatMap((block) => {
+    const composed: VillageAgendaBlock[] = [];
+    let assigned: VillageAgendaBlock | undefined;
+    for (const block of blocks) {
       const start = Math.max(block.startMinute, reservation.startMinute);
       const end = Math.min(block.endMinute, reservation.endMinute);
-      if (start >= end || (work && (!replaceable(block) || restingAgendaBlock(block)))) return [block];
-      return [
-        ...(block.startMinute < start ? [{ ...block, endMinute: start }] : []),
-        {
+      if (start >= end || (work && (!replaceable(block) || restingAgendaBlock(block)))) {
+        composed.push(block);
+        continue;
+      }
+      if (block.startMinute < start) composed.push({ ...block, endMinute: start });
+      if (assigned?.endMinute === start && composed.at(-1) === assigned) {
+        assigned.endMinute = end;
+      } else {
+        assigned = {
           startMinute: start,
           endMinute: end,
           venueId: reservation.venueId,
@@ -34,10 +41,12 @@ export function composeAgenda(
           activity: reservation.activity,
           ...(work ? {} : { commitmentId: reservation.id }),
           flexible: false,
-        },
-        ...(block.endMinute > end ? [{ ...block, startMinute: end }] : []),
-      ];
-    });
+        };
+        composed.push(assigned);
+      }
+      if (block.endMinute > end) composed.push({ ...block, startMinute: end });
+    }
+    blocks = composed;
   }
   return blocks;
 }

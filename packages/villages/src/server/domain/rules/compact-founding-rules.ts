@@ -308,7 +308,7 @@ function parseStarterWeek(
     const date = shiftAgendaDate(first, offset);
     const blocks = [...restBlocks];
     fallback[VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!] = blocks;
-    const offered = weeklyAgendaSlots(agenda, date).slice(0, 8);
+    const offered = weeklyAgendaSlots(agenda, date, context.characterId ?? context.card.id).slice(0, 8);
     if (!Array.isArray(entries) || entries.length !== 8 || !offered.length)
       return invalid("Each starter Agenda day needs eight activity choices and some waking time.");
     const wakingChoices = entries.flatMap((entry): WeeklyAgendaChoice[] => {

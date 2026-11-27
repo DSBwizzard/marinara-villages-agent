@@ -609,18 +609,34 @@ async function main() {
       const agenda = resident.agenda!;
       assert.equal(agenda.activeDay?.dateKey, agendaDateKey(date(7)));
       assert.ok(!agenda.activeDay?.blocks.some(({ activity }) => activity.includes("pursuit")));
+      const timingLayouts = new Set<string>();
       for (let day = 8; day <= 14; day++) {
         const rows = agendaBlocksFor(agenda, date(day));
-        assert.equal(rows.filter(({ activity }) => activity === "Sleeping").length, 2);
+        assert.deepEqual(
+          rows
+            .filter(({ activity }) => activity === "Sleeping")
+            .map(({ startMinute, endMinute }) => [startMinute, endMinute]),
+          [
+            [0, 480],
+            [1320, 1440],
+          ],
+        );
         assert.ok(rows.filter(({ activity }) => activity.startsWith(`${resident.characterId} pursuit 1/`)).length >= 3);
+        timingLayouts.add(JSON.stringify(rows.map(({ startMinute, endMinute }) => [startMinute, endMinute])));
       }
+      assert.equal(timingLayouts.size, 7, "The seven saved days have different timing while rest stays fixed.");
     }
 
     const { applyWeeklyAgenda, weeklyAgendaSlots } =
       await import("../packages/villages/src/server/domain/rules/weekly-agenda.js");
     const changed = structuredClone(firstWeek);
     const resident = changed.villagers[0]!;
-    const offered = [date(9), date(10), date(11)].flatMap((day) => weeklyAgendaSlots(resident.agenda!, day));
+    const offered = [date(9), date(10), date(11)].flatMap((day) =>
+      weeklyAgendaSlots(resident.agenda!, day, resident.characterId),
+    );
+    for (const { startMinute, endMinute } of offered) {
+      assert.ok(endMinute - startMinute >= 30 && endMinute - startMinute <= 240);
+    }
     resident.agenda!.repairedDays = [agendaDateKey(date(10))];
     resident.agenda!.reservations = (["work", "project", "social", "appointment"] as const).map((source, index) => ({
       source,
