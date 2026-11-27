@@ -1028,7 +1028,7 @@ export const VILLAGES_FORGING_STYLES = `
 }
 .villages-forging-v2 .villages-quick-start>.villages-quick-venue-list[hidden] { display:none; }
 
-.villages-venue-drawer-header { grid-column:1/-1; grid-row:1; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.65rem; }
+.villages-forging-v2 .villages-venue-drawer-header { grid-column:1/-1; grid-row:1; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.65rem; background:transparent; }
 .villages-venue-drawer-title,.villages-venue-drawer-actions { display:flex; align-items:baseline; flex-wrap:wrap; gap:.5rem; }
 .villages-venue-drawer-title h2 { margin:0; }
 .villages-venue-drawer-title span { font-size:.85rem; white-space:nowrap; }
