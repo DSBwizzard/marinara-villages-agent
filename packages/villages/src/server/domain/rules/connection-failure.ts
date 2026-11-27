@@ -1,3 +1,5 @@
+import { MODEL_CONNECTION_UNAVAILABLE } from "../../../shared/contracts/founding.js";
+
 /** Technical admission failures are separate from individual request outcomes. */
 export type ConnectionFailureKind = "configuration" | "request";
 export function connectionFailureKind(error: unknown, jsonMode = false): ConnectionFailureKind {
@@ -5,10 +7,12 @@ export function connectionFailureKind(error: unknown, jsonMode = false): Connect
     status = Number(row.status ?? row.statusCode),
     message = error instanceof Error ? error.message : String(error);
   if (
+    row.code === MODEL_CONNECTION_UNAVAILABLE ||
     [401, 403].includes(status) ||
-    /(?:\b401\b|\b403\b|invalid api key|no (?:language model |system )?connection|(?:selected|choose a?).*(?:connection|base URL).*(?:no longer exists|before generating)|selected connection has no base URL|missing.*connection|language model connection not found|selected language model connection has no model|unsupported (?:language )?model)/iu.test(
-      message,
-    )
+    ((!status || !Number.isFinite(status)) &&
+      /(?:\b401\b|\b403\b|invalid api key|no (?:language model |system )?connection|(?:selected|choose a?).*(?:connection|base URL).*(?:no longer exists|before generating)|selected connection has no base URL|missing.*connection|language model connection not found|selected language model connection has no model|unsupported (?:language )?model)/iu.test(
+        message,
+      ))
   )
     return "configuration";
   if (

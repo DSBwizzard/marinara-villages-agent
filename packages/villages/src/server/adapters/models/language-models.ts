@@ -1,3 +1,6 @@
+import { MODEL_CONNECTION_UNAVAILABLE } from "../../../shared/contracts/founding.js";
+import { VillagesRequestError, safeFailureMessage } from "../../domain/rules/errors.js";
+import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { retainJsonRepair } from "../observability/json-repair-diagnostics.js";
 import { withProviderDeadline } from "./provider-deadline.js";
 import { guardedClockGeneration } from "../time/clock-gate.js";
@@ -14,7 +17,11 @@ export const tracksProviderDispatch = (model: CapabilityResolvedLanguageModel): 
 export function villagesLanguageModels(): CapabilityLanguageModelHost {
   const languageModels = requireHost().languageModels;
   if (!languageModels) {
-    throw new Error("This Engine version did not provide a language model to packages.");
+    throw new VillagesRequestError(
+      503,
+      "This Engine version did not provide a language model to packages.",
+      MODEL_CONNECTION_UNAVAILABLE,
+    );
   }
   function trackedModel(model: CapabilityResolvedLanguageModel): CapabilityResolvedLanguageModel {
     const tracked = bindActivationService<CapabilityResolvedLanguageModel>({
@@ -52,17 +59,24 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
     trackedModels.add(tracked);
     return tracked;
   }
+  async function resolveTracked(resolve: () => Promise<CapabilityResolvedLanguageModel>) {
+    try {
+      return trackedModel(await resolve());
+    } catch (cause) {
+      if (connectionFailureKind(cause) === "configuration")
+        throw new VillagesRequestError(503, safeFailureMessage(cause), MODEL_CONNECTION_UNAVAILABLE);
+      throw cause;
+    }
+  }
   return bindActivationService<CapabilityLanguageModelHost>({
     ...languageModels,
     async resolve(connectionId) {
       requireHost();
-      const model = await languageModels.resolve(connectionId);
-      return trackedModel(model);
+      return resolveTracked(() => languageModels.resolve(connectionId));
     },
     async resolveForRequest(options) {
       requireHost();
-      const model = await languageModels.resolveForRequest(options);
-      return trackedModel(model);
+      return resolveTracked(() => languageModels.resolveForRequest(options));
     },
   });
 }

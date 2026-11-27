@@ -1,3 +1,4 @@
+import { foundingConnectionUnavailable } from "./suggestion-request.js";
 import { FOUNDING_SETTING_BRIEF_LIMIT } from "../../../shared/contracts/founding.js";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
@@ -273,7 +274,7 @@ export function FoundingSettingScene({
   );
   const errorNotice = error ? (
     <p role="alert">
-      {/Language model connection not found/iu.test(error)
+      {foundingConnectionUnavailable(error, request?.failureCode)
         ? "The System connection is unavailable. Choose another connection or review it in Engine."
         : error}
     </p>
