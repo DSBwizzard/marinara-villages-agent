@@ -138,11 +138,13 @@ function parseWeek(
   const failed = completionFailure(completion, KIND, output);
   if (failed) throw new WorkFailureError(failed);
   const reply = extractModelJsonObject(completion)?.plans;
-  function invalid(): never {
+  const repeatedActivities =
+    "Not enough variety. Too many activities repeat recent plans or other suggestions in the reply.";
+  function invalid(message = "The model returned too few usable activities for the week."): never {
     throw new WorkFailureError({
       cause: "missing_result",
       stage: KIND,
-      message: "The model returned too few usable activities for the week.",
+      message,
     });
   }
   if (!Array.isArray(reply) || reply.length !== input.residents.length) invalid();
@@ -153,14 +155,19 @@ function parseWeek(
       const days = agendaDays(resident.slots);
       if (!days.length || !Array.isArray(rows) || rows.length !== days.length) invalid();
       const choices = resident.slots.map<WeeklyAgendaChoice | null>(() => null);
+      const minimumActivities = Math.ceil(choices.length * 0.6);
+      let usable = 0;
       let accepted = 0;
+      let missingFreshDay = false;
       for (const [day, [, slots]] of days.entries()) {
         const suggestions = rows[day];
         if (!Array.isArray(suggestions)) invalid();
+        let usableToday = 0;
         let nextSlot = 0;
         for (const row of suggestions) {
           const choice = agendaChoice(typeof row === "string" ? [row, 0] : row, resident.places);
           if (!choice) continue;
+          usableToday++;
           const key = clean(choice.activity);
           if (previous.has(key)) continue;
           previous.add(key);
@@ -168,9 +175,12 @@ function parseWeek(
           accepted++;
           if (nextSlot === slots.length) break;
         }
-        if (!nextSlot) invalid();
+        if (!usableToday) invalid();
+        usable += Math.min(usableToday, slots.length);
+        missingFreshDay ||= !nextSlot;
       }
-      if (choices.length >= 4 && accepted < Math.ceil(choices.length * 0.6)) invalid();
+      if (choices.length >= 4 && usable < minimumActivities) invalid();
+      if (missingFreshDay || (choices.length >= 4 && accepted < minimumActivities)) invalid(repeatedActivities);
       return choices;
     }
     if (!Array.isArray(rows) || rows.length !== resident.slots.length) invalid();
@@ -181,13 +191,13 @@ function parseWeek(
     });
     const titles = new Set(choices.map(({ activity }) => clean(activity)));
     const fresh = [...titles].filter((title) => !previous.has(title));
-    if (choices.length >= 4 && fresh.length < Math.ceil(choices.length * 0.6)) invalid();
+    if (choices.length >= 4 && fresh.length < Math.ceil(choices.length * 0.6)) invalid(repeatedActivities);
     if (input.weekActionId === undefined && !input.distinctDailyActivities) return choices;
     const dailyTitles = new Set<string>();
     return choices.map((choice, slot) => {
       const key = resident.slots[slot]!.date + ":" + clean(choice.activity);
       if (dailyTitles.has(key)) {
-        if (input.weekActionId !== undefined) invalid();
+        if (input.weekActionId !== undefined) invalid(repeatedActivities);
         return null;
       }
       dailyTitles.add(key);

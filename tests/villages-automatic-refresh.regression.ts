@@ -150,6 +150,7 @@ async function main() {
   let weeklyOutputLimit = 4096;
   let minimumWeeklyReplyTokens = 0;
   let incompleteWeek = false;
+  let repetitiveWeek = false;
   let repeatSameDay = false;
   let recentSuggestion = "";
   const warnings: string[] = [];
@@ -201,6 +202,7 @@ async function main() {
                 );
               });
               if (incompleteWeek) plans[0]![2] = [];
+              if (repetitiveWeek) for (const day of plans[0]!) day.fill(day[0]!);
               if (repeatSameDay) {
                 recentSuggestion = input.residents[0]!.recent[0]!;
                 assert.ok(recentSuggestion);
@@ -668,6 +670,8 @@ async function main() {
     await reconcileVillage({ now: date(21) });
     await settleBackgroundWork();
     assert.equal(weeklyResponses, 3, "An incomplete reply spends only one automatic request.");
+    const incomplete = (await backgroundWorkSummaries()).find((job) => job.kind === "weekly-agenda");
+    assert.match(incomplete?.error ?? "", /too few usable activities/i);
     assert.ok(
       !(await readVillageState()).villagers.some((resident) =>
         agendaBlocksFor(resident.agenda!, date(22)).some(({ activity }) => activity.includes("pursuit 3/")),
@@ -758,6 +762,17 @@ async function main() {
     const complete = (await readVillageState()).villagers[0]!.agenda!;
     for (let day = 44; day <= 50; day++)
       assert.ok(agendaBlocksFor(complete, date(day)).some(({ activity }) => activity.startsWith("Ari pursuit 9/")));
+
+    setToday(44);
+    repetitiveWeek = true;
+    await clearVillagerAgenda("Ari", "repetitive-week");
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 10, "A repetitive reply spends only one request.");
+    const repetitive = (await backgroundWorkSummaries()).find(
+      (job) => job.kind === "agenda" && job.subjectId === "Ari",
+    );
+    assert.match(repetitive?.error ?? "", /not enough variety/i);
+    assert.equal((await readVillageState()).villagers[0]!.agenda!.manualWeek?.actionId, "limited-week");
   } finally {
     Date.now = realNow;
     stopWork();
