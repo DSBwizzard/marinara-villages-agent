@@ -10,6 +10,8 @@ import { contactPath, physicalVenuePath, physicallyUsableZone, sceneAccessContex
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { conflict } from "./errors.js";
+import { openingPlayspace } from "./opening-playspace.js";
+import { gatheringCast, matchesOpeningGathering } from "./opening-project.js";
 import { venueResidentIds } from "./venue-model.js";
 import { chooseAgendaZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
@@ -164,11 +166,27 @@ export function projectLiveAttendance(village: VillageState, scene: VenueScene, 
     }),
   );
   const attendance = captureSceneAttendance(village, venue.id, now, positions);
-  attendance.occupants.push(
-    ...(scene.sceneAttendance?.occupants ?? []).filter(
-      (person) => !!findNpc(village, person.characterId) && !scene.departedIds?.includes(person.characterId),
-    ),
-  );
+  const zoneId = scene.zoneId;
+  if (
+    scene.status === "opening" &&
+    zoneId &&
+    !scene.submissions.length &&
+    matchesOpeningGathering(village, scene) &&
+    openingPlayspace(village, village.opening!.residentIds, now).some(
+      (row) => row.venueId === venue.id && row.zoneIds.includes(zoneId),
+    )
+  ) {
+    // An unstarted gathering admits its own cast, including saves whose routine refresh already displaced it.
+    attendance.occupants = gatheringCast(village, zoneId).filter(
+      (person) => !scene.departedIds?.includes(person.characterId),
+    );
+  } else {
+    attendance.occupants.push(
+      ...(scene.sceneAttendance?.occupants ?? []).filter(
+        (person) => !!findNpc(village, person.characterId) && !scene.departedIds?.includes(person.characterId),
+      ),
+    );
+  }
   return { attendance, accompanying, departedIds: (scene.departedIds ?? []).filter(sameRoutine), sameRoutine };
 }
 /** Iterate escort dependencies using actual Scene positions, never background schedules. */

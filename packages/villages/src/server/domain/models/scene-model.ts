@@ -137,6 +137,7 @@ export type VenueScene = {
     doorwayVoiceIds?: string[];
     /** Selected writers only; physical attendance and witnesses remain independent. */
     actorIds?: string[];
+    leadSpeakerId?: string;
   };
   departedIds?: string[];
   /** Server-only destinations for validated forced departures, never another Scene's cast. */

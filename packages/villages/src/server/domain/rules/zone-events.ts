@@ -22,55 +22,12 @@ export class InvalidNarratedSound extends VillagesRequestError {
   }
 }
 
-const words = (text: string) =>
-  " " +
-  text
-    .normalize("NFKC")
-    .toLocaleLowerCase("en-US")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim() +
-  " ";
-
-export function addressedSceneResidents<T extends { name: string; characterId: string }>(
-  message: string,
-  candidates: readonly T[],
-  occupants: readonly { name: string }[],
-  targetId?: string,
-) {
-  const speech = message.normalize("NFKC").toLocaleLowerCase("en-US");
-  const literalName = (name: string) =>
-    name
-      .normalize("NFKC")
-      .toLocaleLowerCase("en-US")
-      .replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const addresses = (name: string, surname = "") => {
-    const literal = literalName(name);
-    const fullNameFollows = surname ? `(?!\\s+${literalName(surname)}(?=[\\s’'.,!?]|$))` : "";
-    return new RegExp(
-      `(?:^|[.!?\\n“"‘'])\\s*(?:(?:(?:hey|hello|hi),?\\s+)?${literal}(?=\\s*[,.:!?]|\\s*$)|(?:i\\s+)?(?:ask|tell|say to|speak to|call(?: out)?(?: to| for)?|shout(?: to| at)?|yell(?: to| at)?)\\s+${literal}(?![\\p{L}\\p{N}’'])${fullNameFollows})`,
-      "u",
-    ).test(speech);
-  };
-  return candidates.filter((person) => {
-    const first = person.name.split(/\s+/u)[0];
-    const uniqueFirst =
-      first.length >= 3 &&
-      occupants.filter((other) => words(other.name.split(/\s+/u)[0]) === words(first)).length === 1;
-    return (
-      person.characterId === targetId ||
-      addresses(person.name) ||
-      (uniqueFirst && addresses(first, person.name.slice(first.length).trim()))
-    );
-  });
-}
-
 /** One Scene writer resolves events. Code owns their sources and audiences. */
 export function zoneEventScene(
   scene: VenueScene,
   venue: VillageVenue,
   intent: {
     targetId?: string;
-    message?: string;
     zoneId?: string;
     contactKind?: ContactIntent["kind"];
     priorityIds?: string[];
@@ -145,22 +102,15 @@ export function zoneEventScene(
       opening.includes(person) ||
       (previousSpeakers.has(person.characterId) && contactPosition(scene, person.characterId) === move?.originZoneId),
   );
-  const named = addressedSceneResidents(intent.message ?? "", eligible, occupants, intent.targetId);
+  const selectedRemote = eligible.filter((person) => person.characterId === intent.targetId);
   const doorwayVoice = [...new Set([...established, ...opening].map(({ characterId }) => characterId))];
-  const candidates = [
-    ...named.filter((person) => person.characterId === intent.targetId),
-    ...named,
-    ...opening,
-    ...established,
-    ...eligible,
-  ];
+  const candidates = [...selectedRemote, ...opening, ...established, ...eligible];
   const offered = [...new Map(candidates.map((person) => [person.characterId, person])).values()].slice(0, 4);
   const priority = [
     ...[...(intent.priorityIds ?? []), ...(intent.targetId ? [intent.targetId] : [])].filter(
       (id) => scene.activeIds.includes(id) && contactPosition(scene, id) === scene.zoneId,
     ),
-    ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
-    ...named.map((person) => person.characterId),
+    ...selectedRemote.map((person) => person.characterId),
     ...scene.activeIds.filter((id) => continuing.has(id)),
     ...opening.map((person) => person.characterId),
     ...scene.activeIds,
@@ -168,6 +118,13 @@ export function zoneEventScene(
   ];
   const actorIds = [...new Set(priority)].slice(0, MAX_ZONE_VILLAGERS);
   const selected = actorIds;
+  const leadSpeakerId =
+    intent.targetId &&
+    selected.includes(intent.targetId) &&
+    ((scene.activeIds.includes(intent.targetId) && contactPosition(scene, intent.targetId) === scene.zoneId) ||
+      doorwayVoice.includes(intent.targetId))
+      ? intent.targetId
+      : undefined;
   const cast = selected.flatMap((id) => {
     const person =
       scene.participants.find((entry) => entry.characterId === id) ??
@@ -184,6 +141,7 @@ export function zoneEventScene(
       instruction: "",
       ...(intent.contactKind ? { contactKind: intent.contactKind } : {}),
       localIds: scene.activeIds,
+      ...(leadSpeakerId ? { leadSpeakerId } : {}),
       remoteIds: offered.map((person) => person.characterId).filter((id) => selected.includes(id)),
       ...(doorwayVoice.length ? { doorwayVoiceIds: doorwayVoice.filter((id) => selected.includes(id)) } : {}),
       ...(actorIds ? { actorIds } : {}),

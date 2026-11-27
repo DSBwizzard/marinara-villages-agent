@@ -361,20 +361,24 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
       assert(agenda, `turn ${calls + 1} uses fitted schedule evidence`);
       const packet = JSON.parse(agenda);
       const schedule = { ...time, zoneId: "common" };
+      const destination = packet.agendaDestinations.find(
+        ([, venue, zone]: [number, string, string]) => venue === "The Mill" && zone === "Common",
+      )?.[0];
+      assert(Number.isSafeInteger(destination), "The fitted packet provides the actual visit destination");
       if (calls > 0) {
         assert(packet.agendaOptions.some((slot: { time: { date: string } }) => slot.time.date === tomorrow));
-        assert(packet.agendaVenues.some((venue: { id: string }) => venue.id === "mill"));
         const valid = ++calls === 2;
+        const compact = { date: schedule.date, startMinute: schedule.startMinute, endMinute: schedule.endMinute };
         return {
           content:
             "[mara] [appointment]: " +
             JSON.stringify({
               activity: "Look through maps",
               time: valid
-                ? schedule
+                ? { ...compact, destination }
                 : calls === 3
-                  ? { ...schedule, zoneId: "unfitted-zone" }
-                  : { ...schedule, startMinute: 600, endMinute: 630 },
+                  ? { ...compact, destination: packet.agendaDestinations.length + 1 }
+                  : { ...compact, destination, startMinute: 600, endMinute: 630 },
             }) +
             (valid
               ? "\nNarration: A breeze lifts a page.\n[keep]: " +
@@ -420,7 +424,6 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
         ],
       };
       assert(packet.agendaOptions.some((slot: { activity: string }) => slot.activity === "Sort maps"));
-      assert(packet.agendaVenues.some((venue: { id: string }) => venue.id === "mill"));
       return { content: JSON.stringify(reply), finishReason: "stop" };
     };
     try {
@@ -450,8 +453,8 @@ await runCase("weekly-agenda/scene-scheduling", async () => {
       const returned = agendaWeek(state, "mara", new Date(), false);
       assert.equal(returned.days[1].blocks.length, 0);
       assert.deepEqual(
-        returned.pending?.map(({ time }) => time.startMinute),
-        [time.startMinute],
+        returned.pending?.map(({ time }) => time),
+        [{ ...time, zoneId: "common" }],
       );
       const confirmation = await host.app.inject({
         method: "POST",

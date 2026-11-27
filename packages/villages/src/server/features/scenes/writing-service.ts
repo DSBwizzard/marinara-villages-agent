@@ -71,7 +71,7 @@ import {
 } from "../../domain/rules/venue-writing.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure } from "../../domain/rules/work-failure.js";
-import { addressedSceneResidents, zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
+import { zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
 import { contactPosition } from "../../domain/rules/venue-contact.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
 import { capturedSceneCalendar } from "../../domain/rules/scene-calendar.js";
@@ -159,9 +159,7 @@ export function createSceneWriting({
     const village = sceneContinuityView(authority, original),
       venue = findLocation(village, original.placeId);
     if (!venue) throw conflict("The Scene's Place is unavailable. The draft is retained.");
-    const scene = original.contactGeneration?.zoneEvents
-      ? original
-      : zoneEventScene(original, venue, { message: input });
+    const scene = original.contactGeneration?.zoneEvents ? original : zoneEventScene(original, venue);
     memoryRequire(scene.contactGeneration?.venue?.id === scene.placeId, "admitted writing location changed");
     // Selection can favor the last speaker. Serialize the resulting cast in a stable order.
     const selectedIds = scene.contactGeneration!.actorIds!.toSorted(),
@@ -219,16 +217,7 @@ export function createSceneWriting({
       !scene.visitorIntroduction &&
       (!scene.contactGeneration?.instruction || !!scene.contactGeneration.contactKind) &&
       (mode === "greet" || (freshReply && mode === "chat"));
-    const addressed = nativeCommands
-      ? []
-      : addressedSceneResidents(input, cast, scene.sceneAttendance?.occupants ?? cast);
-    const leadSpeakerId =
-      rememberFor ??
-      (addressed.length === 1 &&
-      (scene.contactGeneration?.localIds?.includes(addressed[0].characterId) ||
-        scene.contactGeneration?.doorwayVoiceIds?.includes(addressed[0].characterId))
-        ? addressed[0].characterId
-        : undefined);
+    const leadSpeakerId = rememberFor ?? scene.contactGeneration?.leadSpeakerId;
     const context = narrationContinuityContext(
       authority,
       scene,
@@ -391,6 +380,7 @@ export function createSceneWriting({
       agendaVenues,
     );
     const { agendaOptions, activities, ...agendaFacts } = agenda;
+    const agendaDestinations = agendaVenues.flatMap(({ name, zones }) => zones.map((zone) => [name, zone.name]));
     const agendaContext = "agenda-context";
     const location = sceneLocationContext(scene, venue, selectedIds, activities);
     const otherPeople = worldCharacterReferences(village, {
@@ -673,11 +663,25 @@ export function createSceneWriting({
                   ...(agendaVenues.length
                     ? [
                         tagged
-                          ? 'For the resident’s offer or acceptance of a specific joint appointment, use one line: [resident-id] [appointment]: {"activity":"Walk together","time":{"date":"YYYY-MM-DD","startMinute":960,"endMinute":990,"venueId":"supplied-venue","zoneId":"supplied-zone"}}. Use actual future terms and a supplied Venue/Zone. Include protection if required by the supplied constraints. The game supplies the words and the Agenda confirmation. Ordinary speech can discuss interest, availability or refusal. Keep definite times and promises for this appointment on its tagged line.'
+                          ? 'For a resident’s definite appointment offer, use one line: [resident-id] [appointment]: {"activity":"Walk together","time":{"date":"YYYY-MM-DD","startMinute":960,"endMinute":990,"destination":1}}. Copy a future date from available and a number from agendaDestinations. Each destination is [number, Venue, Zone]. If the desired place is absent, discuss an available alternative or leave the plan tentative. Include protection if required by the supplied constraints. The game supplies the offer and the Agenda confirmation. Express interest or refusal in ordinary dialogue. Keep all specific promises to book on the appointment line.'
                           : 'For a joint plan use a commitment offer for both parties, about:[actorId], agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use a supplied Venue/Zone. Cite each actual decision with act.',
                       ]
                     : []),
-                  JSON.stringify({ agendaOptions, ...agendaFacts, ...(agendaVenues.length ? { agendaVenues } : {}) }),
+                  JSON.stringify({
+                    agendaOptions,
+                    ...agendaFacts,
+                    ...(agendaVenues.length
+                      ? tagged
+                        ? {
+                            agendaDestinations: agendaDestinations.map(([place, zone], index) => [
+                              index + 1,
+                              place,
+                              zone,
+                            ]),
+                          }
+                        : { agendaVenues }
+                      : {}),
+                  }),
                 ].join("\n"),
                 evidenceId: agendaContext,
                 optional: "history" as const,
@@ -783,7 +787,10 @@ export function createSceneWriting({
         ...(visitorIds?.length ? { visitorIds } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaOptions.length ? { agendaOptions } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaVenues.length
-          ? { agendaVenues: agendaVenues.map(({ id, zones }) => ({ id, zones: zones.map((zone) => zone.id) })) }
+          ? {
+              agendaVenues: agendaVenues.map(({ id, zones }) => ({ id, zones: zones.map((zone) => zone.id) })),
+              ...(tagged ? { indexedAppointmentDestinations: true as const } : {}),
+            }
           : {}),
         ...(context.codeRequestedMemory ? { recoverCodeMemoryEcho: true } : {}),
         ...(positions

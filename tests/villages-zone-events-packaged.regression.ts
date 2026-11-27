@@ -699,7 +699,13 @@ try {
   const freshGathering = clone(baseline);
   freshGathering.delete(activeRecordId);
   freshGathering.delete(sceneRecordId);
-  freshGathering.get(villageRecordId).data.opening = initialOpening(["aqua", "feddy"], placeId, "fresh-founding");
+  const gatheringVillage = freshGathering.get(villageRecordId).data;
+  gatheringVillage.opening = initialOpening(["aqua", "feddy"], placeId, "fresh-founding");
+  for (const person of gatheringVillage.villagers) {
+    if (person.characterId === "distant") continue;
+    for (const block of person.agenda.activeDay.blocks)
+      block.zoneId = person.characterId === "neighbor" ? "terrace" : "kitchen";
+  }
   await restart(freshGathering);
   await request("/rooms", { venueId: placeId, zoneId: "bedroom" }, 409);
   assert.equal(
@@ -711,8 +717,28 @@ try {
   assert.equal(founded.zoneId, "terrace", "Opening entry chooses a qualifying public Zone");
   assert.equal(founded.status, "opening");
   assert.equal(storedVillage(records).opening?.gatheringSceneId, founded.id);
-  assert.equal((await request("/rooms/active")).session?.id, founded.id);
+  assert.deepEqual(
+    founded.activeIds,
+    ["aqua", "feddy"],
+    "The gathering admits its founders regardless of their routine",
+  );
+  const overwrittenGathering = clone(records);
+  const oldOpening = overwrittenGathering.get("villages-venue-visit-" + founded.id).data;
+  oldOpening.sceneAttendance.occupants = people
+    .filter(({ characterId }) => characterId !== "distant")
+    .map((person) => ({ ...person, zoneId: person.characterId === "neighbor" ? "terrace" : "kitchen" }));
+  oldOpening.activeIds = ["neighbor"];
+  await restart(overwrittenGathering);
+  const beforeGreeting = (await request("/rooms/active")).session;
+  assert.equal(beforeGreeting?.id, founded.id);
+  assert.deepEqual(beforeGreeting.activeIds, founded.activeIds);
   assert.equal(completions, beforeGathering);
+  provide({ segments: [{ kind: "dialogue", speakerId: "aqua", text: "Will you help set out the plates?" }] });
+  const greeted = (await request("/rooms/greet", { sessionId: founded.id })).session;
+  assert.equal(greeted.status, "active");
+  assert.equal(greeted.lines.find((line) => line.speakerId === "aqua")?.content, "Will you help set out the plates?");
+  assert.equal(completions, beforeGathering + 1);
+  assert.deepEqual((await request("/rooms/active")).session.activeIds, ["neighbor"], "Routine attendance resumes");
 
   const pendingEntry = clone(baseline);
   const authority = storedVillage(pendingEntry);
@@ -780,7 +806,7 @@ try {
   assert.deepEqual(closedDenied.session.participants, []);
   assert.doesNotMatch(JSON.stringify(closedDenied), /Distant Resident|UNSEEN BEDROOM FURNITURE/);
   assert(storedVillage(records).venues[0].access!.permissions.every((grant) => grant.sceneId === null));
-  assert.equal(completions, beforeGathering);
+  assert.equal(completions, beforeGathering + 1);
 
   // Restore only the synthetic documents between independent failure scenarios.
   for (const owner of ["outbox", "world"] as const) {

@@ -472,7 +472,21 @@ export function decodeTaggedSceneReply(
           const source = [{ segment: id, act: "offer" }];
           if (appointment && readset.agendaVenues?.length) {
             const { protection, ...fields } = record;
-            const terms = agendaTerms.safeParse(fields);
+            const { destination, ...timeFields } = asRecord(fields.time);
+            const location =
+              readset.indexedAppointmentDestinations &&
+              typeof destination === "number" &&
+              Number.isSafeInteger(destination) &&
+              destination > 0
+                ? readset.agendaVenues.flatMap(({ id: venueId, zones }) =>
+                    zones.map((zoneId) => ({ venueId, zoneId })),
+                  )[destination - 1]
+                : undefined;
+            const indexed =
+              location && !("venueId" in timeFields) && !("zoneId" in timeFields)
+                ? { ...fields, time: { ...timeFields, ...location } }
+                : null;
+            const terms = agendaTerms.safeParse(readset.indexedAppointmentDestinations ? indexed : fields);
             if (terms.success) {
               const { activity, time } = terms.data;
               const people = [speakerId, "player"];

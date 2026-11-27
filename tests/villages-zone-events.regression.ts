@@ -109,21 +109,9 @@ const called = zoneEventScene(base, venue, { targetId: "near", contactKind: "cal
 assert.equal(zoneEventScene(base, venue, { targetId: "near" }).contactGeneration!.doorwayVoiceIds, undefined);
 assert.deepEqual(direct.contactGeneration!.actorIds, ["local"], "Ordinary turns only offer the local cast");
 assert.deepEqual(called.contactGeneration!.remoteIds, ["near"], "Direct contact admits the neighboring actor");
-assert.deepEqual(
-  zoneEventScene(base, venue, { message: "Local, you said Near was cooking." }).contactGeneration!.actorIds,
-  ["local"],
-);
-for (const message of [
-  "Near, what is cooking?",
-  "Hello, Near!",
-  "I ask Near what is cooking.",
-  "I call out to Near.",
-  'I call, "Near, can I come in?"',
-]) {
-  const context = zoneEventScene(base, venue, { message });
-  assert.deepEqual(context.contactGeneration!.doorwayVoiceIds, undefined);
-  assert(!context.contactGeneration!.remoteIds!.includes("far"));
-}
+assert.equal(direct.contactGeneration!.leadSpeakerId, undefined);
+assert.equal(zoneEventScene(base, venue, { targetId: "local" }).contactGeneration!.leadSpeakerId, "local");
+assert.equal(called.contactGeneration!.leadSpeakerId, "near");
 const privateRoom = structuredClone(venue);
 privateRoom.zones!.find((zone) => zone.id === "hall")!.kind = "restricted";
 const privateScene = {
@@ -131,21 +119,12 @@ const privateScene = {
   sceneAttendance: { ...base.sceneAttendance!, layout: captureSceneLayout(privateRoom) },
 };
 assert.deepEqual(
-  zoneEventScene(privateScene, privateRoom, { message: 'I call, "Near, can I come in?"' }).contactGeneration!
+  zoneEventScene(privateScene, privateRoom, { targetId: "near", contactKind: "call" }).contactGeneration!
     .doorwayVoiceIds,
   undefined,
 );
 assert.deepEqual(
-  zoneEventScene(base, venue, { message: "I tell Near's sister about the soup." }).contactGeneration!.remoteIds,
-  [],
-);
-assert.equal(
-  zoneEventScene(base, venue, { message: "I shout, ‘Help!’" }).contactGeneration!.doorwayVoiceIds,
-  undefined,
-);
-assert.deepEqual(
-  zoneEventScene(base, venue, { message: "Anyone there?", contactKind: "call", zoneId: "hall" }).contactGeneration!
-    .doorwayVoiceIds,
+  zoneEventScene(base, venue, { contactKind: "call", zoneId: "hall" }).contactGeneration!.doorwayVoiceIds,
   ["near"],
 );
 assert.deepEqual(zoneEventScene(extended, chain, { targetId: "veryFar" }).contactGeneration!.remoteIds, []);
@@ -283,10 +262,7 @@ for (let index = 0; index < 12; index++)
   });
 const bounded = zoneEventScene(crowded, venue);
 assert(bounded.contactGeneration!.actorIds!.length <= 4);
-assert.equal(
-  zoneEventScene(crowded, venue, { message: "Offstage 11, help!" }).contactGeneration!.doorwayVoiceIds,
-  undefined,
-);
+assert.equal(zoneEventScene(crowded, venue, { targetId: "offstage11" }).contactGeneration!.doorwayVoiceIds, undefined);
 assert.equal(
   zoneEventScene(crowded, venue, { targetId: "offstage7", contactKind: "call" }).contactGeneration!.remoteIds[0],
   "offstage7",

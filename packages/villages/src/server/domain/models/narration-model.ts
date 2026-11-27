@@ -41,6 +41,7 @@ export type NarrationReadset = {
   relaxedNarrationProse?: true;
   explicitSceneEvidence?: true;
   compactSceneDecisions?: true;
+  indexedAppointmentDestinations?: true;
   validateAppointmentAvailability?: true;
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;

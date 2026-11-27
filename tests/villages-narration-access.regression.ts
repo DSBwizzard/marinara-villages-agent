@@ -54,13 +54,9 @@ await runCase("narration-access/doorway-after-hours", () => {
   scene.participants = [];
   scene.sceneAttendance!.layout = captureSceneLayout(venue);
   const input = "I knock and wait at the entrance.";
-  assert.deepEqual(zoneEventScene(scene, venue, { message: "I quietly wait." }).contactGeneration?.actorIds, []);
-  assert.equal(
-    zoneEventScene(scene, venue, { message: "I don't knock." }).contactGeneration?.doorwayVoiceIds,
-    undefined,
-  );
+  assert.deepEqual(zoneEventScene(scene, venue).contactGeneration?.actorIds, []);
+  assert.equal(zoneEventScene(scene, venue).contactGeneration?.doorwayVoiceIds, undefined);
   const admitted = zoneEventScene(scene, venue, {
-    message: "I rap on the door.",
     contactKind: "knock",
     zoneId: zone.id,
   });
@@ -108,9 +104,7 @@ await runCase("narration-access/doorway-after-hours", () => {
   applyAcceptedSceneDelta(scene, accepted.episode!);
   assert.equal(scene.zoneId, "exterior", "an invitation is not movement");
   assert.equal(scene.doorwayContacts?.[0].characterId, f.actorId);
-  assert.deepEqual(zoneEventScene(scene, venue, { message: '"Thank you."' }).contactGeneration?.doorwayVoiceIds, [
-    f.actorId,
-  ]);
+  assert.deepEqual(zoneEventScene(scene, venue).contactGeneration?.doorwayVoiceIds, [f.actorId]);
   const current = f.state.worldPlaces.places.cafe.location;
   assert.equal(current.access!.permissions[0].outsideHours, true);
   assert.equal(
@@ -694,7 +688,6 @@ await runCase("narration-access/overnight-agreement", () => {
       },
     }),
     cafe.location,
-    { message: input },
   );
   const prepared = narrationContinuityContext(state, scene, cafe.location, "overnight", input, at);
   const readset = fittedNarrationReadset(

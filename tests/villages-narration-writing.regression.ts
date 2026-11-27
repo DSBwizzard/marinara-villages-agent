@@ -630,7 +630,13 @@ await runCase("narration-writing/single-request", async () => {
       .find((line: string) => line.startsWith('{"location":'))
       ?.includes('"leadSpeakerId"'),
   );
-  const addressed = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, what do you think?", "chat");
+  const naturalAddress = "Earlier he said ‘Mara, what do you think?’ Ich frage Mara, ob sie zustimmt.";
+  const ordinary = await f.writing.prepareVenueTurnMessages(f.scene, naturalAddress, "chat");
+  assert.equal(ordinary.fitted.messages.at(-2)?.content, naturalAddress);
+  assert(!ordinary.fitted.messages.some(({ content }) => content.includes('"leadSpeakerId"')));
+  f.nextOperation("native-speaker-choice");
+  const targeted = zoneEventScene(f.scene, f.venue, { targetId: f.id });
+  const addressed = await f.writing.prepareVenueTurnMessages(targeted, naturalAddress, "chat");
   assert(
     addressed.fitted.messages.some(
       ({ role, content }) => role === "user" && content.includes(`"leadSpeakerId":${JSON.stringify(f.id)}`),
@@ -1831,11 +1837,11 @@ await runCase("narration-writing/long-followup", async () => {
   f.nextOperation("astrolabe-summary");
   const fact = await f.writing.prepareVenueTurnMessages(f.scene, "Tell me about the astrolabe.", "chat");
   assert(fact.fitted.messages.some((row) => row.content.includes(summary)));
-  assert(fact.fitted.messages.every((row) => !row.content.includes('"earlierRecall":true')));
+  assert(fact.fitted.messages.some((row) => row.content.includes("The brass astrolabe belongs to the ferryman.")));
   f.nextOperation("astrolabe-exact-words");
   const quote = await f.writing.prepareVenueTurnMessages(f.scene, "Quote the astrolabe line.", "chat");
   assert(quote.fitted.messages.some((row) => row.content.includes("The brass astrolabe belongs to the ferryman.")));
-  assert(quote.fitted.messages.every((row) => !row.content.includes(summary)));
+  assert(quote.fitted.messages.some((row) => row.content.includes(summary)));
 
   const curtain = {
     ...saved,

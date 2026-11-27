@@ -9,7 +9,7 @@ import {
 } from "./continuity.js";
 import { episodeSpeechEvidence, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { asksForRecallQuote, recallTerms, sceneQuoteScore, sceneQuoteTerms } from "./text-recall.js";
+import { recallOverlap, recallTerms } from "./text-recall.js";
 import { assertMailHistory, episodeMailEvidence } from "./mail-evidence.js";
 
 export const emptyEpisodes = (): EpisodeCollection => ({ format: 1, revision: 0, records: [] });
@@ -428,31 +428,11 @@ export function selectEpisodeHistory(
     const current = candidates.filter((row) => row.episode.sceneId === sceneId);
     const sceneWindow = appendHistoryWithin(current, bytes, (row) => row.bytes);
     const sceneIds = new Set(sceneWindow.map((row) => row.view.id));
-    const cue =
-      /(?:^\s*about\b|\b(?:remember|earlier|before|yesterday|last time|previously|promis(?:e|ed)|(?:you|we) (?:said|talked|agreed)|told me)\b)/giu;
-    const quote = asksForRecallQuote(query);
-    const queryTerms = quote
-      ? sceneQuoteTerms(query)
-      : [...new Set(recallTerms(query.replace(cue, " ")))].filter((term) => term.length >= 3);
-    // shortcut: match eligible prose locally; add semantic recall only if players miss specific callbacks.
+    const queryTerms = new Set(recallTerms(query));
+    // Rank eligible evidence locally. Player wording cannot change the evidence rules or its audience.
     const recalled = candidates
       .map((row) => {
         const { groundedInput, segments, letters } = row.view;
-        if (quote)
-          return {
-            row,
-            matches: Math.max(
-              0,
-              ...groundedInput.flatMap((row) =>
-                row.channel === "words" ? [sceneQuoteScore(queryTerms, "player", row.text)] : [],
-              ),
-              ...segments.flatMap((line) => {
-                if (!("text" in line) || line.perceivedBy.player !== "words") return [];
-                const speaker = row.episode.segments.find((saved) => saved.id === line.id)?.name ?? line.speakerId;
-                return [sceneQuoteScore(queryTerms, speaker, line.text)];
-              }),
-            ),
-          };
         const prose = [
           ...groundedInput.map((source) => source.text),
           ...segments.flatMap((segment) => [
@@ -461,43 +441,41 @@ export function selectEpisodeHistory(
           ]),
           ...(letters ?? []).map((letter) => letter.text),
         ].join(" ");
-        const words = new Set(recallTerms(prose));
-        return { row, matches: queryTerms.filter((term) => words.has(term)).length };
+        const witnessed = new Set(
+          segments.filter((line) => line.perceivedBy.player === "words").map((line) => line.id),
+        );
+        const speakers = row.episode.segments.filter((line) => witnessed.has(line.id)).map((line) => line.name);
+        return { row, matches: recallOverlap(queryTerms, [prose, ...speakers].join(" ")) };
       })
       .filter(({ matches }) => matches > 0)
       .sort((a, b) => b.matches - a.matches || b.row.index - a.row.index)
       .map(({ row }) => row);
-    // On arrival, offer the latest eligible shared exchange even before anyone asks for a callback.
-    const arrivalRecall = sceneWindow.length
-      ? []
-      : candidates
-          .toReversed()
-          .filter(
-            ({ view }) =>
-              view.segments.some(
-                ({ perceivedBy }) =>
-                  perceivedBy.player === "words" &&
-                  Object.entries(perceivedBy).some(([id, channel]) => id !== "player" && channel === "words"),
-              ) ||
-              view.letters?.some(
-                ({ knownBy }) => knownBy.includes("player") && knownBy.some((id) => id !== "player"),
-              ) ||
-              view.groundedInput.some(
-                (row) =>
-                  row.for !== "player" &&
-                  row.channel === "words" &&
-                  view.groundedInput.some(
-                    (other) => other.for === "player" && other.id === row.id && other.channel === "words",
-                  ),
-              ),
-          );
+    const sharedWords = ({ view }: (typeof candidates)[number]) =>
+      view.segments.some(
+        ({ perceivedBy }) =>
+          perceivedBy.player === "words" &&
+          Object.entries(perceivedBy).some(([id, channel]) => id !== "player" && channel === "words"),
+      ) ||
+      view.letters?.some(({ knownBy }) => knownBy.includes("player") && knownBy.some((id) => id !== "player")) ||
+      view.groundedInput.some(
+        (row) =>
+          row.for !== "player" &&
+          row.channel === "words" &&
+          view.groundedInput.some(
+            (other) => other.for === "player" && other.id === row.id && other.channel === "words",
+          ),
+      );
     return {
       partial: sceneWindow.length < candidates.length,
       omitted: candidates.length - sceneWindow.length,
       bytes: sceneWindow.reduce((total, row) => total + row.bytes, 0),
       sceneWindow: sceneIds,
       episodes: sceneWindow.map((row) => row.view),
-      recallCandidates: [...new Set([...recalled, ...arrivalRecall])].map((row) => row.view),
+      recallCandidates: recalled.map((row) => row.view),
+      sharedRecall: candidates
+        .toReversed()
+        .filter(sharedWords)
+        .map((row) => row.view),
     };
   }
   const shared = recentSharedEpisodes(collection, holders)

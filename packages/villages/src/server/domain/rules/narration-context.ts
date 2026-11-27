@@ -27,13 +27,7 @@ import {
 import { relationshipAttitudes, selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
 import { appendHistoryWithin, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import {
-  asksForRecallQuote,
-  estimatedTextTokens,
-  recallTerms,
-  sceneQuoteScore,
-  sceneQuoteTerms,
-} from "./text-recall.js";
+import { estimatedTextTokens, recallOverlap, recallTerms } from "./text-recall.js";
 import { hasWritingEvidence, type VenueWritingBlock } from "./venue-writing.js";
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { sceneContinuityView } from "./scene-continuity.js";
@@ -113,21 +107,14 @@ function callbackView(
     view.segments.some((line) => line.projections.length)
   )
     return view;
-  const quote = asksForRecallQuote(input);
-  const terms = quote ? sceneQuoteTerms(input) : [...new Set(recallTerms(input))];
-  const lines = view.segments.filter((line) => "text" in line).filter((line) => line.kind === "dialogue" && line.text);
+  const terms = new Set(recallTerms(input));
+  const lines = view.segments
+    .filter((line) => "text" in line)
+    .filter((line) => (line.kind === "dialogue" || line.kind === "whisper" || line.kind === "side") && line.text);
   if (lines.length <= 2) return view;
   const scores = lines.map((line) => {
-    if (quote) {
-      if (line.perceivedBy.player !== "words") return 0;
-      return sceneQuoteScore(
-        terms,
-        episode.segments.find((saved) => saved.id === line.id)?.name ?? line.speakerId,
-        line.text,
-      );
-    }
-    const words = new Set(recallTerms(line.text));
-    return terms.filter((term) => words.has(term)).length;
+    const speaker = line.perceivedBy.player === "words" ? episode.segments.find((saved) => saved.id === line.id) : null;
+    return recallOverlap(terms, speaker ? `${speaker.name} ${line.text}` : line.text);
   });
   const strongest = Math.max(...scores);
   if (!strongest) return view;
@@ -394,7 +381,16 @@ export function narrationContinuityContext(
   );
   const transcriptIds = new Set(transcript.map((part) => part.episodeIds[0]));
   parts.push(...transcript);
-  const recallCandidates = scene.visitEvent && opening ? [] : (history.recallCandidates ?? []);
+  const sharedRecall = history.sharedRecall ?? [];
+  const recallCandidates =
+    scene.visitEvent && opening
+      ? []
+      : [
+          ...new Set([
+            ...(history.recallCandidates ?? []),
+            ...(sharedRecall.some((view) => transcriptIds.has(view.id)) ? [] : sharedRecall),
+          ]),
+        ];
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
   for (const { npc, met } of npcCandidates)
@@ -692,7 +688,6 @@ export function narrationContinuityContext(
       ),
     ),
   );
-  const asksForQuote = asksForRecallQuote(recallQuery);
   const facts = optional.filter(
     (part) =>
       actorFact(part) &&
@@ -710,13 +705,15 @@ export function narrationContinuityContext(
     }
     return false;
   };
-  const recalledQuote = (opening || asksForQuote) && tryOlder();
+  if (opening) tryOlder();
   for (const part of optional.filter((part) => !actorFact(part))) takeRecall(part);
-  if (opening || !recalledQuote) {
-    let factsAdded = 0;
-    for (const part of facts) if (takeRecall(part) && ++factsAdded === 2 && !opening) break;
-    if (!opening && !factsAdded) tryOlder();
+  let factsAdded = 0;
+  for (const part of facts) {
+    if (!takeRecall(part) || opening) continue;
+    if (++factsAdded === 1) tryOlder();
+    if (factsAdded === 2) break;
   }
+  if (!opening && !factsAdded) tryOlder();
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts
     .filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds))

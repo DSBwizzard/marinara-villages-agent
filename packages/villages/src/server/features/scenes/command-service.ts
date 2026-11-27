@@ -23,7 +23,11 @@ import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.
 import type { VillageState } from "../../domain/models/world.js";
 import { badGateway, badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
-import { completeOpeningGathering, matchesOpeningGathering } from "../../domain/rules/opening-project.js";
+import {
+  completeOpeningGathering,
+  gatheringCast,
+  matchesOpeningGathering,
+} from "../../domain/rules/opening-project.js";
 import { captureSceneAttendance, sameSceneRoutine, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
 import { sceneContinuityView, cloneSceneFacts, captureSceneContinuity } from "../../domain/rules/scene-continuity.js";
@@ -917,15 +921,7 @@ export function createSceneCommands({
         visitorIntroductionVenue(village, place, sceneAttendance, now);
       if (introduction) id = visitorIntroductionId(village);
     }
-    if (gathering)
-      sceneAttendance.occupants = village.villagers
-        .filter((resident) => village.opening!.residentIds.includes(resident.characterId))
-        .map((resident) => ({
-          characterId: resident.characterId,
-          name: resident.cardSnapshot.name,
-          doing: "at the Community gathering",
-          zoneId: zone.id,
-        }));
+    if (gathering) sceneAttendance.occupants = gatheringCast(village, zone.id);
     if (
       !startingHistoryReady({
         villagers: village.villagers.filter((resident) =>
@@ -1525,7 +1521,6 @@ export function createSceneCommands({
       ? scene
       : zoneEventScene(scene, location!, {
           ...(input.trespassReaction ? { priorityIds: scene.trespassReaction?.witnesses } : {}),
-          message: input.message,
           targetId: input.rememberFor || input.targetId,
           zoneId: input.contact?.boundaryZoneId,
           contactKind: input.contact?.kind,
