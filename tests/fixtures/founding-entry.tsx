@@ -20,6 +20,12 @@ installFeature(function FoundingFixture(controller) {
       />
     );
   if (controller.screen === "preparing")
-    return <PreparationScreen controller={controller} storybookDaylight={daylight} />;
+    return (
+      <PreparationScreen
+        controller={controller}
+        onEnter={() => controller.setScreen("home")}
+        storybookDaylight={daylight}
+      />
+    );
   return <ExplorationScreen controller={controller} />;
 });
