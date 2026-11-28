@@ -248,6 +248,20 @@ async function currentSceneAndWritingHttp() {
         assert.equal((await app.inject({ method: "PATCH", url: "/settings", payload: [] })).statusCode, 409);
         assert.equal((await settings({ backgroundPace: "quiet", name: "Changed" })).statusCode, 409);
         assert.equal((await settings({ name: "Changed" })).statusCode, 409);
+        const turn = await app.inject({ method: "POST", url: "/rooms/turn", payload: {} });
+        assert.equal(turn.statusCode, 409);
+        assert.match(turn.json().error, /catch-up must finish/u);
+        assert.equal(
+          (
+            await app.inject({
+              method: "POST",
+              url: "/background/catchup/continue",
+              payload: { batchId: "paused-return" },
+            })
+          ).statusCode,
+          404,
+          "the old Continue route cannot dismiss a catch-up",
+        );
         const pace = await settings({ backgroundPace: "quiet" });
         assert.equal(pace.statusCode, 200, pace.body);
         assert.equal(pace.json().settings.backgroundPace, "quiet");

@@ -21,7 +21,7 @@ import { departureContinuityAvailable } from "../../domain/rules/return-catchup-
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
 import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain/rules/return-catchup-authority.js";
-import { conflict } from "../../domain/rules/errors.js";
+import { conflict, VillagesRequestError } from "../../domain/rules/errors.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
 import { WORLD_GM_INSTRUCTION, worldNarrativeContext } from "../../domain/rules/narrative-prompts.js";
 
@@ -56,7 +56,6 @@ function capturedReturn(state: VillageState, input: ReturnType<typeof readWorldN
     opportunity.startsAt < capture.at ||
     opportunity.endsAt > batch.until! ||
     !batch.opportunities?.some((row) => JSON.stringify(row) === JSON.stringify(opportunity)) ||
-    !departureContinuityAvailable(capture, state) ||
     returnCaptureRevision(capture) !== input.captureRevision
   )
     return;
@@ -228,23 +227,26 @@ export function createNarrative(ports: Ports) {
       return { quiet: false, development: readNarrativeDevelopment(result.development, input.grant) };
     },
     valid(state, input) {
-      if (input.version !== 2 || state.backgroundPace === "off") return false;
+      if (input.version !== 2 || (!input.catchupBatchId && state.backgroundPace === "off")) return false;
       if (state.narrative?.receipts.some((row) => row.id === input.grant.id && row.rejected)) return false;
       const grant = input.grant as NarrativeAdmission;
       const claimed = state.narrative?.claims?.some((row) => row.id === grant.id);
+      const historical = input.catchupBatchId ? capturedReturn(state, input) : undefined;
+      if (input.catchupBatchId && !historical) {
+        if (claimed) throw conflict("The saved World opportunity needs recovery.");
+        return false;
+      }
+      if (historical && !departureContinuityAvailable(historical.capture, state))
+        throw new ReturnOpportunityUnavailable("The saved departure no longer matches Village continuity.");
       try {
         assertNarrativeAdmission(state, grant);
       } catch (error) {
+        if (historical && error instanceof VillagesRequestError && error.statusCode === 409)
+          throw new ReturnOpportunityUnavailable(error.message);
         if (claimed) throw error;
         return false;
       }
-      if (input.catchupBatchId && !capturedReturn(state, input)) {
-        if (claimed)
-          throw conflict("The departure continuity or opportunity changed. The saved World result is retained.");
-        return false;
-      }
-      const claim = state.narrative?.claims?.find((row) => row.id === grant.id);
-      return !!claim || grant.reviewBasis === (state.eventAttempts?.lastAttemptAt ?? "");
+      return !!claimed || grant.reviewBasis === (state.eventAttempts?.lastAttemptAt ?? "");
     },
     reserve(state, input, attemptId) {
       const grant = input.grant as NarrativeAdmission;

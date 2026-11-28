@@ -18,7 +18,6 @@ import { buildVillageSnapshot } from "../world/snapshot.js";
 import { reconcileVillage } from "../world/village.js";
 import {
   advanceReturnCatchup,
-  continueReturnCatchup,
   prepareReturnCatchup,
   recordReturnVisibility,
   retryReturnCatchup,
@@ -106,7 +105,16 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
       until: batch.until,
       completed: batch.records?.filter((row) => ["settled", "rejected"].includes(row.status)).length ?? 0,
       total: batch.records?.length ?? 0,
-      issue: batch.status === "failed" ? (current ? (job ? "generation" : "preparation") : "authority") : null,
+      issue:
+        batch.status !== "completed" && batch.status !== "cancelled" && state.backgroundPace === "off"
+          ? "pace"
+          : batch.status === "failed"
+            ? state.returnCatchup?.capture && current
+              ? job
+                ? "generation"
+                : "preparation"
+              : "authority"
+            : null,
     };
   }
   app.post<{ Body: { sessionId?: unknown; visible?: unknown } }>("/background/presence", async (request, reply) => {
@@ -172,16 +180,6 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
       return { batch: view };
     } catch (error) {
       return fail(reply, error, "retrying Village catch-up");
-    }
-  });
-  app.post<{ Body: { batchId?: unknown } }>("/background/catchup/continue", async (request, reply) => {
-    try {
-      if (typeof request.body?.batchId !== "string") throw badRequest("Choose a Village catch-up.");
-      await continueReturnCatchup(request.body.batchId);
-      await reconcileVillage();
-      return { batch: await returnView() };
-    } catch (error) {
-      return fail(reply, error, "continuing to the Village");
     }
   });
   app.post<{ Body: { id?: unknown; expectedAttempt?: unknown; actionId?: unknown; expectedInstanceId?: unknown } }>(

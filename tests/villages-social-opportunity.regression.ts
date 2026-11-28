@@ -254,11 +254,6 @@ const coordinator = createReturnCatchup({
   },
   job: async () => null,
   retryJob: async () => {},
-  cancel: async () => {
-    working.returnCatchup!.batch!.status = "cancelled";
-    delete working.returnCatchup!.capture;
-  },
-  settle: async () => "settled",
   hasPresence: () => true,
   now: () => afterTwoHours,
 } as any);
@@ -324,8 +319,6 @@ const retryCoordinator = createReturnCatchup({
       releaseRetry = resolve;
     });
   },
-  cancel: async () => {},
-  settle: async () => "settled",
   hasPresence: () => true,
   now: () => afterTwoHours,
 } as any);
@@ -350,21 +343,16 @@ const raceCoordinator = createReturnCatchup({
     }),
   job: async () => null,
   retryJob: async () => {},
-  cancel: async () => {
-    working.returnCatchup!.batch!.status = "cancelled";
-    delete working.returnCatchup!.capture;
-  },
-  settle: async () => "settled",
   hasPresence: () => true,
   now: () => afterTwoHours,
 } as any);
 const pendingAdvance = raceCoordinator.advance();
 for (let count = 0; count < 20 && !rejectQueue; count++) await new Promise<void>((resolve) => setImmediate(resolve));
 assert.ok(rejectQueue);
-await raceCoordinator.continueToVillage("grounded-return");
+working.returnCatchup!.batch!.status = "completed";
 rejectQueue(new Error("queue interrupted"));
 await pendingAdvance;
-assert.equal(working.returnCatchup!.batch!.status, "cancelled", "A late queue error cannot reopen a cancelled batch.");
+assert.equal(working.returnCatchup!.batch!.status, "completed", "A late queue error cannot reopen a settled batch.");
 const inaccessible = structuredClone(capture);
 for (const resident of inaccessible.villagers) resident.agenda!.activeDay!.blocks[0]!.zoneId = "missing-zone";
 assert.ok(

@@ -1104,6 +1104,8 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
       "Stored departure Room continuity is loaded before validating World catch-up.",
     );
     assert.equal(service.handler.valid(loaded, queued.input), true);
+    loaded.backgroundPace = "off";
+    assert.equal(service.handler.valid(loaded, queued.input), true, "Pace Off preserves an admitted World review.");
     loaded.returnCatchup!.batch!.opportunities![0].facts.push("A different saved opportunity.");
     assert.equal(service.handler.valid(loaded, queued.input), false);
   } finally {

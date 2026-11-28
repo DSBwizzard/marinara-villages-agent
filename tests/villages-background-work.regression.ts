@@ -10,6 +10,7 @@ import {
 import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { returnCaptureRevision } from "../packages/villages/src/server/domain/rules/return-capture-revision.js";
+import { ReturnOpportunityUnavailable } from "../packages/villages/src/server/domain/rules/return-catchup-authority.js";
 import { admitNarrative, ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { villageNow } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -1413,7 +1414,11 @@ async function main() {
         });
         return {};
       },
-      valid: (state) => state.setting !== "Source changed after response storage",
+      valid(state) {
+        if (state.setting === "Source changed after response storage")
+          throw new ReturnOpportunityUnavailable("The captured source changed.");
+        return true;
+      },
       apply() {
         throw new Error("An obsolete source cannot apply");
       },

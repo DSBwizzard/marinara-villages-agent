@@ -39,7 +39,7 @@ export function createVillageSettings({
     }
     const state = await mutateVillageState((state) => {
       const catchup = state.returnCatchup?.batch?.status;
-      if (catchup === "queued" || catchup === "running")
+      if ((catchup === "queued" || catchup === "running") && state.backgroundPace !== "off")
         throw conflict("Wait for Village catch-up before changing Pace.");
       state.backgroundPace = value as VillageBackgroundPace;
     });

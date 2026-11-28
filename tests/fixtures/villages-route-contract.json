@@ -575,10 +575,6 @@
     },
     {
       "method": "post",
-      "path": "/background/catchup/continue"
-    },
-    {
-      "method": "post",
       "path": "/background/retry"
     },
     {

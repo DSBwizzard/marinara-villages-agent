@@ -7,10 +7,9 @@ import {
   recordReturnVisibility,
 } from "../../domain/rules/return-catchup-state.js";
 import { conflict } from "../../domain/rules/errors.js";
-import { backgroundSlotId } from "../../domain/rules/background-revision.js";
-import { activityDate } from "../../domain/rules/event-attempts.js";
 import { departureContinuityAvailable } from "../../domain/rules/return-catchup-capture.js";
-import { weeklyAgendaResidents } from "../../domain/rules/weekly-agenda.js";
+import { backgroundSlotId } from "../../domain/rules/background-revision.js";
+import { foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
 
 type Ports = {
   readAuthority?: () => Promise<VillageState>;
@@ -24,10 +23,10 @@ type Ports = {
   ) => Promise<void>;
   job: typeof import("../../jobs/background-work.js").backgroundJobSnapshot;
   retryJob: typeof import("../../jobs/background-work.js").retryBackgroundJob;
-  cancel: typeof import("../../jobs/background-work.js").cancelReturnCatchup;
   hasPresence: () => boolean;
   now: () => Date;
   activityChanged?: () => void;
+  afterSettle?: () => Promise<unknown>;
 };
 
 /** One durable batch uses the existing background worker and its atomic acceptance. */
@@ -44,8 +43,7 @@ export function createReturnCatchup(ports: Ports) {
   async function prepare(now: Date, id: string): Promise<void> {
     const wallTime = Date.now();
     await mutate((state) => {
-      // Dated worlds leave optional generation on its live schedule instead of holding play to add old events.
-      if (!weeklyAgendaResidents(state).length) discoverReturnBatch(state, now, id);
+      if (foundingReadyForPlay(state) && state.opening?.stage !== "gathering") discoverReturnBatch(state, now, id);
       expirePlayerVisitsOnReturn(state, wallTime);
     });
   }
@@ -71,11 +69,41 @@ export function createReturnCatchup(ports: Ports) {
     advancing = true;
     return serial(async () => {
       for (let iteration = 0; iteration < 16; iteration++) {
-        let state = await readAuthority();
+        const state = await readAuthority();
         const tracking = state.returnCatchup,
           batch = tracking?.batch,
           capture = tracking?.capture;
-        if (!batch || !capture || !["queued", "running", "failed"].includes(batch.status)) return;
+        if (!batch || !["queued", "running", "failed"].includes(batch.status)) return;
+        if (
+          batch.records?.length &&
+          batch.records.every((row) => ["settled", "rejected"].includes(row.status)) &&
+          !batch.relationshipRefresh
+        ) {
+          let completed = false;
+          await update(batch.id, (world) => {
+            completed = false;
+            const live = world.returnCatchup!.batch!;
+            if (live.relationshipRefresh || live.records?.some((row) => !["settled", "rejected"].includes(row.status)))
+              return;
+            live.status = "completed";
+            completed = true;
+            if (!ports.hasPresence()) delete world.returnCatchup!.capture;
+          });
+          if (completed && ports.hasPresence()) {
+            await recordVisible(ports.now());
+            await ports.afterSettle?.();
+          }
+          return;
+        }
+        if (!capture) {
+          if (batch.status !== "failed")
+            await update(batch.id, (world) => {
+              world.returnCatchup!.batch!.status = "failed";
+              world.returnCatchup!.batch!.reason = "The saved departure is unavailable.";
+            });
+          return;
+        }
+        if (state.backgroundPace === "off") return;
         if (batch.status === "failed") {
           const record = batch.records?.find((row) => !["settled", "rejected"].includes(row.status));
           const opportunity = batch.opportunities?.find((row) => row.id === record?.opportunityId);
@@ -107,7 +135,6 @@ export function createReturnCatchup(ports: Ports) {
         }
         const independent = batch.opportunities?.some((row) => row.kind === "world");
         const relationship = batch.opportunities?.find((row) => row.kind === "relationship");
-        if (!independent && ports.readAuthority) state = await ports.readSnapshot({ memories: true });
         const record = batch.records?.find((row) => !["settled", "rejected", "held"].includes(row.status));
         if (!record || record.opportunityId === relationship?.id) {
           const held = batch.records?.find((row) => row.status === "held");
@@ -120,25 +147,32 @@ export function createReturnCatchup(ports: Ports) {
         }
         if (!record) {
           let appended = false;
+          let completed = false;
           await update(batch.id, (world) => {
             appended = false;
+            completed = false;
             const active = world.returnCatchup!.batch!;
-            if (active.records?.some((row) => row.status !== "settled" && row.status !== "rejected")) return;
+            if (
+              world.backgroundPace === "off" ||
+              active.records?.some((row) => !["settled", "rejected"].includes(row.status))
+            )
+              return;
             appended = appendReturnRelationshipRefresh(world, active);
             if (appended) return;
-            if (
-              !active.opportunities?.some((row) => row.kind === "world" || row.kind === "relationship") &&
-              (!world.returnCatchup?.capture || !departureContinuityAvailable(world.returnCatchup.capture, world))
-            ) {
-              world.returnCatchup!.batch!.reason = "Resident continuity changed before the absence could be verified.";
-              world.returnCatchup!.batch!.status = "failed";
+            if (!active.records?.length && !departureContinuityAvailable(capture, world)) {
+              active.reason = "Resident continuity changed before the absence could be verified.";
+              active.status = "failed";
               return;
             }
-            world.returnCatchup!.batch!.status = "completed";
+            active.status = "completed";
+            completed = true;
             if (!ports.hasPresence()) delete world.returnCatchup!.capture;
           });
           if (appended) continue;
-          if (ports.hasPresence()) await recordVisible(ports.now());
+          if (completed && ports.hasPresence()) {
+            await recordVisible(ports.now());
+            await ports.afterSettle?.();
+          }
           return;
         }
         const opportunity = batch.opportunities?.find((row) => row.id === record.opportunityId);
@@ -146,23 +180,10 @@ export function createReturnCatchup(ports: Ports) {
         if (!ports.hasPresence()) return;
         const subject = returnCatchupSubject(batch.id, opportunity.id);
         const job = await ports.job(opportunity.kind === "world" ? "world-development" : "resident-planning", subject);
-        if (
-          activityDate(state, ports.now()) !== batch.budgetDate &&
-          !state.eventAttempts?.attempts.some((row) => row.id === job?.id && row.batchId === batch.id) &&
-          !job?.requests &&
-          !job?.attemptHistory?.some((attempt) => attempt.requests > 0) &&
-          !job?.steps?.length
-        ) {
-          await update(batch.id, (world) => {
-            const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
-            row.status = "rejected";
-            row.error = "The catch-up allowance date ended before this opportunity started.";
-          });
-          continue;
-        }
         if (record.status === "queued" && job) {
-          if (["queued", "running", "paused"].includes(job.status)) return;
-          if (job.status === "failed" || job.status === "interrupted") {
+          if (job.status === "queued" || job.status === "running" || (job.status === "paused" && !job.connectionPaused))
+            return;
+          if (["failed", "interrupted", "paused"].includes(job.status)) {
             if (independent) {
               await update(batch.id, (world) => {
                 const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
@@ -184,6 +205,10 @@ export function createReturnCatchup(ports: Ports) {
             const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
             row.status = "rejected";
             row.error = job.error || "The opportunity is no longer valid.";
+            if (world.narrative?.claims)
+              world.narrative.claims = world.narrative.claims.filter(
+                (claim) => claim.attemptId !== job.id || claim.batchId !== batch.id,
+              );
           });
           continue;
         }
@@ -236,6 +261,7 @@ export function createReturnCatchup(ports: Ports) {
       const state = await readAuthority();
       const batch = state.returnCatchup?.batch;
       if (!batch || batch.id !== batchId) throw conflict("Village catch-up changed. Refresh its status.");
+      if (!state.returnCatchup?.capture) throw conflict("The saved departure needs recovery.");
       const record = batch.records?.find((row) => !["settled", "rejected"].includes(row.status));
       if (!record) throw conflict("There is no unfinished catch-up work.");
       if (batch.status !== "failed") throw conflict("Catch-up does not need a retry.");
@@ -263,10 +289,5 @@ export function createReturnCatchup(ports: Ports) {
       advancing = false;
     }
   }
-  async function continueToVillage(batchId: string): Promise<void> {
-    await ports.cancel(batchId);
-    if (ports.hasPresence()) await recordVisible(ports.now());
-    ports.activityChanged?.();
-  }
-  return { prepare, recordVisible, advance, retry, continueToVillage };
+  return { prepare, recordVisible, advance, retry };
 }
