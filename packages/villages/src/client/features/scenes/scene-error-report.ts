@@ -254,6 +254,8 @@ export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context
           lines.push(`JSON parser: ${sceneJsonIssues[diagnostic.jsonIssue]} (${diagnostic.jsonIssue})`);
         if (diagnostic.checks.some(({ code }) => code === "missing_required_effect"))
           lines.push("Why: The reply described a change without the game action needed to save it.");
+        if (diagnostic.checks.some(({ code }) => code === "room_outcome_unverified"))
+          lines.push("Why: The reply proposed a Room change without evidence that it happened.");
         if (diagnostic.checks.some(({ code }) => code === "scene_expression_unavailable"))
           lines.push("Why: The requested expression was unavailable for the character’s sprite.");
         if (diagnostic.rejected && !diagnostic.checks.length) lines.push("Validator details: unavailable");
