@@ -143,7 +143,7 @@ await withBrowser(browser, async () => {
     const dock = page.locator(`.${tag}-chat-vn`);
     const tray = page.getByRole("button", { name: /World changes?/ });
     await expect(text).toHaveText("Hello?");
-    await tray.click();
+    await expect(tray).toHaveAccessibleName("1 World change");
     await expect(page.getByText("Circumstance changed", { exact: true })).toBeVisible();
     if (width === 390 || width === 1440)
       await page.screenshot({ path: `artifacts/scene-circumstance-${width}x${height}.png` });
