@@ -117,6 +117,8 @@ const saved = z
           return (
             row.format === 1 &&
             (row.visitorIntroductionFarewell === undefined || row.visitorIntroductionFarewell === true) &&
+            (row.atomicRoomOutcomes === undefined ||
+              (row.atomicRoomOutcomes === true && row.taggedSceneReply === true)) &&
             (row.terminalSceneRepair === undefined ||
               (row.terminalSceneRepair === true && row.taggedSceneReply === true)) &&
             typeof row.setupAt === "string" &&

@@ -489,6 +489,8 @@ export function RoomPanel({
   if (replyId && room.replyWarning)
     errorItems.push({
       id: "optional:" + replyId,
+      appliedWithWarnings: true,
+      diagnostic: room.replyWarningDiagnostic,
       title: "Scene detail",
       message: room.replyWarning === "expression" ? "Couldn’t show the expression." : "Couldn’t apply a Scene detail.",
     });

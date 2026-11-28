@@ -16,8 +16,11 @@ export const TAGGED_SCENE_FORMAT = [
   "[speaker-id] [whisper recipient-id]: text, [speaker-id] [shout]: text, and [speaker-id] [aside]: text are optional. An aside follows its main line.",
   "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
   "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
-  "Do not repeat an outcome in other prose. Player movement and Village time come from the game. Show what people attempt and how they react.",
+  'For newly established physical facts that would still be true on another visit, such as a broken window, spilled glass or a completed repair, use one Narration!: line and a matching [keep]: {"for":"room","text":"Complete Room fact."}. Use replace with the supplied entry ID when editing a saved fact. A player assertion alone does not establish damage. Introducing an independent environmental event needs a supplied circumstance grant. If the Scene cannot support or save the outcome, leave it out. Conditions that change ordinary use also need their native command.',
+  "Do not preview or repeat a lasting outcome in ordinary prose. Use ordinary prose for already established Room facts and for fleeting details. Player movement and Village time come from the game. Show what people attempt and how they react.",
 ].join("\n");
+
+export const isRoomKeepAlias = (value: unknown) => Array.isArray(value) && value.length === 1 && value[0] === "room";
 
 const effectLabel = /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u;
 const isEffectLabel = (value: unknown): value is string =>
@@ -301,7 +304,17 @@ export function decodeTaggedSceneReply(
         (requires !== undefined &&
           (!Array.isArray(requires) || requires.length > 8 || !requires.every(isEffectLabel))) ||
         (proposal?.independent !== undefined && proposal.independent !== true);
-      const effect: Record<string, unknown> = proposal && !invalid ? { ...proposal, id } : { id };
+      const roomKeep = readset.atomicRoomOutcomes && control === "keep" && proposal?.for === "room";
+      const roomAlias = readset.atomicRoomOutcomes && control === "keep" && isRoomKeepAlias(proposal?.for);
+      const circumstance = readset.atomicRoomOutcomes && control === "command" && proposal?.type === "circumstance";
+      const effect: Record<string, unknown> =
+        proposal && !invalid
+          ? { ...proposal, id }
+          : {
+              id,
+              ...(roomKeep || roomAlias ? { for: proposal?.for } : {}),
+              ...(circumstance ? { type: "circumstance" } : {}),
+            };
       const crossing = control === "command" && (effect.type === "move" || effect.type === "depart");
       if (authoritative && anchor?.text === "" && !crossing) continue;
       const hasCommand = anchor && commands.some(({ at }) => at === anchor?.id);
@@ -321,7 +334,7 @@ export function decodeTaggedSceneReply(
         (control !== "keep" || slot.kind !== "offer" || slot.actorId !== anchor.speakerId)
       )
         continue;
-      if (anchor && anchor !== actionAnchor && (control === "command" || marked)) bind(anchor, id);
+      if (anchor && anchor !== actionAnchor && (control === "command" || marked || roomKeep)) bind(anchor, id);
       if (authoritative && crossing && anchor?.kind === "narration") {
         const name = scene.participants.find(({ characterId }) => characterId === effect.who)?.name ?? "Someone";
         const outcome =
@@ -350,7 +363,10 @@ export function decodeTaggedSceneReply(
           }
         }
       }
-      if (control === "keep") effect.independent = true;
+      if (control === "keep") {
+        if (roomKeep) delete effect.independent;
+        else effect.independent = true;
+      }
       if (anchor && control === "command") effect.at = anchor.id;
       if (anchor && proposal && !invalid) {
         if (

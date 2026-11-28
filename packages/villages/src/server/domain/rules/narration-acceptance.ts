@@ -555,7 +555,7 @@ export function acceptNarrationContinuity(
       readset.continuityEffectRecovery &&
       allowTranscriptNotes &&
       !requestedMemory &&
-      (passiveActorNote || roomObservation)
+      (passiveActorNote || (roomObservation && !readset.atomicRoomOutcomes))
     )
       incidentalNotes.add(header.id);
     const optionalAnswer =
@@ -586,7 +586,10 @@ export function acceptNarrationContinuity(
       Object.keys(note).every((key) => actorNoteFields.has(key));
     const effect: SceneEffectResult = {
       ...header,
-      independent: openingOfferEcho || optionalNote || optionalAnswer || reactionPerspective || header.independent,
+      independent:
+        readset.atomicRoomOutcomes && (note.for === "room" || roomArray)
+          ? undefined
+          : openingOfferEcho || optionalNote || optionalAnswer || reactionPerspective || header.independent,
     };
     try {
       memoryRequire(

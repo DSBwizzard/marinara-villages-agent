@@ -2,6 +2,8 @@ import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-
 
 export function heldSceneErrorMessage(value: unknown): string {
   const checks = sceneFailureDiagnostic(value)?.checks ?? [];
+  if (checks.some(({ code }) => code === "missing_required_effect"))
+    return "The AI described a change without the game action needed to save it.";
   if (checks.some(({ code }) => code === "continuity_evidence_not_witnessed"))
     return "The AI reply couldn’t show that a character witnessed the event.";
   if (checks.some(({ code }) => code === "missing_private_state_evidence"))

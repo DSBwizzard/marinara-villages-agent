@@ -3,7 +3,8 @@ import type { VillageState } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { scenePresenceNotices, sceneProcessingSummary, sceneTurnNotices } from "../../domain/rules/scene-public.js";
 import { visibleSceneNotices } from "../../domain/rules/narration-notices.js";
-import { describeHeldSceneReply, sceneChangeDiagnosticId, sceneErrorDetails } from "./error-details.js";
+import { describeSceneReplyRejections } from "../../domain/rules/scene-reply-diagnostics.js";
+import { sceneChangeDiagnosticId, sceneErrorDetails } from "./error-details.js";
 
 export interface SceneChangesPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
@@ -75,7 +76,7 @@ export function createSceneChanges({
           status: turn.acceptance.status,
           at: turn.at,
           reason: turn.acceptance.status === "held" ? "The saved reply needs review." : "Applying the saved reply.",
-          ...(turn.acceptance.status === "held" ? { diagnostic: describeHeldSceneReply(turn) } : {}),
+          ...(turn.acceptance.status === "held" ? { diagnostic: describeSceneReplyRejections(turn) } : {}),
         })),
       processingSummary: sceneProcessingSummary(scene),
       activeRequest: { status: scene.operation?.status },

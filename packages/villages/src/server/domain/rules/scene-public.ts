@@ -9,6 +9,7 @@ import { conflict } from "./errors.js";
 import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
 import { findLocation } from "./places.js";
 import { SCENE_EXPRESSION_REJECTION } from "./sprite-expressions.js";
+import { describeSceneReplyRejections } from "./scene-reply-diagnostics.js";
 /** The ordinary change feed carries visible notices and recovery controls, never owner diagnostics. */
 export function publicSceneChanges(value: unknown) {
   const row = asRecord(value);
@@ -198,8 +199,11 @@ function authority(scene: VenueScene) {
     replyTurn && replyTurn.at > (scene.continuity?.capturedAt ?? "") ? replyTurn.at : scene.continuity?.capturedAt;
   const rejected = replyTurn?.acceptance.rejected ?? [];
   return {
-    ...(rejected.length
-      ? { replyWarning: rejected.every((row) => row.reason === SCENE_EXPRESSION_REJECTION) ? "expression" : "detail" }
+    ...(replyTurn && rejected.length
+      ? {
+          replyWarning: rejected.every((row) => row.reason === SCENE_EXPRESSION_REJECTION) ? "expression" : "detail",
+          replyWarningDiagnostic: describeSceneReplyRejections(replyTurn),
+        }
       : {}),
     ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
     ...(arrival && arrival.zoneId === scene.zoneId ? { zoneArrivalId: arrival.id } : {}),

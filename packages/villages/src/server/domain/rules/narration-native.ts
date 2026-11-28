@@ -45,7 +45,7 @@ import { nativeCommand, readNarrationNativeCommand } from "./narration-command-c
 import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
 import { asRecord } from "./coerce.js";
-import { pruneTaggedSceneReply } from "./tagged-scene-reply.js";
+import { isRoomKeepAlias, pruneTaggedSceneReply } from "./tagged-scene-reply.js";
 import { isPlayerVisitInvitation } from "./scene-visit-speech.js";
 
 class TaggedNpcAdmissionFailure extends Error {
@@ -217,6 +217,7 @@ export function prepareNarrationNative(
         delete effect.independent;
         effect.failure = "The observed Room work and its native condition are one outcome.";
       }
+      if (readset.atomicRoomOutcomes && proposed.type === "circumstance") delete effect.independent;
       native.effects.push(effect);
       try {
         const command = readNarrationNativeCommand(raw);
@@ -659,7 +660,26 @@ export function acceptNarration(
       );
     }
   }
+  const readset = publication.readset;
+  const roomAliasAllowed =
+    readset.atomicRoomOutcomes &&
+    readset.continuityEffectRecovery &&
+    !readset.source.actors.some((actor) => actor.id === "room") &&
+    !state.villagers.some((actor) => actor.characterId === "room") &&
+    !findNpc(state, "room");
+  const roomOutcomes = (reply: Record<string, unknown>) =>
+    new Set(
+      [
+        ...(Array.isArray(reply.keep) ? reply.keep : [])
+          .map(asRecord)
+          .filter((row) => row.for === "room" || (roomAliasAllowed && isRoomKeepAlias(row.for))),
+        ...(Array.isArray(reply.commands) ? reply.commands : [])
+          .map(asRecord)
+          .filter((row) => row.type === "circumstance"),
+      ].map((row) => row.id),
+    );
   let raw = publication.raw;
+  const atomicOutcomes = readset.atomicRoomOutcomes ? roomOutcomes(raw) : new Set();
   const discarded = new Map<string, string>();
   const selectCandidate = () =>
     resolveNarrationEffects((excluded) => {
@@ -699,6 +719,21 @@ export function acceptNarration(
       if (!selected.result.held || !publication.readset.taggedSceneReply) break;
       rejected = selected.result.rejected;
       if (rejected.some(({ id }) => id === "requested-memory" || id === "remember-fact")) return selected.result;
+      if (publication.readset.atomicRoomOutcomes) {
+        const narration = (Array.isArray(raw.segments) ? raw.segments : [])
+          .map(asRecord)
+          .filter((row) => row.kind === "narration");
+        // Earlier plain narration can repeat the failed outcome. Keep the reply together in that case.
+        if (
+          rejected.some(
+            ({ id }) =>
+              atomicOutcomes.has(id) ||
+              (id.startsWith("missing-beat-") &&
+                narration.some((row) => Array.isArray(row.requires) && row.requires.includes(id))),
+          )
+        )
+          return selected.result;
+      }
     } catch (error) {
       if (!(error instanceof TaggedNpcAdmissionFailure)) throw error;
       admissionFailure = error;
@@ -709,7 +744,8 @@ export function acceptNarration(
       new Set(rejected.map(({ id }) => id)),
       publication.readset.authoritativeSceneBeats,
     );
-    if (!reduced) {
+    const remaining = atomicOutcomes.size && reduced ? roomOutcomes(reduced) : null;
+    if (!reduced || (remaining && [...atomicOutcomes].some((id) => !remaining.has(id)))) {
       if (admissionFailure) throw admissionFailure.cause;
       return selected!.result;
     }

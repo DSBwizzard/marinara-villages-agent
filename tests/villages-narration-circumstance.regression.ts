@@ -381,6 +381,16 @@ await runCase("narration-circumstance/room-damage", () => {
 });
 
 await runCase("narration-circumstance/room-damage-holds", () => {
+  const optional = fixture();
+  optional.raw.segments[0].requires = [];
+  optional.raw.commands[0].independent = true;
+  optional.readset.circumstance = null;
+  optional.readset.taggedSceneReply = true;
+  optional.readset.atomicRoomOutcomes = true;
+  const beforeOptional = memoryHash(optional.state);
+  assert(optional.accept().held, "A tagged circumstance cannot detach from the prose by declaring itself independent");
+  assert.equal(memoryHash(optional.state), beforeOptional);
+
   for (const variant of [
     "missing",
     "timed",

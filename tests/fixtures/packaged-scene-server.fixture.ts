@@ -9,7 +9,7 @@ import { coerceSession } from "../../packages/villages/src/server/domain/decodin
 import { defaultVenueSpace } from "../../packages/villages/src/server/domain/rules/venue-model.js";
 import { captureSceneLayout } from "../../packages/villages/src/server/domain/rules/scene-layout.js";
 import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
-import { seedVillageFixtureDocuments, fixtureSceneState } from "../helpers/village-storage.fixture.js";
+import { seedVillageFixtureDocuments, fixtureSceneState, storedVillage } from "../helpers/village-storage.fixture.js";
 import { initializeRoomContinuity } from "../../packages/villages/src/server/domain/rules/native-continuity.js";
 import { captureSceneContinuity } from "../../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { agendaFixture } from "../helpers/agenda.fixture.js";
@@ -249,6 +249,7 @@ export async function packagedSceneServer(
     calls: () => calls,
     records,
     documents,
+    village: () => storedVillage(records),
     scene: () => fixtureSceneState(records.get("villages-venue-visit-browser").data, records),
   };
 }

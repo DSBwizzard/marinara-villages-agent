@@ -784,6 +784,7 @@ export function createSceneWriting({
           ? {
               taggedSceneReply: true as const,
               authoritativeSceneBeats: true as const,
+              ...(tagged ? { atomicRoomOutcomes: true as const } : {}),
               explicitNpcIntroduction: true as const,
             }
           : {}),
