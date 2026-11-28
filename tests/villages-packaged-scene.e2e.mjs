@@ -54,8 +54,16 @@ await withBrowser({ close: server.stop }, async () => {
     const turns = [];
     let rejectFirstReply;
     let dropFailedResponse = false;
+    let inlineAside = true;
     const complete = server.model.chatComplete;
-    server.model.chatComplete = (...args) => {
+    server.model.chatComplete = async (...args) => {
+      if (inlineAside) {
+        inlineAside = false;
+        return {
+          ...(await complete(...args)),
+          content: '[mara]: "Hello there." [aside] "A word off to the side."',
+        };
+      }
       if (!rejectFirstReply) return complete(...args);
       const rejected = rejectFirstReply;
       rejectFirstReply = undefined;
@@ -149,12 +157,28 @@ await withBrowser({ close: server.stop }, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
+    const mainText = '"Hello there."';
+    const asideText = '"A word off to the side."';
+    const mainDialogue = page.locator("p.marinara-capability-villages-chat-vn-text").filter({ hasText: mainText });
+    const floatingAside = page.getByLabel("Asides", { exact: true }).getByText(asideText, { exact: true });
+    async function expectFloatingAside() {
+      await expect(mainDialogue).toHaveText(mainText);
+      await expect(floatingAside).toBeVisible();
+      const mainBox = await mainDialogue.boundingBox();
+      const asideBox = await floatingAside.boundingBox();
+      assert(asideBox && mainBox && asideBox.y + asideBox.height <= mainBox.y);
+    }
     await expect(composer).toBeVisible();
     await composer.fill("Hello from browser");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => turns.length).toBe(1);
     assert.equal(server.calls(), 1, "one combined GM response");
-    assert(server.scene().lines.some((line) => line.speakerId === "mara" && line.content === "Hello there."));
+    const main = server.scene().lines.find((line) => line.speakerId === "mara" && line.content === mainText);
+    const aside = server.scene().lines.find((line) => line.speakerId === "mara" && line.content === asideText);
+    assert(main && aside);
+    assert.equal(aside.asideFor, main.id);
+    assert.equal(aside.presentation, "aside");
+    await expectFloatingAside();
     const saved = structuredClone(server.records.get("villages-venue-visit-browser"));
     const replay = await server.app.inject({
       method: "POST",
@@ -170,16 +194,26 @@ await withBrowser({ close: server.stop }, async () => {
         "replay preserves saved content and its revision",
       );
     }
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await expect
       .poll(async () => {
+        if (await mainDialogue.isVisible()) return true;
         const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-        if ((await next.isVisible()) && (await next.count()) > 0 && (await next.isEnabled())) await next.click();
-        return page.locator("marinara-capability-villages").textContent();
+        if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
+        return mainDialogue.isVisible();
       })
-      .toContain("Hello there.");
+      .toBe(true);
+    await expectFloatingAside();
     assert.equal(server.calls(), 1, "reload restores saved output without dispatch");
+    await page.getByRole("button", { name: "Transcript", exact: true }).click();
+    const history = page.getByRole("log", { name: "Scene history" });
+    await expect(history.getByText(mainText, { exact: true })).toBeVisible();
+    await expect(history.getByText(asideText, { exact: true })).toBeVisible();
+    await history.press("Escape");
+    await expect(history).toBeHidden();
+    await page.setViewportSize({ width: 1440, height: 900 });
     const send = page.getByRole("button", { name: "Send", exact: true });
     for (const edit of [false, true]) {
       rejectFirstReply = edit ? "format" : "legacy";
