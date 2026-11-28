@@ -18,6 +18,3 @@ export function advanceReturnCatchup() {
 export function retryReturnCatchup(...args: Parameters<Service["retry"]>) {
   return binding.get().retry(...args);
 }
-export function continueReturnCatchup(...args: Parameters<Service["continueToVillage"]>) {
-  return binding.get().continueToVillage(...args);
-}

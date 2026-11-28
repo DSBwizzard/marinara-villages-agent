@@ -235,13 +235,12 @@ import {
   readVillageState,
   withVillageSceneAcceptance,
 } from "../features/world/village-store.js";
-import { configureWorldCoordination } from "../features/world/village.js";
+import { configureWorldCoordination, reconcileVillage } from "../features/world/village.js";
 
 import { createBackgroundWork } from "../jobs/background-service.js";
 import {
   backgroundJobSnapshot,
   backgroundWorkSummaries,
-  cancelReturnCatchup,
   configureBackgroundWork,
   hasVillagePresence,
   previewBackgroundJobs,
@@ -973,7 +972,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         : residentPlanning.queueReturnOpportunity(batchId, opportunity, capture),
     job: backgroundJobSnapshot,
     retryJob: retryBackgroundJob,
-    cancel: cancelReturnCatchup,
+    afterSettle: () => reconcileVillage({ returning: true }),
 
     hasPresence: hasVillagePresence,
     now: villageNow,

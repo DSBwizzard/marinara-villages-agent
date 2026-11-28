@@ -1,3 +1,4 @@
+import { VILLAGE_ACTIVITY_POLICY } from "../../../shared/helpers/activity-policy.js";
 import { readAgendaPurpose } from "../rules/agenda-flexibility.js";
 import { readResidenceAgreement } from "../rules/residence-agreement.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
@@ -1353,7 +1354,11 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
       !/^\d{4}-\d{2}-\d{2}$/.test(batch.budgetDate) ||
       !Number.isSafeInteger(batch.opportunityLimit) ||
       Number(batch.opportunityLimit) < 0 ||
-      Number(batch.opportunityLimit) > 6
+      Number(batch.opportunityLimit) > 6 ||
+      (batch.dailyReviewLimit !== undefined &&
+        (!Number.isSafeInteger(batch.dailyReviewLimit) ||
+          Number(batch.dailyReviewLimit) < Number(batch.opportunityLimit) ||
+          Number(batch.dailyReviewLimit) > VILLAGE_ACTIVITY_POLICY.lively.reviews))
     )
       throw new Error("The saved Village catch-up allowance could not be read.");
     if (batch.labels !== undefined) {

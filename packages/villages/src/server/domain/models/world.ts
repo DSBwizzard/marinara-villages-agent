@@ -528,6 +528,7 @@ export type ReturnCatchupBatch = {
   /** Each batch is bounded by its captured calendar day and allowance. */
   budgetDate: string;
   opportunityLimit: number;
+  dailyReviewLimit?: number;
   from?: string;
   until?: string;
   reason?: string;

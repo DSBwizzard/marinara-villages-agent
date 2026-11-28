@@ -35,10 +35,18 @@ export function eventAttemptAvailable(state: VillageState, date: string, now: nu
   const ledger = state.eventAttempts ?? emptyEventAttempts();
   const batch = state.returnCatchup?.batch;
   const active = batch && !["completed", "cancelled"].includes(batch.status);
-  if (batchId ? !active || batch.id !== batchId || batch.status !== "running" : active) return false;
-  if (batchId && batch?.budgetDate !== date) return false;
-  if (batchId && !((batch?.opportunityLimit ?? 0) > ledger.attempts.filter((row) => row.batchId === batchId).length))
-    return false;
+  if (batchId)
+    return (
+      active === true &&
+      batch.id === batchId &&
+      batch.status === "running" &&
+      batch.budgetDate === date &&
+      state.backgroundPace !== "off" &&
+      (batch.dailyReviewLimit ?? planningAllowance(state.backgroundPace, state.seed, date)) >
+        ledger.attempts.filter((row) => row.date === date).length &&
+      batch.opportunityLimit > ledger.attempts.filter((row) => row.batchId === batchId).length
+    );
+  if (active) return false;
   return (
     date ===
       localDateKey(
@@ -47,8 +55,7 @@ export function eventAttemptAvailable(state: VillageState, date: string, now: nu
     date >= ledger.highWaterDate &&
     planningAllowance(state.backgroundPace, state.seed, date) >
       ledger.attempts.filter((row) => row.date === date).length &&
-    (batchId !== undefined ||
-      !ledger.lastAttemptAt ||
+    (!ledger.lastAttemptAt ||
       now - Date.parse(ledger.lastAttemptAt) >= VILLAGE_ACTIVITY_POLICY[state.backgroundPace].intervalMs)
   );
 }
@@ -72,7 +79,7 @@ export function reserveEventAttempt(
   }
   if (!eventAttemptAvailable(state, date, now, batchId))
     throw new Error("Automatic resident activity budget is unavailable.");
-  ledger.highWaterDate = date;
+  if (date > ledger.highWaterDate) ledger.highWaterDate = date;
   ledger.lastAttemptAt = new Date(now).toISOString();
   ledger.attempts.push({ id, date, at: ledger.lastAttemptAt, origin, ...(batchId ? { batchId } : {}) });
   // Retain the current day and a small audit window; highWaterDate prevents replay of retired days.

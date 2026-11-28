@@ -1,3 +1,4 @@
+import { ReturnOpportunityUnavailable } from "../domain/rules/return-catchup-authority.js";
 import { readResidentPlanningInput } from "../domain/rules/resident-planning.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -644,7 +645,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;
     if (
-      (job.kind === "world-development" ||
+      ((job.kind === "world-development" && !catchupBatchId(job)) ||
         (job.kind === "weekly-agenda" &&
           job.automaticDate &&
           !job.retrying &&
@@ -979,6 +980,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         }
         const dispatchState = await readForJob(job!);
         checkCurrent(job!, dispatchState);
+        if (catchupBatchId(job!) && dispatchState.backgroundPace === "off")
+          throw new Paused("Catch-up is paused while Background Pace is Off.");
         if (options.beforeBackgroundDispatch) {
           const fittedTokens = await options.beforeBackgroundDispatch();
           if (fittedTokens !== undefined) {
@@ -1014,7 +1017,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             );
             const reserved = state.eventAttempts?.attempts.some((row) => row.id === job!.id);
             if (!reserved && !activityDispatched(job!)) handlers.get(job!.kind)!.reserve?.(state, job!.input, job!.id);
-            if (!reserved && !activityDispatched(job!) && localDateKey(actual) !== job!.automaticDate)
+            if (catchupBatchId(job!) && state.backgroundPace === "off")
+              throw new Paused("Catch-up is paused while Background Pace is Off.");
+            if (
+              !catchupBatchId(job!) &&
+              !reserved &&
+              !activityDispatched(job!) &&
+              localDateKey(actual) !== job!.automaticDate
+            )
               throw new Obsolete("Automatic resident opportunity belongs to an earlier day.");
             // A later month's admission can prune the original ledger row. The
             // same saved job's purchased request remains proof, not a new review.
@@ -1109,7 +1119,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           const request = catchupBatchId(job!)
             ? (
                 await withCatchupAdmission(async () => {
-                  checkCurrent(job!, await readForJob(job!));
+                  const live = await readForJob(job!);
+                  checkCurrent(job!, live);
+                  if (live.backgroundPace === "off")
+                    throw new Paused("Catch-up is paused while Background Pace is Off.");
                   assertActive();
                   if (!hasVillagePresence()) throw new Paused("Waiting until Villages is visible.");
                   job = await updateJob((current) => {
@@ -1262,8 +1275,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         .catch((error) => villagesLogger().warn("[villages] could not queue follow-up work: %s", String(error)));
     } catch (error) {
       if (owner !== runOwner || stopped) return;
-      const obsolete = error instanceof Obsolete,
-        paused = error instanceof Paused;
+      // A stale review can settle without publishing. Keep any saved reply and hold uncertain dispatches.
+      const staleReturn =
+        error instanceof ReturnOpportunityUnavailable &&
+        !!catchupBatchId(job) &&
+        (!activityDispatched(job) || (job.hasResult && !uncertainAttempt(job)));
+      const obsolete = error instanceof Obsolete || staleReturn;
+      const paused = error instanceof Paused;
       const message = (error instanceof Error ? error.message : String(error)).slice(0, 300);
       const failedInput = job.input;
       job = await updateJob(

@@ -150,7 +150,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       opportunity = context.narration.opportunity,
       relationship = opportunity.kind === "relationship";
     memoryRequire(
-      relationship || (context.setting === villageCurrentSetting(state) && state.backgroundPace !== "off"),
+      relationship ||
+        (context.setting === villageCurrentSetting(state) && (!!catchup || state.backgroundPace !== "off")),
       "resident planning setting or pace changed",
     );
     if (catchup) {
@@ -164,10 +165,11 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           capture &&
           returnCaptureRevision(capture) === catchup.captureRevision &&
           memoryHash(capture.world) === memoryHash(catchup.world) &&
-          (relationship || departureContinuityAvailable(capture, state)) &&
           batch.opportunities?.some((row) => memoryHash(row) === memoryHash(opportunity)),
         "historical resident opportunity changed",
       );
+      if (!relationship && !departureContinuityAvailable(capture, state))
+        throw new ReturnOpportunityUnavailable("The saved departure no longer matches Village continuity.");
       if (relationship) {
         memoryRequire(
           batch.records?.every(
@@ -179,21 +181,22 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       }
       const historical = { ...state, ...structuredClone(catchup.world) },
         at = new ZonedDate(opportunity.endsAt, historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-      memoryRequire(
-        opportunity.actorIds.every((id) => {
+      if (
+        !opportunity.actorIds.every((id) => {
           const old = historical.villagers.find((row) => row.characterId === id),
             live = state.villagers.find((row) => row.characterId === id);
           return old && live && sameReturnResident(old, live, at, historical, state);
-        }),
-        "historical resident changed",
-      );
-      memoryRequire(
-        !opportunity.venueId ||
-          memoryHash(state.venues.find((row) => row.id === opportunity.venueId)) ===
-            memoryHash(historical.venues.find((row) => row.id === opportunity.venueId)),
-        "historical Venue changed",
-      );
-      memoryRequire(memoryHash(state.opening) === memoryHash(historical.opening), "historical opening changed");
+        })
+      )
+        throw new ReturnOpportunityUnavailable("The historical resident changed.");
+      if (
+        opportunity.venueId &&
+        memoryHash(state.venues.find((row) => row.id === opportunity.venueId)) !==
+          memoryHash(historical.venues.find((row) => row.id === opportunity.venueId))
+      )
+        throw new ReturnOpportunityUnavailable("The historical Venue changed.");
+      if (memoryHash(state.opening) !== memoryHash(historical.opening))
+        throw new ReturnOpportunityUnavailable("The historical opening changed.");
       projectAdmittedHistory(state, catchup.world, context.narration, at);
     } else {
       assertResidentNarrationCurrent(state, context.narration);
@@ -453,10 +456,9 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         memoryRequire(relationshipContextCurrent(state, input.context), "relationship refresh context changed");
       const active = await ports.activeVenueSession(),
         conflicts = absentPlayerConflicts(state, active, new Date(input.context.narration.context.at));
-      memoryRequire(
-        relationship || !input.context.narration.actors.some((actor) => conflicts.has(actor.id)),
-        "resident entered a live Scene",
-      );
+      const overlapsScene = !relationship && input.context.narration.actors.some((actor) => conflicts.has(actor.id));
+      if (input.catchup && overlapsScene) throw new ReturnOpportunityUnavailable("The resident entered a live Scene.");
+      memoryRequire(!overlapsScene, "resident entered a live Scene");
       const model = await ports.villagesLanguageModels().resolveForRequest({
           connectionId: await ports.villagesConnectionIdFor(relationship ? "narration" : "system"),
         }),
@@ -482,10 +484,11 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               await ports.activeVenueSession(),
               new Date(input.context.narration.context.at),
             );
-            memoryRequire(
-              relationship || !input.context.narration.actors.some((actor) => conflicts.has(actor.id)),
-              "resident entered a live Scene",
-            );
+            const overlapsScene =
+              !relationship && input.context.narration.actors.some((actor) => conflicts.has(actor.id));
+            if (input.catchup && overlapsScene)
+              throw new ReturnOpportunityUnavailable("The resident entered a live Scene.");
+            memoryRequire(!overlapsScene, "resident entered a live Scene");
           },
           usagePurpose: "background",
           temperature: 0.85,

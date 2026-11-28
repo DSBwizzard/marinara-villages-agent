@@ -45,14 +45,12 @@ export function appendReturnRelationshipRefresh(state: VillageState, batch: Retu
   if (!batch.relationshipRefresh) return false;
   delete batch.relationshipRefresh;
   const { until, records, opportunities, budgetDate } = batch;
-  const used = state.eventAttempts?.attempts.filter((row) => row.date === budgetDate).length ?? 0;
   if (
     !until ||
     !records ||
     !opportunities ||
     opportunities.length >= batch.opportunityLimit ||
-    records.some((row) => row.status !== "settled" && row.status !== "rejected") ||
-    planningAllowance(state.backgroundPace, state.seed, budgetDate) <= used
+    records.some((row) => row.status !== "settled" && row.status !== "rejected")
   )
     return false;
   const actorIds = dueOnReturn(state, until).map(({ id }) => id);
@@ -80,7 +78,8 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
   const localNow = new ZonedDate(now, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const date = localDateKey(localNow);
   const used = state.eventAttempts?.attempts.filter((row) => row.date === date).length ?? 0;
-  const remaining = Math.max(0, planningAllowance(state.backgroundPace, state.seed, date) - used);
+  const dailyReviewLimit = planningAllowance(state.backgroundPace, state.seed, date);
+  const remaining = Math.max(0, dailyReviewLimit - used);
   const opportunityLimit = Math.min(6, remaining);
   let opportunities: NonNullable<NonNullable<VillageState["returnCatchup"]>["batch"]>["opportunities"] = [];
   let reason = "";
@@ -142,6 +141,7 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
     id,
     budgetDate: date,
     opportunityLimit,
+    dailyReviewLimit,
     status: opportunities.length || reservedBlurb ? "queued" : "completed",
     from: capture.at,
     until: now.toISOString(),

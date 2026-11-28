@@ -58,7 +58,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
         asRecord(body).spontaneousEvents === false) ||
       path === "/background/presence" ||
       path === "/background/catchup/retry" ||
-      path === "/background/catchup/continue" ||
+      path === "/connections" ||
       (path === "/reconcile" && asRecord(body).forceStory !== true)
     )
       return null;
@@ -70,11 +70,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       await prepareReturnCatchup(villageNow(), randomUUID());
       state = await peekVillageAuthority();
     }
-    if (
-      state.returnCatchup?.batch?.status === "failed" &&
-      settingsFields?.length === 1 &&
-      settingsFields[0] === "backgroundPace"
-    )
+    if (state.returnCatchup?.batch && settingsFields?.length === 1 && settingsFields[0] === "backgroundPace")
       return null;
     let alreadyAdvanced = false;
     if (path === "/clock/advance") {
@@ -89,7 +85,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       state.returnCatchup?.batch &&
       !["completed", "cancelled"].includes(state.returnCatchup.batch.status)
     )
-      return "Village catch-up is still in progress. Finish or continue before changing the Village.";
+      return "Village catch-up must finish before you can make this change.";
     return null;
   };
   const surface = publicSceneRoutes(

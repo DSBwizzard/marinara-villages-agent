@@ -13,6 +13,9 @@ export function ReturnCatchup({
   menu,
   venue,
   repair,
+  recovery,
+  openConnections,
+  openRepair,
   children,
 }: {
   enabled: boolean;
@@ -21,6 +24,9 @@ export function ReturnCatchup({
   menu: boolean;
   venue: boolean;
   repair: boolean;
+  recovery: boolean;
+  openConnections(): void;
+  openRepair(): void;
   children: ReactNode;
 }) {
   const [batch, setBatch] = useState<ReturnCatchupView | null>(null);
@@ -85,15 +91,15 @@ export function ReturnCatchup({
       document.removeEventListener("keydown", escape);
     };
   }, [expanded, menu, venue, repair, agenda?.expired]);
-  const act = async (kind: "retry" | "continue") => {
+  const retryBatch = async () => {
     if (!batch) return;
     setBusy(true);
     setError("");
     try {
-      if (kind === "retry") retryId.current ||= createVillagesClientId();
-      const { batch: next } = await request<{ batch: ReturnCatchupView | null }>(`/background/catchup/${kind}`, {
+      retryId.current ||= createVillagesClientId();
+      const { batch: next } = await request<{ batch: ReturnCatchupView | null }>("/background/catchup/retry", {
         method: "POST",
-        body: JSON.stringify({ batchId: batch.id, ...(kind === "retry" ? { actionId: retryId.current } : {}) }),
+        body: JSON.stringify({ batchId: batch.id, actionId: retryId.current }),
       });
       retryId.current = "";
       setBatch(next && !["completed", "cancelled"].includes(next.status) ? next : null);
@@ -125,7 +131,7 @@ export function ReturnCatchup({
     }
   };
   const waiting = enabled && (agenda === undefined ? pendingOnSnapshot : !!agenda?.expired);
-  const modal = enabled && (!!batch || waiting);
+  const modal = enabled && !recovery && (!!batch || waiting);
   const modalTitle = batch ? "Welcome back" : "Village catch-up";
   const plans = agenda ? (
     <>
@@ -197,7 +203,7 @@ export function ReturnCatchup({
             {error}
           </p>
         ) : null}
-        {enabled && agenda && !modal && !repair ? (
+        {enabled && agenda && !modal && !repair && !batch && !waiting ? (
           <div
             className="villages-agenda-activity"
             data-menu={menu || undefined}
@@ -253,7 +259,11 @@ export function ReturnCatchup({
             </span>
             <h2>{modalTitle}</h2>
             {batch ? (
-              <p role="status">{batch.status === "failed" ? "Catch-up paused" : "Catching up with Village life…"}</p>
+              <p role="status">
+                {batch.status === "failed" || batch.issue === "pace"
+                  ? "Catch-up paused"
+                  : "Catching up with Village life…"}
+              </p>
             ) : (
               (plans ?? <p role="status">Preparing today’s Agendas</p>)
             )}
@@ -266,11 +276,11 @@ export function ReturnCatchup({
                 {batch.issue ? (
                   <p>
                     {batch.issue === "authority"
-                      ? "The Village changed. Continue to skip this period."
-                      : batch.issue === "preparation"
-                        ? "Catch-up could not get started."
-                        : batch.issue === "generation"
-                          ? "An activity request could not finish."
+                      ? "The saved departure needs recovery."
+                      : batch.issue === "pace"
+                        ? "Turn on Background Pace in General Preferences to resume catch-up."
+                        : batch.issue === "preparation"
+                          ? "Catch-up could not get started."
                           : "An activity request could not finish."}
                   </p>
                 ) : null}
@@ -280,18 +290,19 @@ export function ReturnCatchup({
               </>
             ) : null}
             {(batch || !plans) && error ? <p role="alert">{error}</p> : null}
-            {batch ? (
-              <div className="villages-zone-map-actions">
-                {batch.status === "failed" && batch.issue !== "authority" ? (
-                  <button type="button" disabled={busy} onClick={() => void act("retry")}>
-                    {busy ? "Retrying…" : "Retry"}
-                  </button>
-                ) : null}
-                <button type="button" disabled={busy} onClick={() => void act("continue")}>
-                  {waiting ? "Skip optional catch-up" : "Continue to Village"}
+            <div className="villages-zone-map-actions">
+              {batch?.status === "failed" && batch.issue !== "authority" && batch.issue !== "pace" ? (
+                <button type="button" disabled={busy} onClick={() => void retryBatch()}>
+                  {busy ? "Retrying…" : "Retry"}
                 </button>
-              </div>
-            ) : null}
+              ) : null}
+              <button type="button" onClick={openConnections}>
+                Settings
+              </button>
+              <button type="button" onClick={openRepair}>
+                REPAIR
+              </button>
+            </div>
           </ModalDialog>
         ) : null}
       </div>

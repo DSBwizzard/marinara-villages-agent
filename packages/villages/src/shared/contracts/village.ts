@@ -151,7 +151,7 @@ export type ReturnCatchupView = {
   until?: string;
   completed: number;
   total: number;
-  issue: "preparation" | "generation" | "authority" | null;
+  issue: "preparation" | "generation" | "authority" | "pace" | null;
 };
 
 export type AgendaCatchupView = {

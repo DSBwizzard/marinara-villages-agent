@@ -46,13 +46,31 @@ const bounded = structuredClone(scheduled);
 bounded.backgroundPace = "lively";
 bounded.eventAttempts = undefined;
 bounded.returnCatchup = {
-  batch: { id: "six", status: "running", budgetDate: "2026-10-29", opportunityLimit: 6 },
+  batch: { id: "six", status: "running", budgetDate: "2026-10-29", opportunityLimit: 6, dailyReviewLimit: 6 },
 };
 for (let index = 0; index < 6; index++)
   reserveEventAttempt(bounded, "six-" + index, "2026-10-29", wakeAt.getTime() + index, "six");
 assert.throws(() => reserveEventAttempt(bounded, "seventh", "2026-10-29", wakeAt.getTime() + 7, "six"));
 reserveEventAttempt(bounded, "six-0", "2026-10-29", Date.parse("2026-10-30T00:01:00Z"), "six");
 assert.equal(bounded.eventAttempts!.attempts.length, 6, "Continuation does not consume another slot.");
+const resumed = structuredClone(bounded);
+resumed.eventAttempts!.attempts.pop();
+resumed.backgroundPace = "quiet";
+const later = Date.parse("2026-10-30T00:05:00Z");
+assert.equal(
+  eventAttemptAvailable(resumed, "2026-10-30", later, "six"),
+  false,
+  "catch-up cannot borrow the new day's allowance",
+);
+resumed.backgroundPace = "off";
+assert.equal(eventAttemptAvailable(resumed, "2026-10-29", later, "six"), false, "Off pauses a saved allowance");
+resumed.backgroundPace = "quiet";
+reserveEventAttempt(resumed, "six-5", "2026-10-29", later, "six");
+assert.equal(
+  resumed.eventAttempts!.attempts.at(-1)?.date,
+  "2026-10-29",
+  "a saved batch can finish from its original allowance",
+);
 
 const undated = structuredClone(scheduled);
 undated.backgroundPace = "lively";
@@ -112,8 +130,7 @@ for (const evidence of ["unstarted", "paid", "uncertain", "retry"] as const) {
       ],
     },
   };
-  let queued = 0,
-    rearmed = 0;
+  let queued = 0;
   const job: any =
     evidence === "unstarted"
       ? null
@@ -136,29 +153,18 @@ for (const evidence of ["unstarted", "paid", "uncertain", "retry"] as const) {
     },
     job: async () => job,
     retryJob: async () => {},
-    cancel: async () => {
-      state.returnCatchup!.batch!.status = "cancelled";
-    },
-    settle: async () => "settled",
-    reinterpret: async () => {},
     hasPresence: () => true,
     now: () => afterMidnight,
-    activityChanged: () => {
-      rearmed++;
-    },
   });
   await service.advance();
   if (evidence === "unstarted") {
-    assert.equal(queued, 0);
-    assert.equal(state.returnCatchup.batch!.records![0]!.status, "rejected");
-    assert.equal(state.returnCatchup.batch!.status, "completed");
+    assert.equal(queued, 1, "a due review is still admitted after midnight");
+    assert.equal(state.returnCatchup.batch!.records![0]!.status, "queued");
+    assert.equal(state.returnCatchup.batch!.status, "running");
   } else {
     assert.equal(state.returnCatchup.batch!.status, "failed", "Purchased or uncertain work requires recovery.");
     assert.equal(state.returnCatchup.batch!.records![0]!.status, "queued");
   }
-  rearmed = 0;
-  await service.continueToVillage("return");
-  assert.equal(rearmed, 1, "Continue re-arms the existing activity timer.");
 }
 
 // Exercise actual background dispatch across month retirement, not just the date helper.

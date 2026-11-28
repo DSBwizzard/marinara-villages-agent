@@ -37,6 +37,9 @@ export function VillagesFrame({
           menu={menu}
           venue={controller.screen === "venue"}
           repair={controller.screen === "menu" && controller.menuPage === "repair"}
+          recovery={controller.screen === "menu" && ["repair", "general"].includes(controller.menuPage)}
+          openConnections={() => controller.openMenu("general")}
+          openRepair={() => controller.openMenu("repair")}
         >
           <LoreActivity
             key={controller.snapshot?.worldScope ?? ""}

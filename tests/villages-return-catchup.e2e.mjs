@@ -9,7 +9,7 @@ await withBrowser(browser, async () => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
     let reads = 0;
-    let continued = 0;
+    let retries = 0;
     let agenda = null;
     let batch = {
       id: "batch",
@@ -29,10 +29,10 @@ await withBrowser(browser, async () => {
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = structuredClone(fixture);
-      if (path.endsWith("/background/catchup/continue")) {
-        continued++;
-        batch = null;
-        value = { batch: null };
+      if (path.endsWith("/background/catchup/retry")) {
+        retries++;
+        batch = { ...batch, status: "running", issue: null };
+        value = { batch };
       } else if (path.endsWith("/background/catchup")) {
         if (++reads === 1) {
           await fulfill(route, { status: 500, json: { error: "Catch-up status is unavailable." } });
@@ -67,13 +67,22 @@ await withBrowser(browser, async () => {
     await expect(dialog).toContainText("additional model request");
     await expect(dialog.getByRole("button", { name: "Retry" })).toBeVisible();
     assert.ok((await dialog.boundingBox()).width <= 400, "Catch-up is a compact card on desktop and phone.");
+    await dialog.getByRole("button", { name: "REPAIR", exact: true }).click();
+    const recovery = page.locator(".villages-repair");
+    await expect(recovery).toBeVisible();
+    await expect(dialog).toBeHidden();
+    await recovery.getByRole("button", { name: /Return to village/i }).click();
+    await expect(dialog).toBeVisible();
     batch.issue = "preparation";
     await expect(dialog).toContainText("Catch-up could not get started", { timeout: 8000 });
     await expect(dialog).not.toContainText("additional model request");
     await page.screenshot({ path: resolve(`.build-tmp/catchup-${width}.png`) });
-    await dialog.getByRole("button", { name: "Continue to Village" }).click();
-    await expect(dialog).toBeHidden();
-    assert.equal(continued, 1);
+    await expect(dialog.getByRole("button", { name: /Skip|Continue/ })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(dialog).toContainText("Catching up with Village life");
+    assert.equal(retries, 1);
+    batch = { ...batch, status: "completed", completed: 1 };
+    await expect(dialog).toBeHidden({ timeout: 8000 });
     agenda = { expired: false, completed: 1, total: 2 };
     const chip = page.getByRole("button", { name: "Preparing Agendas", exact: true });
     await expect(chip).toBeVisible({ timeout: 8000 });
