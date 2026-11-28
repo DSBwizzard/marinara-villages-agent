@@ -86,6 +86,7 @@ export function ZoneImageControls({
             View night
           </button>
           <input
+            autoComplete="off"
             ref={nightUpload}
             hidden
             type="file"
