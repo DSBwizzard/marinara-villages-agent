@@ -10,19 +10,14 @@ import { isPlayerVisitInvitation } from "./scene-visit-speech.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { SceneReplyIssue } from "../../../shared/contracts/scene-failure-diagnostic.js";
 
-export const taggedSceneFormat = (entrance: boolean) =>
-  [
-    entrance
-      ? ENTRANCE_OBSERVATION_FORMAT + " Use one beat per line and omit code fences."
-      : "For a narration-only reply, write plain prose. When mixing narration, dialogue or effects, use one Scene beat per line: Narration: text or [speaker-id]: spoken text. A unique displayed speaker name also works in brackets. Omit code fences.",
-    entrance
-      ? "Put each character's actual words on their own [speaker-id]: line. Respect the supplied positions and doorway voice paths."
-      : "Put each character's actual words on their own speaker line, even for a brief greeting amid an action. For example, write Narration: She opens the door. Then on a new line write [speaker-id]: Come in.",
-    "[speaker-id] [whisper recipient-id]: text and [speaker-id] [shout]: text are optional. Put an aside on its own speaker line immediately after its main line. Use this two-line form.\n[speaker-id]: I'll be there.\n[speaker-id] [aside]: If I can find my boots.",
-    "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
-    "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
-    "Do not repeat an outcome in other prose. Player movement and Village time come from the game. Show what people attempt and how they react.",
-  ].join("\n");
+export const TAGGED_SCENE_FORMAT = [
+  "Use the current Scene's narration format when supplied. Otherwise, use plain prose for a narration-only reply or Narration: text when mixing beats. Use one Scene beat per line and omit code fences.",
+  "Put each character's actual words on their own [speaker-id]: line. A unique displayed speaker name also works in brackets. Respect the supplied positions and doorway voice paths.",
+  "[speaker-id] [whisper recipient-id]: text and [speaker-id] [shout]: text are optional. Put an aside on its own speaker line immediately after its main line. Use this two-line form.\n[speaker-id]: I'll be there.\n[speaker-id] [aside]: If I can find my boots.",
+  "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
+  "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
+  "Do not repeat an outcome in other prose. Player movement and Village time come from the game. Show what people attempt and how they react.",
+].join("\n");
 
 const quietEntrance = "No one comes into view.";
 const entranceObservations = new Map([
