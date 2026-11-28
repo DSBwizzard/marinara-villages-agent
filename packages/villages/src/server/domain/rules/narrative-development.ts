@@ -265,6 +265,38 @@ export function assertNarrativeAdmission(state: VillageState, grant: NarrativeAd
       throw conflict("The admitted Zone changed. The saved result is retained.");
   }
 }
+/** Expand only omitted transport fields. The native reader still validates explicit values and effects. */
+export function readCompactWorldDevelopment(value: unknown, grant: NarrativeAdmission): NarrativeDevelopment {
+  const row = object(value);
+  const situation = object(row.situation);
+  const prior = grant.situations.find(({ id }) => id === situation.id);
+  const target = grant.targets[0]!;
+  const conditions = row.conditions === undefined ? [] : row.conditions;
+  return readNarrativeDevelopment(
+    {
+      ...row,
+      situation: { scope: prior?.scope, expectedRevision: prior?.revision ?? 0, ...situation },
+      room: row.room === undefined ? [] : row.room,
+      conditions:
+        Array.isArray(conditions) && conditions.length <= 4
+          ? conditions.map((value: unknown) => {
+              const condition = object(value);
+              const previous = grant.conditions.find(({ id }) => id === condition.id);
+              return {
+                venueId: target.venueId,
+                zoneId: target.zoneId,
+                expectedRevision: previous?.revision ?? 0,
+                clear: false,
+                ...condition,
+              };
+            })
+          : conditions,
+      weather: row.weather === undefined ? null : row.weather,
+    },
+    grant,
+  );
+}
+
 export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmission): NarrativeDevelopment {
   const row = object(value);
   exact(row, ["severity", "occurrence", "situation", "room", "conditions", "weather", "protection"]);

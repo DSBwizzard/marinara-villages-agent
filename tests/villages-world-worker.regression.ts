@@ -54,7 +54,8 @@ let requests = 0,
   proposal: any,
   prompt: any,
   chosen: { venueId: string; zoneId: string },
-  failApply = false;
+  failApply = false,
+  legacyReply = false;
 const mutate = async (update: (world: typeof state) => void) => {
   const next = structuredClone(state);
   update(next);
@@ -65,9 +66,17 @@ const model: any = {
   model: "fixture",
   maxOutputTokens: 3000,
   fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
-  chatComplete: async (messages: any[]) => {
+  chatComplete: async (
+    messages: { content: string }[],
+    options: { maxTokens?: number; responseFormat?: { type: string } },
+  ) => {
     requests++;
-    prompt = JSON.parse(messages.at(-1).content);
+    assert.equal(options.maxTokens, 3000);
+    assert.equal(options.responseFormat?.type, "json_object");
+    const systemPrompt = messages[0]!.content;
+    assert.equal(systemPrompt.includes("expectedRevision:"), legacyReply);
+    if (!legacyReply) assert.match(systemPrompt, /\bJSON\b/u);
+    prompt = JSON.parse(messages.at(-1)!.content);
     if (failApply) state.narrativeConsequence = "gentle";
     return { content: JSON.stringify({ quiet: false, development: proposal }), finishReason: "stop" };
   },
@@ -83,7 +92,10 @@ const narrative = createNarrative({
     throw new Error("unrelated resident job failed");
   },
   queue: async (work) => {
-    const target = (work.input as any).grant.targets[0];
+    const input = work.input as { replyFormat?: string; grant: { targets: { venueId: string; zoneId: string }[] } };
+    assert.equal(input.replyFormat, "compact");
+    if (legacyReply) delete input.replyFormat;
+    const target = input.grant.targets[0]!;
     chosen = { venueId: target.venueId, zoneId: target.zoneId };
     proposal = {
       severity: failApply ? "moderate" : "gentle",
@@ -91,7 +103,7 @@ const narrative = createNarrative({
       situation: {
         scope: "zone",
         id: null,
-        expectedRevision: 0,
+        ...(legacyReply ? { expectedRevision: 0 } : {}),
         title: "Drizzle",
         summary: "Wet paving beneath a window.",
         status: "active",
@@ -100,17 +112,15 @@ const narrative = createNarrative({
       conditions: [
         {
           id: null,
-          expectedRevision: 0,
-          venueId: target.venueId,
-          zoneId: target.zoneId,
+          ...(legacyReply ? { expectedRevision: 0, venueId: target.venueId, zoneId: target.zoneId } : {}),
           observation: "Rain dots the paving.",
           restriction: "none",
           remedy: "",
           endsAt: new Date(now.getTime() + 60_000).toISOString(),
-          clear: false,
+          ...(legacyReply ? { clear: false } : {}),
         },
       ],
-      weather: null,
+      ...(legacyReply ? { weather: null } : {}),
     };
     await background.queueBackgroundJob(work);
   },
@@ -191,6 +201,9 @@ try {
   assert.equal(state.eventAttempts!.attempts.length, 1);
   assert.equal(state.eventAttempts!.attempts[0]!.origin, "world");
   assert.equal(state.narrative!.conditions.length, 1);
+  assert.equal(state.narrative!.conditions[0]!.venueId, chosen!.venueId);
+  assert.equal(state.narrative!.conditions[0]!.zoneId, chosen!.zoneId);
+  assert.equal(state.narrative!.conditions[0]!.clearedAt, null);
   assert.equal(state.narrative!.claims!.length, 0);
   failApply = true;
   state.narrativeConsequence = "moderate";
@@ -252,6 +265,7 @@ try {
   await repair.apply(againReview.id, againReview.token);
   state = await repository.readAuthority({ memories: true });
   failApply = false;
+  legacyReply = true;
   now = new Date(now.getTime() + 31 * 60_000);
   addCircumstance("third-circumstance");
   await narrative.reconcile(now);
