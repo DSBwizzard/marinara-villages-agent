@@ -8,6 +8,7 @@ const validationCodes = new Set([
   "too_big",
   "custom",
   "missing_required_effect",
+  "scene_expression_unavailable",
   "invalid_effect_dependency",
   "unwitnessed_requested_memory",
   "invalid_movement_route",

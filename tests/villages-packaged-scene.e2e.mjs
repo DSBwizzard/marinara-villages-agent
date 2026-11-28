@@ -78,6 +78,22 @@ await withBrowser({ close: server.stop }, async () => {
           content:
             '[!mara]: Private model narration.\n[keep]: {"id":"private-effect-id","for":["mara"],"class":"information","text":"Private continuity note","source":99}',
         };
+      if (rejected === "unbound-room")
+        return {
+          finishReason: "stop",
+          content: [
+            "Narration: The door clicks shut.",
+            "Narration: The window is cracked and glass covers the floor.",
+            "Narration: Cold air moves across the room.",
+            "Narration!: A lasting detail changes.",
+          ].join("\n"),
+        };
+      if (rejected === "saved-room")
+        return {
+          finishReason: "stop",
+          content:
+            'Narration!:\n[keep]: {"for":"room","text":"The window is cracked, with glass scattered across the floor."}',
+        };
       if (rejected === "expression")
         return {
           finishReason: "stop",
@@ -364,6 +380,12 @@ await withBrowser({ close: server.stop }, async () => {
     await chip.click();
     await expect(page.getByText("Couldn’t show the expression.", { exact: true })).toBeInViewport();
     assert.equal(turns.length, beforeReload, "Reload never purchases an optional effect again");
+    await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    const warningReport = await page.evaluate(() => window.sceneReport);
+    assert.match(warningReport, /Scene reply applied with warnings/);
+    assert.match(warningReport, /Why: The requested expression was unavailable/);
+    assert.match(warningReport, /Validator: scene_expression_unavailable/);
+    assert.doesNotMatch(warningReport, /unavailable-fixture-expression|The Mill|Mara/);
     await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
     await composer.fill("The bay opens at sunrise.");
     rejectFirstReply = "json";
@@ -382,6 +404,44 @@ await withBrowser({ close: server.stop }, async () => {
     await expect.poll(() => server.scene().submissions.at(-1)?.rememberFor).toBe("mara");
     await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("applied");
     assert.equal(server.scene().lines.at(-1)?.kind, "whisper");
+
+    const inspectRoom = "I step inside and notice that my window is broken.";
+    const beforeRoom = server.records.get("villages-village").data.memoryHead;
+    rejectFirstReply = "unbound-room";
+    const roomAttempt = turns.length + 1;
+    await composer.fill(inspectRoom);
+    await send.click();
+    await expect.poll(() => turns.length).toBe(roomAttempt);
+    assert.equal(turns.at(-1).response.statusCode, 502);
+    assert.deepEqual(server.records.get("villages-village").data.memoryHead, beforeRoom);
+    assert.doesNotMatch(JSON.stringify(server.scene().lines), /window is cracked|lasting detail changes/);
+    await expect(composer).toHaveValue(inspectRoom);
+    await expect(chip).toHaveAccessibleName("1 Scene error");
+    await chip.click();
+    await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    const roomReport = await page.evaluate(() => window.sceneReport);
+    assert.match(roomReport, /Why: The reply described a change without the game action needed to save it/);
+    assert.match(roomReport, /Validator: missing_required_effect/);
+    assert.doesNotMatch(roomReport, /window|door clicks|The Mill|Mara/i);
+
+    await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
+    rejectFirstReply = "saved-room";
+    await composer.fill("I look closer and see that the window is cracked.");
+    await send.click();
+    await expect.poll(() => turns.length).toBe(roomAttempt + 1);
+    assert.equal(turns.at(-1).response.statusCode, 200);
+    const savedDamage = "The window is cracked, with glass scattered across the floor.";
+    await expect(page.getByText(savedDamage, { exact: true })).toBeVisible();
+    assert.notDeepEqual(server.records.get("villages-village").data.memoryHead, beforeRoom);
+    const savedRoom = server.village();
+    const roomKey = JSON.stringify(["room", "mill", "common"]);
+    const roomVersions = new Set(
+      savedRoom.continuity.records.flatMap((row) =>
+        row.heads[roomKey]?.current ? [row.heads[roomKey].versionId] : [],
+      ),
+    );
+    assert(savedRoom.continuity.versions.some((row) => roomVersions.has(row.id) && row.text === savedDamage));
+    assert.equal(server.scene().submissions.at(-1)?.acceptance.status, "applied");
   });
 });
 console.log("Packaged browser send, native persistence, replay and reload passed.");

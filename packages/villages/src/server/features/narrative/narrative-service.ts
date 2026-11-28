@@ -4,12 +4,12 @@ import type { Handler } from "../../domain/models/background-model.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import type { readWorldNarrativeInput } from "../../domain/decoding/narrative-codec.js";
 import {
-  admitNarrative,
   admitDueWorldDevelopment,
   applyNarrativeDevelopment,
   assertNarrativeAdmission,
   ensureNarrative,
   readNarrativeDevelopment,
+  readRoomReviewDevelopment,
   mergeNarrativeAfter,
 } from "../../domain/rules/narrative-development.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
@@ -23,7 +23,12 @@ import { fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
 import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain/rules/return-catchup-authority.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
-import { WORLD_GM_INSTRUCTION, worldNarrativeContext } from "../../domain/rules/narrative-prompts.js";
+import {
+  ROOM_REVIEW_INSTRUCTION,
+  WORLD_GM_INSTRUCTION,
+  roomReviewContext,
+  worldNarrativeContext,
+} from "../../domain/rules/narrative-prompts.js";
 
 type Ports = {
   read: (options?: import("../../domain/models/world-repository.js").VillageMemoryRead) => Promise<VillageState>;
@@ -200,11 +205,8 @@ export function createNarrative(ports: Ports) {
       ...capture.world,
       playerIdentityRepair: capture.world.playerIdentityRepair,
     });
-    const grant = admitNarrative(historical, opportunity.startsAt, "world:" + batchId + ":" + opportunity.id, "world", {
-      venueId: opportunity.venueId,
-      zoneId: opportunity.zoneId!,
-    });
-    if (!grant)
+    const grant = admitDueWorldDevelopment(historical, opportunity.startsAt, "world:" + batchId + ":" + opportunity.id);
+    if (!grant || grant.targets[0]?.venueId !== opportunity.venueId || grant.targets[0]?.zoneId !== opportunity.zoneId)
       throw new ReturnOpportunityUnavailable("No adopted environmental target exists in the captured interval.");
     grant.reviewBasis = live.eventAttempts?.lastAttemptAt ?? "";
     try {
@@ -217,7 +219,23 @@ export function createNarrative(ports: Ports) {
   const handler: Handler = {
     authority: "raw",
     async generate(input) {
-      const result = await ask(WORLD_GM_INSTRUCTION, worldNarrativeContext(input.grant), 3000);
+      const { grant } = input;
+      const trigger = grant.situations.find(({ id }) => id === grant.triggerSituationId);
+      const local = trigger?.scope === "zone";
+      const result = await ask(
+        local
+          ? ROOM_REVIEW_INSTRUCTION
+          : trigger
+            ? WORLD_GM_INSTRUCTION + " Follow up on the supplied triggering circumstance. Return a JSON object."
+            : WORLD_GM_INSTRUCTION,
+        local
+          ? roomReviewContext(grant, trigger)
+          : {
+              ...worldNarrativeContext(grant),
+              ...(trigger ? { circumstance: { id: trigger.id, title: trigger.title, summary: trigger.summary } } : {}),
+            },
+        3000,
+      );
       if (result.quiet === true && Object.keys(result).length === 1) return { quiet: true };
       if (result.quiet !== false || !result.development)
         throw new WorkFailureError({
@@ -225,7 +243,12 @@ export function createNarrative(ports: Ports) {
           stage: "world-development",
           message: "The GM world development is incomplete. Its response is retained.",
         });
-      return { quiet: false, development: readNarrativeDevelopment(result.development, input.grant) };
+      return {
+        quiet: false,
+        development: local
+          ? readRoomReviewDevelopment(result.development, grant, trigger)
+          : readNarrativeDevelopment(result.development, grant),
+      };
     },
     valid(state, input) {
       if (input.version !== 2 || state.backgroundPace === "off") return false;

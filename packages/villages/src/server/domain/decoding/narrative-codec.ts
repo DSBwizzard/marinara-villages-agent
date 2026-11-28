@@ -207,6 +207,7 @@ const worldGrant = z
     facts: z.array(z.string()),
     consequence: z.enum(["gentle", "moderate", "dramatic"]),
     reviewBasis: z.union([instant, z.literal("")]),
+    triggerSituationId: id.optional(),
     targets: z.tuple([target]),
     situations: z.array(z.unknown()).max(8),
     conditions: z.array(z.unknown()).max(8),
@@ -294,6 +295,18 @@ export function readWorldNarrativeInput(raw: unknown, seed: string) {
     situations: grant.situations,
     receipts: [],
   });
+  if (grant.triggerSituationId) {
+    const trigger = (grant.situations as NarrativeAdmission["situations"]).find(
+      ({ id }) => id === grant.triggerSituationId,
+    );
+    memoryRequire(
+      trigger?.status === "active" &&
+        trigger.updatedAt <= grant.at &&
+        (trigger.scope === "village" ||
+          trigger.targets.some(({ venueId, zoneId }) => venueId === room.venueId && zoneId === room.zoneId)),
+      "invalid World review circumstance",
+    );
+  }
   // A saved claim fingerprints the original admission bytes.
   return structuredClone(raw) as typeof input & { grant: NarrativeAdmission };
 }

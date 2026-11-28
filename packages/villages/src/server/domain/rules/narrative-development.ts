@@ -9,6 +9,9 @@ import type {
   NarrativeTarget,
 } from "../models/narrative-model.js";
 import { conflict, badGateway } from "./errors.js";
+import { episodeSourceGraph } from "../decoding/episode-codec.js";
+import type { ContinuityHolder } from "../models/continuity-model.js";
+import { continuityActor } from "./continuity-actors.js";
 import { currentVillageCircumstances, villageCurrentSetting } from "./prompt-preset.js";
 import { hashString, deriveVillageMoment, WORLD_WEATHER } from "./village-clock.js";
 import { backgroundRevision } from "./background-revision.js";
@@ -21,11 +24,13 @@ import {
   continuityConstraints,
   continuityHolderKey,
   continuityProtectionFingerprint,
+  continuityProtectionUnits,
+  continuitySourceUnit,
   ROOM_CONTINUITY_TEXT_BYTES,
 } from "./continuity.js";
 import { memoryHash } from "./memory-integrity.js";
 import { retainNativeFact } from "./native-continuity.js";
-import { nativeEpisodeId } from "./episode-sources.js";
+import { circumstanceRoomOrigins, nativeEpisodeId } from "./episode-sources.js";
 import { venueDesignHash } from "./project-structure.js";
 
 export const CONSEQUENCES = ["gentle", "moderate", "dramatic"] as const;
@@ -121,6 +126,42 @@ export function ensureNarrative(state: VillageState, at: string): NarrativeState
     receipts: [],
   });
 }
+function worldReviewSource(state: VillageState, trigger: NarrativeAdmission["situations"][number]) {
+  const episodes = state.episodes.records;
+  for (const episode of episodes.toReversed()) {
+    const receipt = episode.commandReceipts.find(
+      (row) =>
+        row.kind === "circumstance" &&
+        row.targetId === trigger.id &&
+        row.revision === trigger.revision &&
+        (row.circumstance?.summary ?? row.text) === trigger.summary,
+    );
+    if (!receipt) continue;
+    const source = episode.grounding.find((row) => row.kind === "native" && row.committedReceiptId === receipt.id);
+    if (!source) return;
+    const player = continuityActor(state, "player");
+    const holders: ContinuityHolder[] = [
+      ...(player ? [player] : []),
+      ...episode.actors
+        .filter(({ id }) => receipt.witnesses.includes(id))
+        .map(({ id, incarnation }) => ({
+          kind: "actor" as const,
+          id,
+          incarnation,
+        })),
+      ...trigger.targets.map(({ venueId, zoneId }) => ({ kind: "room" as const, placeId: venueId, zoneId })),
+      ...circumstanceRoomOrigins(episode, receipt, new Map(episodes.map((row) => [row.id, row]))),
+    ];
+    const unit = continuitySourceUnit(source);
+    const protectedSource = holders.some(
+      (holder) =>
+        state.continuity.records.some((row) => row.protection[continuityHolderKey(holder)]?.sourceUnits.length) &&
+        continuityProtectionUnits(state.continuity, holder, episodeSourceGraph(episodes, holder)).has(unit),
+    );
+    return protectedSource ? undefined : source;
+  }
+}
+
 /** A new unresolved circumstance can warrant review once. A world answer cannot queue its own follow-up. */
 export function admitDueWorldDevelopment(state: VillageState, at: string, sourceId: string) {
   const previous = state.eventAttempts?.attempts.findLast((attempt) => attempt.origin === "world")?.at ?? "";
@@ -137,9 +178,15 @@ export function admitDueWorldDevelopment(state: VillageState, at: string, source
       )
     )
       continue;
+    if (!worldReviewSource(state, row)) continue;
     for (const local of row.scope === "zone" ? row.targets : [undefined]) {
       const grant = admitNarrative(state, at, sourceId, "world", local);
-      if (grant) return grant;
+      if (grant) {
+        grant.triggerSituationId = row.id;
+        if (!grant.situations.some(({ id }) => id === row.id))
+          grant.situations = [structuredClone(row), ...grant.situations.slice(0, 7)];
+        return grant;
+      }
     }
   }
   return null;
@@ -244,6 +291,17 @@ export function assertNarrativeAdmission(state: VillageState, grant: NarrativeAd
     grant.targets.length !== 1
   )
     throw conflict("The admitted world context changed. The saved result is retained.");
+  if (grant.triggerSituationId) {
+    const trigger = grant.situations.find(({ id }) => id === grant.triggerSituationId);
+    const live = state.narrative.situations.find(({ id }) => id === grant.triggerSituationId);
+    if (
+      !trigger ||
+      !live ||
+      backgroundRevision(trigger) !== backgroundRevision(live) ||
+      !worldReviewSource(state, live)
+    )
+      throw conflict("The circumstance that prompted the World review changed. The saved result is retained.");
+  }
   for (const target of grant.targets) {
     const venue = state.venues.find((row) => row.id === target.venueId);
     const zone = venue && venueZones(venue).find((row) => row.id === target.zoneId);
@@ -265,6 +323,68 @@ export function assertNarrativeAdmission(state: VillageState, grant: NarrativeAd
       throw conflict("The admitted Zone changed. The saved result is retained.");
   }
 }
+export function readRoomReviewDevelopment(
+  value: unknown,
+  grant: NarrativeAdmission,
+  trigger: NarrativeAdmission["situations"][number],
+): NarrativeDevelopment {
+  const row = object(value);
+  exact(row, ["severity", "occurrence", "room", "condition", "protection"]);
+  if (row.condition !== undefined && trigger.targets.length !== 1)
+    throw badGateway("Conditions need a circumstance scoped to one Room.");
+
+  const target = grant.targets[0]!;
+  const conditions = [];
+  if (row.condition !== undefined) {
+    const condition = object(row.condition);
+    exact(condition, ["observation", "restriction", "remedy", "durationMinutes"]);
+    const duration = condition.durationMinutes;
+    if (duration !== undefined && (!Number.isSafeInteger(duration) || duration < 1 || duration > 10080))
+      throw badGateway("Invalid Room condition duration.");
+    conditions.push({
+      id: null,
+      expectedRevision: 0,
+      venueId: target.venueId,
+      zoneId: target.zoneId,
+      observation: condition.observation,
+      restriction: condition.restriction,
+      remedy: condition.remedy ?? "",
+      endsAt: duration === undefined ? null : new Date(Date.parse(grant.at) + duration * 60_000).toISOString(),
+      clear: false,
+    });
+  }
+
+  const development = readNarrativeDevelopment(
+    {
+      severity: row.severity,
+      occurrence: row.occurrence,
+      situation: {
+        scope: trigger.scope,
+        id: trigger.id,
+        expectedRevision: trigger.revision,
+        title: trigger.title,
+        summary: trigger.summary,
+        status: trigger.status,
+      },
+      room: row.room === undefined ? [] : row.room,
+      conditions,
+      weather: null,
+      protection: row.protection,
+    },
+    grant,
+  );
+  if (!development.room.length && !conditions.length) throw badGateway("A Room follow-up needs an observable change.");
+  if (
+    development.conditions.some(({ restriction, endsAt }) => restriction === "ordinary-use" && !endsAt) &&
+    !development.room.some(
+      ({ text, replace, expiresInMinutes }) =>
+        text !== null && expiresInMinutes === undefined && !target.room.find(({ id }) => id === replace)?.expiresAt,
+    )
+  )
+    throw badGateway("Lasting damage needs an enduring Room entry.");
+  return development;
+}
+
 export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmission): NarrativeDevelopment {
   const row = object(value);
   exact(row, ["severity", "occurrence", "situation", "room", "conditions", "weather", "protection"]);
@@ -447,7 +567,10 @@ export function applyNarrativeDevelopment(
     scope: proposed.scope,
     id: prior?.id ?? grant.id + ":situation",
     revision: proposed.expectedRevision + 1,
-    targets: proposed.scope === "village" ? [] : grant.targets.map(({ venueId, zoneId }) => ({ venueId, zoneId })),
+    targets:
+      proposed.scope === "village"
+        ? []
+        : (prior?.targets ?? grant.targets.map(({ venueId, zoneId }) => ({ venueId, zoneId }))),
     updatedAt: grant.at,
   };
   if (
@@ -459,6 +582,20 @@ export function applyNarrativeDevelopment(
   )
     throw conflict("Weather changed or needs explicit supersession. The saved result is retained.");
   const target = grant.targets[0]!;
+  const trigger = grant.situations.find(({ id }) => id === grant.triggerSituationId);
+  if (grant.source === "world" && trigger?.scope === "zone") {
+    const restrictions = activeNarrativeConditions(narrative, grant.at).filter(
+      (row) => row.venueId === target.venueId && row.zoneId === target.zoneId && row.restriction === "ordinary-use",
+    );
+    if (restrictions.length && development.conditions.some(({ restriction }) => restriction === "ordinary-use"))
+      throw conflict("Ordinary use is already restricted. The saved result is retained.");
+    if (
+      development.room.some(
+        ({ replace }) => replace && restrictions.some((row) => row.repairEntries?.includes(replace)),
+      )
+    )
+      throw conflict("An active repair already owns a Room entry. The saved result is retained.");
+  }
   const { holder, views, protectionFingerprint } = narrativeRoom(state, target.venueId, target.zoneId, grant.at);
   const provenance = grant.source === "world" && target.room.length ? views.map((row) => row.version.id) : [];
   const blocked = new Set(target.protections.flatMap((row) => row.forbidden));
@@ -592,6 +729,7 @@ export function applyNarrativeDevelopment(
   )
     throw badGateway("A Room edit cannot remove an active restriction's repair target.");
   if (grant.source === "world") {
+    const source = trigger && prior?.id === trigger.id ? worldReviewSource(state, trigger) : undefined;
     retainNativeFact(
       candidate,
       {
@@ -616,7 +754,7 @@ export function applyNarrativeDevelopment(
         witnesses: [],
       },
       grant.at,
-      { room: holder, provenance },
+      { room: holder, provenance, ...(source ? { ancestry: [source] } : {}) },
     );
     state.continuity = candidate.continuity;
     state.episodes = candidate.episodes;

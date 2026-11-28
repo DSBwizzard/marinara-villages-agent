@@ -2,7 +2,12 @@ import { asRecord } from "./coerce.js";
 import { agendaEvidence } from "../decoding/agenda-codec.js";
 import { venueWorkSchema, workTime } from "../../../shared/helpers/venue-work.js";
 import { npcNameKey } from "./npc-index.js";
-import { MAX_NARRATION_SEGMENTS, NARRATION_SEGMENT_CHARACTERS, readNarrationReply } from "./narration-contract.js";
+import {
+  MAX_NARRATION_SEGMENTS,
+  NARRATION_SEGMENT_CHARACTERS,
+  readNarrationReply,
+  ROOM_RESULT_EFFECT_PREFIX,
+} from "./narration-contract.js";
 import { parseSceneObject } from "./scene-json-syntax.js";
 import { MODEL_JSON_MAX_CHARACTERS, modelJsonWithinBounds } from "./json-reply.js";
 import { bindSceneSourcePositions } from "./narration-sources.js";
@@ -16,8 +21,12 @@ export const TAGGED_SCENE_FORMAT = [
   "[speaker-id] [whisper recipient-id]: text and [speaker-id] [shout]: text are optional. Put an aside on its own speaker line immediately after its main line. Use this two-line form.\n[speaker-id]: I'll be there.\n[speaker-id] [aside]: If I can find my boots.",
   "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
   "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
-  "Do not repeat an outcome in other prose. Player movement and Village time come from the game. Show what people attempt and how they react.",
+  "Honor saved Room facts, including any entries omitted from the context. If a new local detail fits the established state, you can accept a plausible physical observation suggested by the player. Leave uncertain details open. Resolve the actions the player attempts. An independent environmental event needs a circumstance grant.",
+  'For a newly established lasting Room fact, write an empty Narration!: line followed by [keep]: {"for":"room","text":"The window has a broken pane."}. The game shows this exact text with the saved fact. Use replace with the supplied observable Room entry ID if the outcome changes that entry, preserving its unrelated content. Follow the separate instructions for native conditions and repairs.',
+  "Do not preview or repeat a lasting outcome in ordinary prose. Use ordinary prose for already established Room facts and for fleeting details. Player movement and Village time come from the game. Show what people attempt and how they react.",
 ].join("\n");
+
+export const isRoomKeepAlias = (value: unknown) => Array.isArray(value) && value.length === 1 && value[0] === "room";
 
 const effectLabel = /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u;
 const isEffectLabel = (value: unknown): value is string =>
@@ -144,6 +153,7 @@ export function decodeTaggedSceneReply(
   let visit: { segment: string; option: number; escort: boolean } | undefined;
   let halt: Record<string, unknown> | undefined;
   let anchor: Beat | undefined;
+  let roomResultBeat: Beat | undefined;
   let actionAnchor: Beat | undefined;
   let crossingAnchor: Beat | undefined;
   let marked = false;
@@ -273,8 +283,18 @@ export function decodeTaggedSceneReply(
         anchor = undefined;
         continue;
       }
+      if (anchor && anchor === roomResultBeat) return { value: null, issue: "invalid_private_record" };
       const list = control === "keep" ? keep : commands;
       const proposal = parsePrivateRecord(text);
+      const roomResult =
+        authoritative &&
+        readset.sceneRoomChangeTargets &&
+        anchor?.kind === "narration" &&
+        anchor.text === "" &&
+        control === "keep" &&
+        proposal?.for === "room"
+          ? anchor
+          : undefined;
       if (
         control === "keep"
           ? list.length >= 32
@@ -284,16 +304,20 @@ export function decodeTaggedSceneReply(
         continue;
       }
       const suppliedId = proposal?.id;
-      let id: string;
-      do {
-        id = "effect-" + ++effectIndex;
-      } while (ids.has(id));
+      let id = roomResult ? ROOM_RESULT_EFFECT_PREFIX + roomResult.id : "";
+      if (!id) {
+        do {
+          id = "effect-" + ++effectIndex;
+        } while (ids.has(id));
+      }
       const mayUseId =
         suppliedId !== "remember-fact" ||
         (control === "keep" && readset.requestedMemory && !readset.codeRequestedMemory);
       if (
         mayUseId &&
+        !roomResult &&
         isEffectLabel(suppliedId) &&
+        (!readset.sceneRoomChangeTargets || !suppliedId.startsWith(ROOM_RESULT_EFFECT_PREFIX)) &&
         !ids.has(suppliedId) &&
         !/^(missing|bad-visit|decision|arrival)-/u.test(suppliedId)
       )
@@ -305,9 +329,38 @@ export function decodeTaggedSceneReply(
         (requires !== undefined &&
           (!Array.isArray(requires) || requires.length > 8 || !requires.every(isEffectLabel))) ||
         (proposal?.independent !== undefined && proposal.independent !== true);
-      const effect: Record<string, unknown> = proposal && !invalid ? { ...proposal, id } : { id };
+      const roomKeep = readset.atomicRoomOutcomes && control === "keep" && proposal?.for === "room";
+      const roomAlias = readset.atomicRoomOutcomes && control === "keep" && isRoomKeepAlias(proposal?.for);
+      const circumstance = readset.atomicRoomOutcomes && control === "command" && proposal?.type === "circumstance";
+      const effect: Record<string, unknown> =
+        proposal && !invalid
+          ? { ...proposal, id }
+          : {
+              id,
+              ...(roomKeep || roomAlias ? { for: proposal?.for } : {}),
+              ...(circumstance ? { type: "circumstance" } : {}),
+            };
       const crossing = control === "command" && (effect.type === "move" || effect.type === "depart");
-      if (authoritative && anchor?.text === "" && !crossing) continue;
+      if (authoritative && anchor?.text === "" && !crossing) {
+        if (!roomResult) {
+          if (readset.sceneRoomChangeTargets && (roomAlias || circumstance))
+            return { value: null, issue: "invalid_private_record" };
+          continue;
+        }
+        const outcome = typeof effect.text === "string" ? effect.text.trim() : "";
+        if (
+          !outcome ||
+          outcome.length > NARRATION_SEGMENT_CHARACTERS ||
+          outcome.match(privateNpcHandle) ||
+          Object.keys(effect).some((key) => !["id", "for", "text", "replace", "protection"].includes(key)) ||
+          (effect.replace !== undefined &&
+            (typeof effect.replace !== "string" || !readset.sceneRoomChangeTargets!.includes(effect.replace)))
+        )
+          return { value: null, issue: "invalid_private_record" };
+        effect.text = outcome;
+        roomResult.text = outcome;
+        roomResultBeat = roomResult;
+      }
       const hasCommand = anchor && commands.some(({ at }) => at === anchor?.id);
       if (authoritative && control === "command" && anchor && hasCommand && crossing !== (anchor === crossingAnchor))
         continue;
@@ -325,7 +378,7 @@ export function decodeTaggedSceneReply(
         (control !== "keep" || slot.kind !== "offer" || slot.actorId !== anchor.speakerId)
       )
         continue;
-      if (anchor && anchor !== actionAnchor && (control === "command" || marked)) bind(anchor, id);
+      if (anchor && anchor !== actionAnchor && (control === "command" || marked || roomKeep)) bind(anchor, id);
       if (authoritative && crossing && anchor?.kind === "narration") {
         const name = scene.participants.find(({ characterId }) => characterId === effect.who)?.name ?? "Someone";
         const outcome =
@@ -354,7 +407,10 @@ export function decodeTaggedSceneReply(
           }
         }
       }
-      if (control === "keep") effect.independent = true;
+      if (control === "keep") {
+        if (roomKeep) delete effect.independent;
+        else effect.independent = true;
+      }
       if (anchor && control === "command") effect.at = anchor.id;
       if (anchor && proposal && !invalid) {
         if (

@@ -52,6 +52,7 @@ export type NarrativeAdmission = {
   facts: string[];
   consequence: VillageNarrativeConsequence;
   reviewBasis: string;
+  triggerSituationId?: string;
   targets: NarrativeTarget[];
   situations: NarrativeSituation[];
   conditions: NarrativeCondition[];

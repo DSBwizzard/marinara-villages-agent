@@ -233,15 +233,20 @@ for (const rating of ["sfw", "nsfw"] as const)
         source: [inputEvidence(spill, "visible-action")],
       };
       const beforeRoom = village().continuity.versions.filter((row) => row.room).length;
-      await send("incidental-room", spill, () => ({
+      const incidental = payload("unmarked-room", spill);
+      nextReply = () => ({
         segments: [narration("The bucket clangs against the door. Mara looks up.")],
         keep: [unprovenRoom],
-      }));
-      assert.equal(village().continuity.versions.filter((row) => row.room).length, beforeRoom);
-      assert.match(
-        host.scene().submissions.at(-1)!.acceptance.rejected[0].reason,
-        /room condition needs an actual outcome/,
+      });
+      const rejectedUnmarked = await api("POST", "/rooms/turn", incidental);
+      assert.equal(rejectedUnmarked.statusCode, 502, rejectedUnmarked.body);
+      assert(
+        rejectedUnmarked
+          .json()
+          .sceneFailure.diagnostic.checks.some(({ code }: { code: string }) => code === "room_outcome_unverified"),
       );
+      assert(!host.scene().lines.some((line) => line.inputOf === incidental.submissionId));
+      assert.equal(village().continuity.versions.filter((row) => row.room).length, beforeRoom);
 
       const attempted = payload("required-room", spill);
       const result = { ...narration("The bucket tips and water pools by the door."), requires: ["water"] };
@@ -412,7 +417,7 @@ for (const rating of ["sfw", "nsfw"] as const)
       assert.equal(host.scene().status, "closed");
       assert.equal(completions, finalCalls, "movement and conclusion are code-owned");
       const accepted = host.scene().submissions.filter((row) => row.acceptance.status === "applied").length;
-      assert.equal(accepted, 53);
+      assert.equal(accepted, 52);
       console.log(
         `${rating}: ${accepted} accepted exchanges, ${completions} mocked completions, max prompt ${promptBytes} bytes`,
       );

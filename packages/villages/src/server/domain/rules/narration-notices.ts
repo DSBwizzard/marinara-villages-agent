@@ -11,6 +11,7 @@ import { findLocation } from "./places.js";
 const nativeNotices: Partial<
   Record<AcceptedEpisode["commandReceipts"][number]["kind"], Pick<VenueRecordEvent, "kind" | "text">>
 > = {
+  circumstance: { kind: "venue", text: "Circumstance changed" },
   project: { kind: "project", text: "Project updated" },
   residence: { kind: "request", text: "Residence updated" },
   "venue-request": { kind: "request", text: "Venue request updated" },

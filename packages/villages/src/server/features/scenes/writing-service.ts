@@ -15,6 +15,7 @@ import {
   VillagesRequestError,
 } from "../../domain/rules/errors.js";
 import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
+import { currentRoomViews } from "../../domain/rules/continuity-retrieval.js";
 import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import {
@@ -34,6 +35,7 @@ import {
 } from "../../domain/rules/narration-contract.js";
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
+import { activeNarrativeConditions } from "../../domain/rules/narrative-environment.js";
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
 import { venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
@@ -768,6 +770,32 @@ export function createSceneWriting({
         ),
       )
       .map((visitor) => visitor.characterId);
+    const offeredRoom = readset.admission.room;
+    let sceneRoomChangeTargets: string[] | undefined;
+    if (tagged && offeredRoom) {
+      const repairEntries = new Set(
+        activeNarrativeConditions(authority.narrative, readset.capturedAt)
+          .filter(
+            ({ venueId, zoneId, restriction }) =>
+              venueId === offeredRoom.placeId && zoneId === offeredRoom.zoneId && restriction === "ordinary-use",
+          )
+          .flatMap(({ repairEntries }) => repairEntries ?? []),
+      );
+      sceneRoomChangeTargets = currentRoomViews(
+        authority.continuity,
+        authority.episodes,
+        offeredRoom,
+        readset.capturedAt,
+      )
+        .filter(
+          ({ id, version }) =>
+            version.room?.visibility === "observable" &&
+            !version.room.expiresAt &&
+            !repairEntries.has(id) &&
+            fitted.evidenceIds.includes("room-context:" + id),
+        )
+        .map(({ id }) => id);
+    }
     const request: Request = {
       fitted,
       readset: {
@@ -784,9 +812,11 @@ export function createSceneWriting({
           ? {
               taggedSceneReply: true as const,
               authoritativeSceneBeats: true as const,
+              ...(tagged ? { atomicRoomOutcomes: true as const } : {}),
               explicitNpcIntroduction: true as const,
             }
           : {}),
+        ...(sceneRoomChangeTargets ? { sceneRoomChangeTargets } : {}),
         ...(tagged && !requestedMemory && readset.repairs.length ? { terminalSceneRepair: true as const } : {}),
         ...(tagged
           ? {

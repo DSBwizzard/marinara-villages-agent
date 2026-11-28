@@ -177,6 +177,7 @@ export type SceneErrorReportItem = {
   trace?: RequestTrace;
   operation?: (Pick<RoomOperation, "kind" | "stage" | "status"> & SceneFailureMetadata) | null;
   held?: boolean;
+  appliedWithWarnings?: boolean;
   diagnostic?: SceneFailureDiagnostic;
 };
 
@@ -208,15 +209,17 @@ export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context
     const label =
       action && Object.hasOwn(actions, action)
         ? actions[action]
-        : item.held
-          ? "Apply saved reply"
-          : item.id === "reply-recovery"
-            ? "Reconcile reply"
-            : item.id === "reading"
-              ? "Read Scene playback"
-              : item.id === "greeting" || item.id === "opening-notice"
-                ? "Open Scene"
-                : "Scene request";
+        : item.appliedWithWarnings
+          ? "Scene reply applied with warnings"
+          : item.held
+            ? "Apply saved reply"
+            : item.id === "reply-recovery"
+              ? "Reconcile reply"
+              : item.id === "reading"
+                ? "Read Scene playback"
+                : item.id === "greeting" || item.id === "opening-notice"
+                  ? "Open Scene"
+                  : "Scene request";
     lines.push("", `${index + 1}. ${label}`);
     const [method, route] = typeof trace?.request === "string" ? trace.request.split(" ") : [];
     const request = method && route ? requestLabel(method, route) : undefined;
@@ -243,19 +246,27 @@ export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context
       if (failureCause && causes.has(failureCause))
         lines.push(`${diagnostic && item.held ? "Operation code" : "Cause"}: ${failureCause}`);
       if (phase && failureStages.has(phase)) lines.push(`Phase: ${phase.replaceAll("-", " ")}`);
-      else if (diagnostic && item.held) lines.push("Phase: reply validation");
+      else if (diagnostic && (item.held || item.appliedWithWarnings)) lines.push("Phase: reply validation");
       if (diagnostic) {
         if (diagnostic.replyIssue)
           lines.push("Reply parser: " + sceneReplyIssues[diagnostic.replyIssue] + " (" + diagnostic.replyIssue + ")");
         if (diagnostic.jsonIssue)
           lines.push(`JSON parser: ${sceneJsonIssues[diagnostic.jsonIssue]} (${diagnostic.jsonIssue})`);
+        if (diagnostic.checks.some(({ code }) => code === "missing_required_effect"))
+          lines.push("Why: The reply described a change without the game action needed to save it.");
+        if (diagnostic.checks.some(({ code }) => code === "room_outcome_unverified"))
+          lines.push("Why: The reply proposed a Room change without evidence that it happened.");
+        if (diagnostic.checks.some(({ code }) => code === "scene_expression_unavailable"))
+          lines.push("Why: The requested expression was unavailable for the character’s sprite.");
         if (diagnostic.rejected && !diagnostic.checks.length) lines.push("Validator details: unavailable");
         for (const { code, path, expected } of diagnostic.checks)
           lines.push(
             `Validator: ${code}${path.length ? " at " + path.join(".") : ""}${expected ? ` (expected ${expected})` : ""}`,
           );
         if (diagnostic.rejected)
-          lines.push(`${item.held ? "Rejected effects" : "Validation issues"}: ${diagnostic.rejected}`);
+          lines.push(
+            `${item.appliedWithWarnings ? "Dropped details" : item.held ? "Rejected effects" : "Validation issues"}: ${diagnostic.rejected}`,
+          );
         const completion = [
           diagnostic.parseStatus && `parse ${diagnostic.parseStatus}`,
           diagnostic.finishReason && `finish ${diagnostic.finishReason}`,

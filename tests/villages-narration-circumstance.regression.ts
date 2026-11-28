@@ -5,7 +5,11 @@ import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { readNarrativeState } from "../packages/villages/src/server/domain/decoding/narrative-codec.js";
-import { ensureNarrative, admitNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
+import {
+  ensureNarrative,
+  admitNarrative,
+  admitDueWorldDevelopment,
+} from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { synchronizeVenueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
@@ -194,6 +198,14 @@ await runCase("narration-circumstance/room-damage", () => {
     { conditionId: conditions[0].id, entries: conditions[0].repairEntries },
   ]);
   assert(!result.episode!.commandReceipts[0].text.includes(glass.id), "repair links are outside the witnessed prose");
+  const notices = narrationSceneNotices(f.state, result.episode!, f.room.placeId);
+  assert.deepEqual(
+    notices.map(({ kind, text }) => ({ kind, text })),
+    [{ kind: "venue", text: "Circumstance changed" }],
+  );
+  const unwitnessed = structuredClone(result.episode!);
+  unwitnessed.commandReceipts[0].witnesses = [];
+  assert(!narrationSceneNotices(f.state, unwitnessed).some(({ kind }) => kind === "venue"));
   assert.equal(views().find((row) => row.id === f.rug.id)?.version.id, f.rug.version.id);
   const before = memoryHash(f.state);
   assert(f.accept().replayed);
@@ -369,6 +381,48 @@ await runCase("narration-circumstance/room-damage", () => {
 });
 
 await runCase("narration-circumstance/room-damage-holds", () => {
+  const discovery = roomDamage();
+  discovery.readset.atomicRoomOutcomes = true;
+  discovery.readset.taggedSceneReply = true;
+  discovery.readset.authoritativeSceneBeats = true;
+  discovery.readset.sceneRoomChangeTargets = [];
+  const replacement =
+    "Narration!:\n[keep]: " + JSON.stringify({ for: "room", replace: discovery.window.id, text: "A cracked window." });
+  const denied = decodeTaggedSceneReply(replacement, discovery.readset);
+  assert.equal(denied.value, null);
+  assert.equal(denied.issue, "invalid_private_record");
+  discovery.readset.sceneRoomChangeTargets.push(discovery.window.id);
+  const secondKeep = replacement + '\n[keep]: {"for":"room","text":"Glass on the floor."}';
+  assert.equal(decodeTaggedSceneReply(secondKeep, discovery.readset).issue, "invalid_private_record");
+  const privateHandle = replacement.replace("A cracked window.", "A cracked window beside [npc:private].");
+  assert.equal(decodeTaggedSceneReply(privateHandle, discovery.readset).issue, "invalid_private_record");
+  const observed = decodeTaggedSceneReply(replacement, discovery.readset);
+  assert(observed.value);
+  const accepted = acceptNarration(
+    discovery.state,
+    { ...discovery.publication(), raw: observed.value, responseDigest: memoryHash(observed.value) },
+    "circumstance-turn",
+    at,
+  );
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
+  assert.equal(accepted.episode?.segments[0]?.content, "A cracked window.");
+  assert.equal(
+    currentRoomViews(discovery.state.continuity, discovery.state.episodes, discovery.room, at).find(
+      (view) => view.id === discovery.window.id,
+    )?.version.text,
+    "A cracked window.",
+  );
+
+  const optional = fixture();
+  optional.raw.segments[0].requires = [];
+  optional.raw.commands[0].independent = true;
+  optional.readset.circumstance = null;
+  optional.readset.taggedSceneReply = true;
+  optional.readset.atomicRoomOutcomes = true;
+  const beforeOptional = memoryHash(optional.state);
+  assert(optional.accept().held, "A tagged circumstance cannot detach from the prose by declaring itself independent");
+  assert.equal(memoryHash(optional.state), beforeOptional);
+
   for (const variant of [
     "missing",
     "timed",
@@ -547,6 +601,7 @@ await runCase("narration-circumstance/context", () => {
   assert(!prompt.includes("quiet hall"));
   assert(!prompt.includes("description"));
   assert(!prompt.includes("facts"));
+  assert(admitDueWorldDevelopment(f.state, at, "eligible-world"));
   const holder = continuityActor(f.state, "player")!,
     root = f.state.continuity.records[0],
     key = continuityHolderKey(holder);
@@ -563,6 +618,7 @@ await runCase("narration-circumstance/context", () => {
     !forgotten.parts.some((part) => part.block.text.includes("Secure its bracket.")),
     "native context cannot bypass scoped Forget",
   );
+  assert.equal(admitDueWorldDevelopment(f.state, at, "forgotten-world"), null);
 });
 await runCase("narration-circumstance/strict-boundary", () => {
   for (const [field, value] of Object.entries({

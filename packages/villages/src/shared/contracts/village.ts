@@ -790,6 +790,7 @@ export type SceneView = {
   /** Active lines contain one complete published reply, or the latest arrival. */
   liveReplyId?: string;
   replyWarning?: "expression" | "detail";
+  replyWarningDiagnostic?: import("./scene-failure-diagnostic.js").SceneFailureDiagnostic;
   playback: Omit<import("./scene-playback.js").ScenePlaybackWindow, "lines" | "participants">;
   latestTurn?: { id: string; at: string; published: boolean };
   retryReply?: { token: string };

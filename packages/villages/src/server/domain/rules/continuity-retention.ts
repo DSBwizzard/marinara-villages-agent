@@ -203,6 +203,25 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
       );
       for (const dependency of episode.dependencies[nativeUnit] ?? []) {
         const unit: unknown = JSON.parse(dependency);
+        if (roomReceipt.kind === "circumstance" && Array.isArray(unit) && unit.length === 3) {
+          const prior = byEpisode.get(unit[0]);
+          const source = prior?.grounding.find((row) => row.kind === "native" && row.unitId === unit[1]);
+          memoryRequire(
+            prior &&
+              (sequenceById.get(prior.id) ?? Infinity) < sequence &&
+              source &&
+              continuitySourceUnit(source) === dependency &&
+              prior.commandReceipts.some(
+                (row) =>
+                  row.id === source.committedReceiptId &&
+                  row.kind === "circumstance" &&
+                  row.targetId === roomReceipt.targetId &&
+                  row.revision === roomReceipt.revision - 1,
+              ),
+            "World follow-up lost its prior circumstance",
+          );
+          continue;
+        }
         const version =
           Array.isArray(unit) && unit.length === 2 && unit[0] === "version" ? versions.get(unit[1]) : undefined;
         const prior = version && byEpisode.get(owners.get(version.id) ?? "");

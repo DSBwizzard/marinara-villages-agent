@@ -117,6 +117,14 @@ const saved = z
           return (
             row.format === 1 &&
             (row.visitorIntroductionFarewell === undefined || row.visitorIntroductionFarewell === true) &&
+            (row.atomicRoomOutcomes === undefined ||
+              (row.atomicRoomOutcomes === true && row.taggedSceneReply === true)) &&
+            (row.sceneRoomChangeTargets === undefined ||
+              (row.atomicRoomOutcomes === true &&
+                row.authoritativeSceneBeats === true &&
+                !!row.admission?.room &&
+                Array.isArray(row.sceneRoomChangeTargets) &&
+                row.sceneRoomChangeTargets.every((target) => typeof target === "string"))) &&
             (row.terminalSceneRepair === undefined ||
               (row.terminalSceneRepair === true && row.taggedSceneReply === true)) &&
             typeof row.setupAt === "string" &&

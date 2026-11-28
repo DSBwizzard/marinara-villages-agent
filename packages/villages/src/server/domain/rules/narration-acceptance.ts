@@ -19,7 +19,7 @@ import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { asRecord } from "./coerce.js";
 import { conflict } from "./errors.js";
 import { narrationProtectionFingerprint } from "./narration-context.js";
-import { readNarrationEffectHeader } from "./narration-contract.js";
+import { readNarrationEffectHeader, ROOM_RESULT_EFFECT_PREFIX } from "./narration-contract.js";
 import { prepareNarrationKeep } from "./narration-keep.js";
 import {
   assertNarrationSourceOrder,
@@ -555,7 +555,7 @@ export function acceptNarrationContinuity(
       readset.continuityEffectRecovery &&
       allowTranscriptNotes &&
       !requestedMemory &&
-      (passiveActorNote || roomObservation)
+      (passiveActorNote || (roomObservation && !readset.atomicRoomOutcomes))
     )
       incidentalNotes.add(header.id);
     const optionalAnswer =
@@ -586,7 +586,10 @@ export function acceptNarrationContinuity(
       Object.keys(note).every((key) => actorNoteFields.has(key));
     const effect: SceneEffectResult = {
       ...header,
-      independent: openingOfferEcho || optionalNote || optionalAnswer || reactionPerspective || header.independent,
+      independent:
+        readset.atomicRoomOutcomes && (note.for === "room" || roomArray)
+          ? undefined
+          : openingOfferEcho || optionalNote || optionalAnswer || reactionPerspective || header.independent,
     };
     try {
       memoryRequire(
@@ -645,7 +648,8 @@ export function acceptNarrationContinuity(
           "the Room's native structure or construction site changed",
         );
         const target = keep.write.target;
-        if (target && (keep.write.retire || keep.write.room?.visibility === "concealed"))
+        const roomResult = readset.sceneRoomChangeTargets && effect.id.startsWith(ROOM_RESULT_EFFECT_PREFIX);
+        if (target && (roomResult || keep.write.retire || keep.write.room?.visibility === "concealed"))
           memoryRequire(
             !activeNarrativeConditions(state.narrative, readset.capturedAt).some(
               (condition) =>

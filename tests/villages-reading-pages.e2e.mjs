@@ -79,7 +79,7 @@ await withBrowser(browser, async () => {
       ],
       submissions: [{ id: "hello", replyLineIds: ["long"] }],
     };
-    let events = [{ id: "heart", kind: "relationship-up", text: "Mara's warmth toward you increased (0 → 2)." }];
+    let events = [{ id: "circumstance", kind: "venue", text: "Circumstance changed" }];
     const closedCursors = [];
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -143,6 +143,11 @@ await withBrowser(browser, async () => {
     const dock = page.locator(`.${tag}-chat-vn`);
     const tray = page.getByRole("button", { name: /World changes?/ });
     await expect(text).toHaveText("Hello?");
+    await expect(tray).toHaveAccessibleName("1 World change");
+    await expect(page.getByText("Circumstance changed", { exact: true })).toBeVisible();
+    if (width === 390 || width === 1440)
+      await page.screenshot({ path: `artifacts/scene-circumstance-${width}x${height}.png` });
+    await tray.click();
     const shortDialogue = await dock.boundingBox();
     assert(
       await reading.evaluate((node) => node.clientHeight <= parseFloat(getComputedStyle(node).lineHeight) + 2),

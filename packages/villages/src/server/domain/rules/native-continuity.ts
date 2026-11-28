@@ -250,8 +250,8 @@ export function retainNativeFact(
   const context = meaning.context ?? [];
   const ancestry = meaning.ancestry ?? [];
   memoryRequire(
-    ancestry.length <= 512 &&
-      (!ancestry.length || (receipt.kind === "circumstance" && !room && !holders.length)) &&
+    ancestry.length <= (roomContext ? 1 : 512) &&
+      (!ancestry.length || (receipt.kind === "circumstance" && (!room || roomContext) && !holders.length)) &&
       ancestry.every((source) => {
         const episode = state.episodes.records.find((row) => row.id === source.episodeId);
         return (
@@ -264,7 +264,7 @@ export function retainNativeFact(
           )
         );
       }),
-    "administrative circumstance lost its canonical ancestry",
+    "circumstance lost its canonical ancestry",
   );
   memoryRequire(
     context.length <= 8 &&

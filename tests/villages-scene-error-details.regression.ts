@@ -62,6 +62,23 @@ assert(
   !JSON.stringify(publicSceneResponse(current)).includes("required cited source"),
   "ordinary playback omits rejected proposal details",
 );
+const appliedWithWarning = scene(1, "The required effect is missing.");
+appliedWithWarning.lines.push({
+  id: "visible-line",
+  role: "assistant",
+  content: "The room is cold.",
+  at,
+  heardBy: ["player"],
+});
+appliedWithWarning.submissions[0]!.replyLineIds = ["visible-line"];
+appliedWithWarning.submissions[0]!.acceptance.rejected[0]!.id = "missing-beat-4";
+const visible = JSON.parse(JSON.stringify(publicSceneResponse(appliedWithWarning)));
+assert.deepEqual(visible.replyWarningDiagnostic, {
+  checks: [{ code: "missing_required_effect", path: ["segments", 4] }],
+  rejected: 1,
+});
+assert(!JSON.stringify(visible).includes("The required effect is missing."));
+
 const large = scene(55, "x".repeat(2000)),
   bounded = sceneErrorDetails(large);
 assert(bounded.errors.length <= 51 && bounded.omittedErrors >= 5);
