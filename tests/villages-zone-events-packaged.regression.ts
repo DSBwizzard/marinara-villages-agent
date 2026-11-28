@@ -685,6 +685,24 @@ try {
   );
   assert.equal(episodeOf("entrance-invalid-crossing")!.commandReceipts.length, 0);
 
+  const missingCrossingProse = await entranceTurn(
+    "entrance-crossing-without-prose",
+    "I wait outside the entrance.",
+    [
+      "Narration [scene]: Water drips off the entrance post.",
+      "Narration!:",
+      '[command]: {"type":"move","who":"aqua","to":"exterior"}',
+      "Narration [actors distant]: Distant Resident stops beside you.",
+      "[aqua]: I can talk out here.",
+    ].join("\n"),
+  );
+  assert.deepEqual(missingCrossingProse.activeIds, []);
+  assert.deepEqual(
+    missingCrossingProse.lines.map(({ content }: { content: string }) => content),
+    ["Water drips off the entrance post."],
+  );
+  assert.equal(episodeOf("entrance-crossing-without-prose")!.commandReceipts.length, 0);
+
   const beforeAnswer = clone(records);
   const contactAnswer = await entranceTurn(
     "entrance-contact-answer",
@@ -713,8 +731,9 @@ try {
     "I wait beside the entrance.",
     [
       "[aqua]: Words from before the crossing.",
-      "Narration!: Aqua rounds the corner of the terrace and stops beside the entrance post.",
+      "Narration!:",
       '[command]: {"type":"move","who":"aqua","to":"exterior"}',
+      "Narration [actors aqua]: Aqua rounds the corner of the terrace and stops beside the entrance post.",
       "[aqua]: I can talk out here.",
       "Narration [actors aqua]: Aqua brushes dust from a sleeve.",
       "Narration [actors distant]: Distant Resident joins the conversation.",

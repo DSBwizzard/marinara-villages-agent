@@ -193,6 +193,8 @@ export function decodeTaggedSceneReply(
     const line = value.trim();
     if (!line) continue;
     if (line.startsWith("```")) break;
+    const pendingCrossing =
+      readset.groundedEntrance && anchor && anchor === crossingAnchor && !anchor.text ? anchor : undefined;
     const namedSpeaker =
       quotedSpeakerHeader.exec(line) ?? (readset.groundedEntrance ? namedSpeakerHeader.exec(line) : null);
     const namedAlias = namedSpeaker && !reservedControl(namedSpeaker[1]) && resolveAlias(namedSpeaker[1]);
@@ -200,6 +202,7 @@ export function decodeTaggedSceneReply(
       /^(?:Narration(!?)|\[([^\]\r\n]+)\])((?:\s*\[[^\]\r\n]+\])*)\s*:\s*(.*)$/iu.exec(line) ??
       (namedAlias && namedSpeaker ? [line, undefined, namedSpeaker[1], "", namedSpeaker[2]] : null);
     if (!header) {
+      if (pendingCrossing) break;
       const malformed = line.startsWith("[") && reservedControl(line.slice(1));
       if (malformed && malformed !== "action") {
         issue = "invalid_private_record";
@@ -224,6 +227,7 @@ export function decodeTaggedSceneReply(
     const control = speaker?.trim().toLowerCase();
     const reserved = reservedControl(speaker ?? "");
     if (reserved && reserved !== "action") {
+      if (pendingCrossing && reserved !== "command") break;
       if (control !== reserved || meta.length) {
         issue = "invalid_private_record";
         break;
@@ -329,6 +333,7 @@ export function decodeTaggedSceneReply(
         (proposal?.independent !== undefined && proposal.independent !== true);
       const effect: Record<string, unknown> = proposal && !invalid ? { ...proposal, id } : { id };
       const crossing = control === "command" && (effect.type === "move" || effect.type === "depart");
+      if (pendingCrossing && !crossing) break;
       if (anchor && nativeAnchors.has(anchor) && !crossing && !(control === "command" && effect.type === "npc.admit"))
         continue;
       if (authoritative && anchor?.text === "" && !crossing) continue;
@@ -419,6 +424,25 @@ export function decodeTaggedSceneReply(
       if (!proposal) break;
       continue;
     }
+    if (pendingCrossing) {
+      const actors = meta.length === 1 && meta[0].startsWith("actors ") ? meta[0].slice(7).trim().split(/\s+/u) : [];
+      const movers = new Set(commands.filter(({ at }) => at === pendingCrossing.id).map(({ who }) => who));
+      if (
+        narration !== "" ||
+        !text ||
+        text.length > NARRATION_SEGMENT_CHARACTERS ||
+        /^[{\x60]|^\[[^\]\r\n]+\]\s*:/u.test(text) ||
+        text.match(privateNpcHandle) ||
+        actors.length !== movers.size ||
+        new Set(actors).size !== actors.length ||
+        actors.some((id) => !movers.has(id))
+      )
+        break;
+      // The following prose describes the crossing itself and inherits its command dependencies.
+      pendingCrossing.text = text;
+      anchor = undefined;
+      continue;
+    }
     anchor = undefined;
     if (positions.length >= MAX_NARRATION_SEGMENTS) continue;
     const id = "beat-" + (positions.length + 1);
@@ -428,7 +452,7 @@ export function decodeTaggedSceneReply(
     const work = !!readset.explicitSceneEvidence && meta.includes("work");
     const returnId = readset.explicitNpcIntroduction && speaker?.startsWith("return ") && speaker.slice(7);
     const gameSpeech = authoritative && (introduction || reserved === "action");
-    const emptyAnchor = authoritative && !readset.groundedEntrance && narration === "!" && !text;
+    const emptyAnchor = authoritative && narration === "!" && !text;
     if (
       (!text && !introduction && !appointment && !work && !returnId && !gameSpeech && !emptyAnchor) ||
       (!gameSpeech && (text.length > NARRATION_SEGMENT_CHARACTERS || (!(appointment || work) && /^[{`]/u.test(text))))
