@@ -812,10 +812,38 @@ export function narrationContinuityContext(
       },
     });
   const retained = new Set([...parts.filter((part) => !part.block.optional), ...transcript]);
+  const asksForQuote = asksForRecallQuote(recallQuery);
+  const sharedParts = asksForQuote
+    ? []
+    : priorShared.map((view): Part => ({ ...historyPart(view, false, true), readOnly: true }));
+  const latestShared = history.linkedEpisodes?.get(priorShared[0]?.id);
+  const queryTerms = new Set(recallTerms(recallQuery));
+  const matchingSharedTerms = new Set(
+    sharedParts[0]?.sharedLoreWords?.flatMap(recallTerms).filter((term) => queryTerms.has(term)),
+  );
+  const scopedExcerpt =
+    latestShared &&
+    matchingSharedTerms.size >= 2 &&
+    callbackView(episodesById.get(latestShared.id)!, latestShared, recallQuery) !== latestShared;
+  // Leave room for a compact shared conversation even when broad words rank other history higher.
+  const recentConversation =
+    readOnlyRecall && !memoryChange && !scopedExcerpt
+      ? sharedParts.find(
+          (part, index) =>
+            (priorShared[index].segments.some((line) => line.kind === "dialogue") ||
+              priorShared[index].groundedInput.some((row) => row.channel === "words")) &&
+            estimatedTextTokens(part.block.text) <= recallBudget / 2,
+        )
+      : undefined;
+  let reserved = recentConversation ? estimatedTextTokens(recentConversation.block.text) : 0;
   let recallTokens = 0;
   const takeRecall = (part: Part) => {
     const tokens = estimatedTextTokens(part.block.text);
-    if (recallTokens + tokens > recallBudget) return false;
+    if (recallTokens + tokens > recallBudget - (part === recentConversation ? 0 : reserved)) return false;
+    if (reserved && part.block.evidenceId === recentConversation?.block.evidenceId) {
+      reserved = 0;
+      part.block.pruningPriority = 1;
+    }
     recallTokens += tokens;
     retained.add(part);
     return true;
@@ -833,7 +861,6 @@ export function narrationContinuityContext(
       ),
     ),
   );
-  const asksForQuote = asksForRecallQuote(recallQuery);
   const editingMemory = memoryChange;
   const facts = optional.filter(
     (part) =>
@@ -897,13 +924,9 @@ export function narrationContinuityContext(
     if (takeRecall(part) && ++count === (recalledQuote ? 1 : 2) && !opening) break;
   }
   if (!opening && !recalledQuote) tryOlder(!asksForQuote);
-  if (!asksForQuote)
-    for (const view of priorShared) {
-      if (fittedRecallIds.has(view.id)) continue;
-      const part = historyPart(view, false, true);
-      part.readOnly = true;
-      if (takeRecall(part)) parts.push(part);
-    }
+  for (const part of sharedParts) {
+    if (!fittedRecallIds.has(part.episodeIds[0]) && takeRecall(part)) parts.push(part);
+  }
   for (const part of optional) if (part !== projectShortlist && !actorFact(part)) takeRecall(part);
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts

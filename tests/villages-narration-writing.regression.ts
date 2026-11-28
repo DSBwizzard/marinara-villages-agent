@@ -1,4 +1,4 @@
-// Test cases: narration-writing/departed-speaker, narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner, narration-writing/empty-cast-npc, narration-writing/new-encounter, narration-writing/ambiguous-recall-fallback
+// Test cases: narration-writing/departed-speaker, narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner, narration-writing/empty-cast-npc, narration-writing/new-encounter, narration-writing/ambiguous-recall-fallback, narration-writing/recent-shared-recall-budget
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -2234,6 +2234,109 @@ await runCase("narration-writing/ambiguous-recall-fallback", async () => {
   assert(!Object.values(reply.readset.source.historical).some(({ episodeId }) => episodeId === "sketch"));
   assert(!reply.readset.projects.length, "recalled conversation cannot supply native Project authority");
   const accepted = acceptNarration(f.state, reply, "callback", reply.readset.capturedAt);
+  assert.equal(accepted.held, false);
+  assert.deepEqual(accepted.rejected, []);
+  assert.equal(f.calls.purchases, 1);
+});
+
+await runCase("narration-writing/recent-shared-recall-budget", async () => {
+  const f = fixture();
+  for (const item of ["candles", "linens"]) {
+    retainNativeFact(
+      f.state,
+      {
+        id: "supplies-" + item,
+        kind: "initialization",
+        targetId: f.id,
+        revision: 1,
+        text:
+          `Mara keeps ${item} in the village store. ` + "The inventory records where each bundle belongs. ".repeat(24),
+        witnesses: [f.id],
+      },
+      at,
+    );
+  }
+  const pawnShop =
+    "I know the pawn shop by the bridge. I see it on my way home, and there's always something in the window. " +
+    "Last month it was a brass telescope and a pile of painted tins. People stop on the bridge to look. " +
+    "The owner changes the display every week and leaves the shutters open until the last ferry comes in.";
+  const privateLine = "The owner keeps a second ledger in the cellar.";
+  const playerOnly = "I overheard a separate bargain at another counter.";
+  const actor = (id: string) => ({ id, incarnation: continuityActor(f.state, id)!.incarnation, zoneId: "parlor" });
+  for (const [id, sceneId, lines] of [
+    [
+      "pawn-visit",
+      "earlier",
+      [
+        [pawnShop, [f.id, "player"]],
+        [
+          "That's the one we were talking about, by the river crossing. My sister used to take that way home " +
+            "just to glance at the maps in the window. She liked the old ones with the river still drawn in blue ink.",
+          [f.id, "player"],
+        ],
+        [privateLine, [f.id]],
+        [playerOnly, ["player"]],
+      ],
+    ],
+    ["lodging-visit", f.scene.id, [["The rooms are at the top of the stairs.", [f.id, "player"]]]],
+  ] as const) {
+    const segments: AcceptedEpisode["segments"] = lines.map(([content, heardBy], index) => ({
+      id: id + "-" + index,
+      role: "assistant",
+      kind: content === playerOnly ? "narration" : "dialogue",
+      speakerId: content === playerOnly ? "__venue_scene__" : f.id,
+      name: content === playerOnly ? "Narration" : "Mara",
+      at,
+      zoneId: "parlor",
+      content,
+      heardBy: [...heardBy],
+    }));
+    f.state.episodes = appendEpisode(
+      f.state.episodes,
+      {
+        format: 1,
+        id,
+        seed: f.state.seed,
+        sceneId,
+        submissionId: id,
+        operationId: id,
+        capturedAt: at,
+        acceptedAt: at,
+        admittedContinuityRevision: f.state.continuity.revision,
+        privateInput: sceneId === f.scene.id ? "I listen to her directions." : "A private thought left unspoken.",
+        responseDigest: memoryHash(segments),
+        actors: [actor(f.id), actor("player")],
+        segments,
+        grounding: [],
+        continuityVersionIds: [],
+        offered: [],
+        commandReceipts: [],
+        dependencies: {},
+      },
+      f.state.seed,
+    );
+  }
+
+  f.respondWith(`[${f.id}]: Do you mean the pawn shop by the bridge?`);
+  const reply = await f.writing.generate(
+    f.scene,
+    '"You know, the store."',
+    "chat",
+    undefined,
+    undefined,
+    undefined,
+    true,
+  );
+  const prompt = f
+    .messages()
+    .map(({ content }) => content)
+    .join("\n");
+  assert(prompt.includes(pawnShop));
+  assert(!prompt.includes(privateLine));
+  assert(!prompt.includes(playerOnly));
+  assert(!prompt.includes("A private thought left unspoken."));
+  assert(!Object.values(reply.readset.source.historical).some(({ episodeId }) => episodeId === "pawn-visit"));
+  const accepted = acceptNarration(f.state, reply, "store-callback", reply.readset.capturedAt);
   assert.equal(accepted.held, false);
   assert.deepEqual(accepted.rejected, []);
   assert.equal(f.calls.purchases, 1);
