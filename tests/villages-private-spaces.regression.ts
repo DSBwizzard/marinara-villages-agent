@@ -4,7 +4,6 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
-import { prepareRenovatedPrivateInterior } from "../packages/villages/src/server/domain/rules/private-interior.js";
 import { createPrivateSpacePreparation } from "../packages/villages/src/server/jobs/private-space-service.js";
 import { createLocationImages } from "../packages/villages/src/server/features/media/location-image-service.js";
 import {
@@ -610,20 +609,16 @@ async function privateInteriorLifecycle() {
   const priorAppearance = appearance();
   const priorRoom = structuredClone(bedroom);
   bedroom.roomSpecification = "A new garden-facing window";
-  prepareRenovatedPrivateInterior(bedroom, priorRoom);
-  assert.equal(bedroom.preparation?.mode, "renovation");
-  assert.equal(appearance(), priorAppearance, "approved specification waits for reconciled preparation");
+  bedroom.preparation = { status: "pending", mode: "renovation" };
+  assert.equal(appearance(), priorAppearance, "a saved preparation marker preserves the current appearance");
   assert.equal(bedroom.initialImageAttemptedAt, priorRoom.initialImageAttemptedAt);
   await preparation.preparePrivateSpaces();
-  assert.equal(calls, 2, "an approved Renovation prepares exactly once");
+  assert.equal(calls, 2, "the saved preparation publishes exactly once");
   assert.match(appearance(), /Large established physical detail/);
   assert.match(appearance(), /Existing damage/);
   assert.match(appearance(), /window is renewed/);
   await preparation.preparePrivateSpaces();
   assert.equal(calls, 2);
-  const ownRoom = { ...structuredClone(bedroom), ownerId: "player", description: "My authored interior" };
-  prepareRenovatedPrivateInterior(ownRoom);
-  assert.equal(ownRoom.description, "My authored interior", "player-owned Renovation keeps its authored appearance");
 }
 await (async () => {
   await privateInteriorLifecycle();

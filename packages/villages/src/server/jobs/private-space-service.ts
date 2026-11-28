@@ -12,7 +12,7 @@ import type { LoreInspection } from "../../shared/contracts/lore.js";
 import { readLoreUse } from "../../shared/helpers/lore.js";
 import type { villagesLogger } from "../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../adapters/models/language-models.js";
-import type { VillageState } from "../domain/models/world.js";
+import type { VillageState, VillageVenue, VillageVenueZone } from "../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../domain/rules/coerce.js";
 import { safeFailureMessage } from "../domain/rules/errors.js";
 import { extractModelJsonObject } from "../domain/rules/json-reply.js";
@@ -25,8 +25,9 @@ import {
   retryPrivateInterior,
   type PrivateRoomEdit,
 } from "../domain/rules/private-interior.js";
-import { ROOM_CONTINUITY_TEXT_BYTES } from "../domain/rules/continuity.js";
+import { continuityHolderKey, ROOM_CONTINUITY_TEXT_BYTES } from "../domain/rules/continuity.js";
 import { roomParagraphs } from "../domain/rules/continuity-retrieval.js";
+import { initializeRoomContinuity } from "../domain/rules/native-continuity.js";
 import type { reportFoundingProgress } from "../features/founding/founding-progress.js";
 import { reopenSavedResponse, type completeWithRoom } from "../features/generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../features/settings/connections.js";
@@ -38,6 +39,25 @@ export function privatePreparationRooms(village: Pick<VillageState, "venues">) {
     venueZones(venue)
       .filter((zone) => !!zone.preparation && isPrivateInterior(zone) && venue.constructionStatus !== "worksite")
       .map((zone) => ({ venue, zone })),
+  );
+}
+
+function isProjectRoom(state: VillageState, venue: VillageVenue, zone: VillageVenueZone): boolean {
+  return (
+    !!venue.buildProjectId ||
+    state.projects.some(
+      (project) =>
+        project.kind === "renovation" &&
+        project.venueId === venue.id &&
+        project.status === "complete" &&
+        project.lifecycle?.changedZoneIds.includes(zone.id),
+    )
+  );
+}
+
+function unpreparedProjectRooms(state: VillageState) {
+  return privatePreparationRooms(state).filter(
+    ({ venue, zone }) => zone.preparation?.status !== "ready" && isProjectRoom(state, venue, zone),
   );
 }
 function readPrivateReply(
@@ -130,8 +150,28 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
     return preparation;
   }
   async function prepare(signal?: AbortSignal): Promise<void> {
-    const initial = await readVillageState();
+    let initial = await readVillageState();
     const seed = initial.seed;
+    if (unpreparedProjectRooms(initial).length) {
+      const at = villageNow().toISOString();
+      initial = await mutateVillageState(
+        (state) => {
+          if (state.seed !== seed) return;
+          for (const { venue, zone } of unpreparedProjectRooms(state)) {
+            const preparation = zone.preparation!;
+            const room = continuityHolderKey({ kind: "room", placeId: venue.id, zoneId: zone.id });
+            if (!preparation.mode && !state.continuity.records.some((record) => record.heads[room])) {
+              zone.description ||= zone.roomSpecification ?? "";
+              if (zone.description.trim())
+                initializeRoomContinuity(state, venue.id, zone.id, zone.description, "saved-project-room", at);
+            }
+            zone.preparation = { status: "ready", attempt: preparation.attempt, lore: preparation.lore };
+          }
+        },
+        { memories: true },
+      );
+      if (initial.seed !== seed) return;
+    }
     const interrupted = privatePreparationRooms(initial).find(
       ({ zone }) => zone.preparation?.status === "pending" && zone.preparation.claimId,
     );
@@ -155,7 +195,9 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
     while (!signal?.aborted) {
       const village = await readVillageState({ memories: true });
       if (village.seed !== seed) return;
-      const next = privatePreparationRooms(village).find(({ zone }) => zone.preparation?.status === "pending");
+      const next = privatePreparationRooms(village).find(
+        ({ venue, zone }) => zone.preparation?.status === "pending" && !isProjectRoom(village, venue, zone),
+      );
       if (!next) return;
       const { venue, zone } = next;
       const capturedAt = villageNow().toISOString();
@@ -274,6 +316,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             );
             if (
               !current ||
+              isProjectRoom(state, current.venue, current.zone) ||
               current.zone.preparation?.status !== "pending" ||
               current.zone.preparation.claimId ||
               current.zone.preparation.basis !== zone.preparation?.basis ||
@@ -317,6 +360,19 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         }
         const result = request
           ? await completeWithRoom(request.connection, request.messages, request.maxTokens, {
+              beforeSceneDispatch: async () => {
+                const state = await readVillageState();
+                const current = privatePreparationRooms(state).find(
+                  (entry) => entry.venue.id === venue.id && entry.zone.id === zone.id,
+                );
+                if (
+                  state.seed !== seed ||
+                  !current ||
+                  current.zone.preparation?.claimId !== claimId ||
+                  isProjectRoom(state, current.venue, current.zone)
+                )
+                  throw new Error("The Room changed before preparation could start.");
+              },
               savedRequest: {
                 key: requestKey,
                 retry: attempt > 1,
@@ -406,6 +462,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             );
             if (
               !current ||
+              isProjectRoom(state, current.venue, current.zone) ||
               current.zone.preparation?.claimId !== claimId ||
               current.zone.preparation.status !== "pending"
             )

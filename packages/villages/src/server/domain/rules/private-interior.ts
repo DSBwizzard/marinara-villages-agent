@@ -1,5 +1,4 @@
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
-import { conflict } from "./errors.js";
 import { continuityHolderKey, continuityProtectionFingerprint } from "./continuity.js";
 import { currentRoomViews } from "./continuity-retrieval.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
@@ -18,28 +17,6 @@ export function retryPrivateInterior(zone: VillageVenueZone) {
   if (zone.preparation?.status !== "failed") return;
   const { attempt, mode, basis } = zone.preparation;
   zone.preparation = { status: "pending", attempt, mode, basis };
-}
-
-/** Finishing changes constraints; preparation reconciles the saved interior once. */
-export function prepareRenovatedPrivateInterior(zone: VillageVenueZone, previous?: VillageVenueZone): void {
-  if (!isPrivateInterior(zone)) return;
-  if (
-    previous?.ownerId &&
-    zone.ownerId !== previous.ownerId &&
-    (zone.kind === "personal" || previous.kind === "personal")
-  )
-    throw conflict("Resident moves assign Private Spaces; Renovations cannot transfer occupied rooms.");
-  if (zone.ownerId === "player") return;
-  if (!previous) {
-    zone.roomSpecification ??= zone.description;
-    zone.description = "";
-    zone.preparation = { status: "pending" };
-    return;
-  }
-  if (zone.roomSpecification !== previous.roomSpecification) {
-    const fresh = previous.preparation && previous.preparation.status !== "ready" && !previous.preparation.mode;
-    zone.preparation = { status: "pending", ...(!fresh ? { mode: "renovation" as const } : {}) };
-  }
 }
 
 export type PrivateRoomEdit = { replace?: string; text: string | null };

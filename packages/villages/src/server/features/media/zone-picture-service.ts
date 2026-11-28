@@ -82,7 +82,8 @@ export function createZonePictures(
           !venue ||
           !zone ||
           (automatic &&
-            (zoneClosed(village, venue, zone) ||
+            (venue.constructionStatus === "worksite" ||
+              zoneClosed(village, venue, zone) ||
               zone.preparation?.status === "pending" ||
               zone.preparation?.status === "failed"))
         )

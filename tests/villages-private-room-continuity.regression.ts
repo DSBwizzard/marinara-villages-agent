@@ -3,15 +3,13 @@ import { createVillageRepository } from "../packages/villages/src/server/adapter
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
-import {
-  capturePrivateInterior,
-  prepareRenovatedPrivateInterior,
-} from "../packages/villages/src/server/domain/rules/private-interior.js";
+import { capturePrivateInterior } from "../packages/villages/src/server/domain/rules/private-interior.js";
 import { protectContinuity } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 import type { VillageState, VillageVenueZone } from "../packages/villages/src/server/domain/models/world.js";
 import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
+import { draftRenovationProject } from "../packages/villages/src/server/features/projects/project-drafts.js";
 import { createPrivateSpacePreparation } from "../packages/villages/src/server/jobs/private-space-service.js";
 import { fixture } from "./fixtures/villages-projects.fixture.js";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
@@ -61,6 +59,7 @@ async function setup() {
   const control = {
     resolve: true,
     trim: false,
+    beforeDispatch: async () => {},
     saving: async () => {},
     reply: { description: "A walnut cabinet.\n\nA tall window." } as Record<string, unknown>,
   };
@@ -92,7 +91,11 @@ async function setup() {
       readRuntimeDebug: async () => {},
       runtimeDebug() {},
       backgroundCalls: { getStore: () => undefined },
-      coordinatedCompletion: async (_key: string, work: any) => work(),
+      coordinatedCompletion: async (_key: string, work: any, beforeDispatch?: () => Promise<void>) => {
+        await control.beforeDispatch();
+        await beforeDispatch?.();
+        return work();
+      },
       withUsagePurpose: async (_purpose: string, work: any) => work(),
       inferredPurpose: () => "background",
       villagesLogger: logger,
@@ -131,12 +134,75 @@ async function setup() {
       },
       completeWithRoom,
       villagesConnectionIdFor: async () => "synthetic",
-      mutateVillageState: app.mutateAuthority,
+      mutateVillageState: async (
+        update: Parameters<typeof app.mutateAuthority>[0],
+        options: { memories?: boolean },
+      ) => {
+        await app.mutateAuthority(update, options);
+        return app.readAuthority();
+      },
       readVillageState: app.readAuthority,
     } as any);
   };
   return { storage, writer, worker, read, control, prompts, loreReads };
 }
+
+for (const renovating of [false, true]) {
+  await withRoom(async ({ writer, read, worker, control, prompts, loreReads }) => {
+    await writer.mutateAuthority(
+      (state) => {
+        const venue = state.venues[0],
+          target = room(state);
+        target.roomSpecification = "A room with a copper workbench.";
+        if (renovating) {
+          target.description = "An established oak writing desk.";
+          initializeRoomContinuity(state, venue.id, zoneId, target.description, "before-renovation", at);
+          const project = draftRenovationProject(state, venue.id, { detail: "Rebuild the work room." });
+          project.status = "complete";
+          project.lifecycle!.phase = "complete";
+          project.lifecycle!.changedZoneIds = [zoneId];
+          state.projects.push(project);
+          target.preparation = { status: "failed", mode: "renovation", attempt: 1 };
+        } else {
+          venue.buildProjectId = "saved-build";
+          venue.constructionStatus = "complete";
+          target.preparation = {
+            status: "pending",
+            claimId: "old-claim",
+            basis: "a".repeat(64),
+            startedAt: at,
+            attempt: 1,
+          };
+        }
+      },
+      { memories: true },
+    );
+    control.resolve = false;
+    await worker().preparePrivateSpaces();
+    const result = await read();
+    const text = renovating ? "An established oak writing desk." : "A room with a copper workbench.";
+    assert.equal(room(result).preparation?.status, "ready");
+    assert.equal(view(result), text);
+    assert.equal(room(result).observed, undefined);
+    assert.equal(settingsRoom(result).description, "", "reopening the room does not reveal its interior");
+    assert.deepEqual(prompts, []);
+    assert.deepEqual(loreReads, []);
+    await worker().preparePrivateSpaces();
+    assert.deepEqual((await read()).continuity, result.continuity);
+  });
+}
+
+await withRoom(async ({ writer, read, worker, control, prompts }) => {
+  control.beforeDispatch = () =>
+    writer.mutateAuthority((state) => {
+      state.venues[0].buildProjectId = "finished-during-preparation";
+    });
+  const preparation = worker();
+  await assert.rejects(preparation.preparePrivateSpaces(), /Room changed before preparation could start/);
+  await preparation.preparePrivateSpaces();
+  assert.equal(room(await read()).preparation?.status, "ready");
+  assert.deepEqual(prompts, [], "a Project room cannot dispatch even when ownership changes after the claim");
+});
 
 await withRoom(async ({ read, worker, control, prompts, loreReads }) => {
   control.saving = async () => {
@@ -174,9 +240,8 @@ await withRoom(async ({ writer, read, worker, control, prompts }) => {
   const cabinet = capturePrivateInterior(live, live.venues[0], room(live), at).entries[0].id;
   await writer.mutateAuthority((state) => {
     const target = room(state);
-    const prior = { ...target };
     target.roomSpecification = "Repaint the cabinet";
-    prepareRenovatedPrivateInterior(target, prior);
+    target.preparation = { status: "pending", mode: "renovation" };
   });
   control.reply = { edits: [{ text: "A tall window." }] };
   await assert.rejects(worker().preparePrivateSpaces(), /did not provide valid Room changes/);

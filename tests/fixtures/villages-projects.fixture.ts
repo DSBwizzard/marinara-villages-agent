@@ -134,8 +134,6 @@ export function fixture() {
     draftNewVenueProject,
     draftRenovationProject,
     villagesDebugAgentsEnabled: () => true,
-    outsideVenueOperation: (fn: () => void) => fn(),
-    preparePrivateSpaces: async () => {},
     loadProjectWishProgress: async () => ({ processProjectWishOutbox: async () => {} }),
   } as any);
   const get = (id: string) => state.projects.find((project) => project.id === id)!;

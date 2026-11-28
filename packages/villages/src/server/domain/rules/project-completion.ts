@@ -11,7 +11,7 @@ import {
 } from "./native-continuity.js";
 import { continuityActor } from "./continuity-actors.js";
 import { badRequest, conflict } from "./errors.js";
-import { prepareRenovatedPrivateInterior } from "./private-interior.js";
+import { isPrivateInterior } from "./private-interior.js";
 import { effectiveRenovationChange, validateRenovationDesign } from "./project-design.js";
 import { venueDesignHash } from "./project-structure.js";
 import { validImage } from "./project-terms.js";
@@ -45,6 +45,11 @@ export function completeProject(
       "",
       validImage,
     );
+    for (const zone of zones) {
+      if (zone.preparation?.status !== "pending") continue;
+      zone.description = zone.roomSpecification ?? zone.description;
+      delete zone.preparation;
+    }
     validateLayoutZones(
       venue,
       zones.filter((zone) => zone.kind !== "exterior"),
@@ -87,11 +92,19 @@ export function completeProject(
       ...drafts.map((draft) => {
         const previous = old.find((zone) => zone.id === draft.id);
         if (previous && !flow.changedZoneIds.includes(draft.id)) return previous;
+        if (
+          previous?.ownerId &&
+          draft.ownerId !== previous.ownerId &&
+          (draft.kind === "personal" || previous.kind === "personal")
+        )
+          throw conflict("Resident moves assign Private Spaces; Renovations cannot transfer occupied rooms.");
         const zone: VillageVenueZone = {
           ...defaultVenueSpace(draft.id),
           ...previous,
           ...draft,
-          description: previous ? previous.description : draft.description,
+          description: previous
+            ? previous.description
+            : draft.description || (isPrivateInterior(draft) ? (draft.roomSpecification ?? "") : ""),
           purpose: draft.purpose ?? previous?.purpose,
           roomSpecification: draft.roomSpecification ?? previous?.roomSpecification,
           access:
@@ -100,12 +113,8 @@ export function completeProject(
               : previous?.access,
           image: previous?.image ?? null,
           seen: previous?.seen ?? draft.ownerId === "player",
-          preparation:
-            !previous && ["personal", "restricted"].includes(draft.kind) && draft.ownerId !== "player"
-              ? { status: "pending" }
-              : previous?.preparation,
+          preparation: previous?.preparation,
         };
-        prepareRenovatedPrivateInterior(zone, previous);
         return zone;
       }),
     ];
