@@ -11,6 +11,34 @@ export const WORLD_GM_INSTRUCTION =
   SCENE_OUTCOME_BOUNDARY +
   ' You are the GM of the living Village. Consider one meaningful environmental development, continuation or quiet within the finite admission and its Consequence. Return exactly {quiet:true} or {quiet:false,development:{severity:"gentle|moderate|dramatic",occurrence,situation:{scope:"village|zone",id:null or admitted ID,expectedRevision:0 or admitted revision,title,summary,status:"active|resolved"},room:[{replace?:supplied Room entry ID,text:complete entry or null,expiresInMinutes?:1..10080}],conditions:[{id:null or admitted ID,expectedRevision,venueId,zoneId,observation?,restriction:"none|ordinary-use",remedy?,endsAt:null or ISO UTC time,clear:boolean}],weather:null or {description,endsAt,supersedes:null or existing override ID},protection?:{roots:[supplied protected root IDs],disposition:"clear"}}}. Use at most four Room entries and four conditions at the one admitted Zone. Use room:[] when the Room stays unchanged or roomWritable is false. Replace or retire only affected entries, preserving unrelated facts. text:null retires one supplied entry. Only an independent new entry may expire. Use supplied protections as constraints, never as sources. When supplied, screen the whole proposal and use quiet if the conflict is unclear. Keep native topology, ownership, access and services intact. Conditions need observations and a remedy field when new; omitted prose on an existing condition stays intact. Reopening a repair-linked condition needs completed repair on every exact linked Room entry. When ordinaryUseRestrictionAllowed is false, preserve ordinary use and do not narrate damage that makes the Zone unusable. Entrances stay open. A nonquiet new situation needs an observable consequence. Use timed weather with explicit supersession of an overlap. Choose weather.description from weatherChoices. Invent no player or resident actions, choices, minds, permissions, supplies, identities, topology or social changes. Do not request images.';
 
+export const ROOM_REVIEW_INSTRUCTION =
+  'Follow up on the supplied local circumstance. Quiet is valid. Return one JSON object, {quiet:true} or {quiet:false,development:{severity:"gentle|moderate|dramatic",occurrence,room?:[{replace?:Room entry ID,text:string or null,expiresInMinutes?:1..10080}],condition?:{observation,restriction:"none|ordinary-use",remedy?,durationMinutes?:1..10080},protection?:{roots:[supplied IDs],disposition:"clear"}}}. Use at most four Room edits, only when roomWritable. Replace or retire only supplied entries unaffected by active repair links. Only a standalone new entry can expire. Describe a new condition only when conditionAllowed. Restrict ordinary use only if allowed and no supplied condition already restricts it. A temporary restriction needs a duration. Lasting damage needs an enduring Room edit and an available corrective route with a named remedy. Keep Entrances open. Use protections only as constraints and choose quiet if uncertain. Stay in this Zone. Invent no actor deeds, decisions, permissions, ownership, supplies, topology or social changes.';
+
+export function roomReviewContext(grant: NarrativeAdmission, trigger: NarrativeAdmission["situations"][number]) {
+  const { name, room, roomWritable, ordinaryUseRestrictionAllowed, protections, correctiveActorIds } =
+    grant.targets[0]!;
+  return {
+    setting: grant.setting,
+    consequence: grant.consequence,
+    weather: grant.moment.weather,
+    circumstance: { title: trigger.title, summary: trigger.summary },
+    target: {
+      name,
+      room,
+      roomWritable,
+      ordinaryUseRestrictionAllowed,
+      correctiveAccessAvailable: correctiveActorIds.length > 0,
+      conditionAllowed: trigger.targets.length === 1,
+      protections,
+    },
+    conditions: grant.conditions.map(({ restriction, endsAt, repairEntries }) => ({
+      restriction,
+      endsAt,
+      repairEntries,
+    })),
+  };
+}
+
 export function worldNarrativeContext(grant: NarrativeAdmission) {
   const { venueId, zoneId, name, exterior, room, roomWritable, protections, correctiveActorIds } = grant.targets[0]!;
   return {

@@ -5,7 +5,11 @@ import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { readNarrativeState } from "../packages/villages/src/server/domain/decoding/narrative-codec.js";
-import { ensureNarrative, admitNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
+import {
+  ensureNarrative,
+  admitNarrative,
+  admitDueWorldDevelopment,
+} from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { synchronizeVenueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
@@ -194,6 +198,14 @@ await runCase("narration-circumstance/room-damage", () => {
     { conditionId: conditions[0].id, entries: conditions[0].repairEntries },
   ]);
   assert(!result.episode!.commandReceipts[0].text.includes(glass.id), "repair links are outside the witnessed prose");
+  const notices = narrationSceneNotices(f.state, result.episode!, f.room.placeId);
+  assert.deepEqual(
+    notices.map(({ kind, text }) => ({ kind, text })),
+    [{ kind: "venue", text: "Circumstance changed" }],
+  );
+  const unwitnessed = structuredClone(result.episode!);
+  unwitnessed.commandReceipts[0].witnesses = [];
+  assert(!narrationSceneNotices(f.state, unwitnessed).some(({ kind }) => kind === "venue"));
   assert.equal(views().find((row) => row.id === f.rug.id)?.version.id, f.rug.version.id);
   const before = memoryHash(f.state);
   assert(f.accept().replayed);
@@ -547,6 +559,7 @@ await runCase("narration-circumstance/context", () => {
   assert(!prompt.includes("quiet hall"));
   assert(!prompt.includes("description"));
   assert(!prompt.includes("facts"));
+  assert(admitDueWorldDevelopment(f.state, at, "eligible-world"));
   const holder = continuityActor(f.state, "player")!,
     root = f.state.continuity.records[0],
     key = continuityHolderKey(holder);
@@ -563,6 +576,7 @@ await runCase("narration-circumstance/context", () => {
     !forgotten.parts.some((part) => part.block.text.includes("Secure its bracket.")),
     "native context cannot bypass scoped Forget",
   );
+  assert.equal(admitDueWorldDevelopment(f.state, at, "forgotten-world"), null);
 });
 await runCase("narration-circumstance/strict-boundary", () => {
   for (const [field, value] of Object.entries({

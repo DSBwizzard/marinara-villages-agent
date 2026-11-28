@@ -9,7 +9,10 @@ import { createNarrative } from "../packages/villages/src/server/features/narrat
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { synchronizeVenueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
-import { worldRepairRecords } from "../packages/villages/src/server/domain/rules/repair-records.js";
+import {
+  retainAdministrativeCircumstance,
+  worldRepairRecords,
+} from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
@@ -42,6 +45,7 @@ function addCircumstance(id: string) {
     targets: [{ venueId: venue.id, zoneId: "exterior" }],
     updatedAt: now.toISOString(),
   });
+  retainAdministrativeCircumstance(state, id, "prepare:" + id, now.toISOString());
 }
 const releaseClock = configureVillageClock({
   now: () => new Date(now),
@@ -88,29 +92,8 @@ const narrative = createNarrative({
     proposal = {
       severity: failApply ? "moderate" : "gentle",
       occurrence: "Drizzle collects beneath a window.",
-      situation: {
-        scope: "zone",
-        id: null,
-        expectedRevision: 0,
-        title: "Drizzle",
-        summary: "Wet paving beneath a window.",
-        status: "active",
-      },
       room: [{ text: "Drizzle beads on the sill.", expiresInMinutes: 15 }],
-      conditions: [
-        {
-          id: null,
-          expectedRevision: 0,
-          venueId: target.venueId,
-          zoneId: target.zoneId,
-          observation: "Rain dots the paving.",
-          restriction: "none",
-          remedy: "",
-          endsAt: new Date(now.getTime() + 60_000).toISOString(),
-          clear: false,
-        },
-      ],
-      weather: null,
+      condition: { observation: "Rain dots the paving.", restriction: "none", durationMinutes: 1 },
     };
     await background.queueBackgroundJob(work);
   },
@@ -169,9 +152,19 @@ try {
   state.opening.stage = "complete";
   await narrative.reconcile(now);
   await background.settleBackgroundWork();
-  assert.equal((await background.backgroundWorkSummaries())[0]!.status, "completed");
+  const firstReview = (await background.backgroundWorkSummaries())[0]!;
+  assert.equal(firstReview.status, "completed", firstReview.error);
   assert.equal(requests, 1);
-  assert.equal(prompt.target.zoneId, chosen!.zoneId);
+  assert.deepEqual(prompt.circumstance, {
+    title: "Wet paving",
+    summary: "A window has let rain onto the paving.",
+  });
+  assert.match(prompt.target.name, /^Hall \/ /u);
+  assert.equal(prompt.target.zoneId, undefined);
+  assert.equal(prompt.weatherChoices, undefined);
+  assert.equal(state.narrative!.situations.length, 1);
+  assert.equal(state.narrative!.situations[0]!.id, "first-circumstance");
+  assert.equal(state.narrative!.situations[0]!.summary, prompt.circumstance.summary);
   assert.equal(
     prompt.target.roomBasis,
     undefined,

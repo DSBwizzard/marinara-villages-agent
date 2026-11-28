@@ -1176,8 +1176,34 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     );
     assert.equal(answers.length, 0, "An invalid combined response makes no hidden review request");
   }
-  answers = [{ quiet: false, development: proposal(queued.input.grant) }];
+  const roomReply = {
+    severity: "gentle",
+    occurrence: "Wind loosens the hall sign.",
+    room: [{ text: "The sign hangs from one bracket.", replace: queued.input.grant.targets[0].room[0].id }],
+    condition: { observation: "The sign hangs loose.", restriction: "ordinary-use", remedy: "Secure the bracket." },
+  };
+  for (const development of [
+    { ...roomReply, weather: {} },
+    { ...roomReply, situation: { id: "another-circumstance" } },
+    { ...roomReply, resolved: true },
+    { ...roomReply, room: [] },
+  ]) {
+    answers = [{ quiet: false, development }];
+    await assert.rejects(() => service.handler.generate(queued.input), /effect|enduring Room entry/);
+    assert.equal(answers.length, 0);
+  }
+  answers = [{ quiet: false, development: roomReply }];
   const gm = await service.handler.generate(queued.input);
   assert.equal(gm.quiet, false);
-  assert.equal(answers.length, 0, "A new world development uses one typed GM response");
+  assert.equal(answers.length, 0, "A Room follow-up uses one typed GM response");
+
+  const oldInput = structuredClone(queued.input);
+  delete oldInput.grant.triggerSituationId;
+  answers = [{ quiet: false, development: proposal(oldInput.grant) }];
+  assert.equal((await service.handler.generate(oldInput)).quiet, false);
+  assert.equal(answers.length, 0, "Previously queued World work keeps its original reply contract");
+
+  const storedTrigger = fixture.state.narrative!.situations.find(({ id }) => id === "loose-bracket")!;
+  storedTrigger.revision++;
+  assert.throws(() => service.handler.valid(fixture.state, queued.input), /circumstance that prompted/);
 }
