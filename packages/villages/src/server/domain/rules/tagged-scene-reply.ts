@@ -2,7 +2,7 @@ import { asRecord } from "./coerce.js";
 import { agendaEvidence } from "../decoding/agenda-codec.js";
 import { venueWorkSchema, workTime } from "../../../shared/helpers/venue-work.js";
 import { npcNameKey } from "./npc-index.js";
-import { NARRATION_SEGMENT_CHARACTERS, readNarrationReply } from "./narration-contract.js";
+import { MAX_NARRATION_SEGMENTS, NARRATION_SEGMENT_CHARACTERS, readNarrationReply } from "./narration-contract.js";
 import { parseSceneObject } from "./scene-json-syntax.js";
 import { MODEL_JSON_MAX_CHARACTERS, modelJsonWithinBounds } from "./json-reply.js";
 import { bindSceneSourcePositions } from "./narration-sources.js";
@@ -18,7 +18,7 @@ export const taggedSceneFormat = (entrance: boolean) =>
     entrance
       ? "Put each character's actual words on their own [speaker-id]: line. Respect the supplied positions and doorway voice paths."
       : "Put each character's actual words on their own speaker line, even for a brief greeting amid an action. For example, write Narration: She opens the door. Then on a new line write [speaker-id]: Come in.",
-    "[speaker-id] [whisper recipient-id]: text, [speaker-id] [shout]: text, and [speaker-id] [aside]: text are optional. An aside follows its main line.",
+    "[speaker-id] [whisper recipient-id]: text and [speaker-id] [shout]: text are optional. Put an aside on its own speaker line immediately after its main line. Use this two-line form.\n[speaker-id]: I'll be there.\n[speaker-id] [aside]: If I can find my boots.",
     "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
     "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
     "Do not repeat an outcome in other prose. Player movement and Village time come from the game. Show what people attempt and how they react.",
@@ -46,6 +46,7 @@ const isEffectLabel = (value: unknown): value is string =>
 const controlPrefix = /^\s*!?\s*(keep|command|visit|halt|cue)(?:[\s:\]]|$)/iu;
 const actionPrefix = /^\s*!?\s*(action)(?=[ \t]+[+-]?\d)/iu;
 const quotedSpeakerHeader = /^([^:\r\n]{1,100}):\s*(["“].*["”])$/u;
+const quotedInlineAside = /^("[^"]+"|“[^“”]+”)[ \t]+\[aside\][ \t]+("[^"]+"|“[^“”]+”)$/u;
 const privateNpcHandle = /\[((?:npc|new):[A-Za-z0-9_.:-]+)\]/gu;
 const npcHandle = /^(?:npc|new):[A-Za-z0-9_.:-]+$/u;
 const agendaTerms = agendaEvidence.omit({ actorId: true, kind: true });
@@ -88,7 +89,10 @@ function plainNarration(
       return { issue: "structured_reply" };
     if (/\p{L}/u.test(text)) paragraphs.push(text);
   }
-  if (paragraphs.length > 24 || paragraphs.some((text) => text.length > NARRATION_SEGMENT_CHARACTERS))
+  if (
+    paragraphs.length > MAX_NARRATION_SEGMENTS ||
+    paragraphs.some((text) => text.length > NARRATION_SEGMENT_CHARACTERS)
+  )
     return { issue: "reply_limits" };
   if (!paragraphs.length) return {};
   return {
@@ -432,7 +436,7 @@ export function decodeTaggedSceneReply(
       continue;
     }
     anchor = undefined;
-    if (positions.length >= 24) continue;
+    if (positions.length >= MAX_NARRATION_SEGMENTS) continue;
     const id = "beat-" + (positions.length + 1);
     positions.push(id);
     const introduction = !!readset.explicitNpcIntroduction && meta.includes("introduce");
@@ -745,7 +749,53 @@ export function decodeTaggedSceneReply(
     true,
     readset.recognizeDirectOfferSpeech,
   );
-  return { value: { ...raw, segments: playable } };
+  // Keep command and citation anchors tied to their exact original words and positions.
+  let available = MAX_NARRATION_SEGMENTS - playable.length;
+  if (!available || commands.length || visit || halt) return { value: { ...raw, segments: playable } };
+  const cited = new Set<unknown>();
+  for (const proposal of raw.keep as { source?: unknown }[]) {
+    if (!Array.isArray(proposal.source)) continue;
+    for (const reference of proposal.source) {
+      const { segment, ground, quote } = asRecord(reference);
+      const { before, after } = asRecord(asRecord(ground).at);
+      // Later validation can resolve these again. A split must not make an unresolved source valid.
+      if (quote !== undefined || [segment, before, after].some((position) => typeof position === "number"))
+        return { value: { ...raw, segments: playable } };
+      cited.add(typeof reference === "string" ? reference : segment);
+      cited.add(before);
+      cited.add(after);
+    }
+  }
+  const recovered = playable.flatMap((beat) => {
+    const asideId = beat.id + "-aside";
+    if (
+      !available ||
+      beat.kind !== "dialogue" ||
+      beat.presentation ||
+      beat.requires.length ||
+      cited.has(beat.id) ||
+      cited.has(asideId)
+    )
+      return [beat];
+    const match = quotedInlineAside.exec(beat.text);
+    if (!match) return [beat];
+    const [, main, aside] = match;
+    available--;
+    return [
+      { ...beat, text: main },
+      {
+        id: asideId,
+        kind: "dialogue",
+        speakerId: beat.speakerId,
+        text: aside,
+        presentation: "aside",
+        ...(beat.delivery ? { delivery: beat.delivery } : {}),
+        ...(beat.targetId ? { targetId: beat.targetId } : {}),
+        requires: [],
+      },
+    ];
+  });
+  return { value: { ...raw, segments: recovered }, ...(recovered.length > playable.length ? { repaired: true } : {}) };
 }
 
 /** A failed crossing also invalidates later prose written against the tentative positions. */
