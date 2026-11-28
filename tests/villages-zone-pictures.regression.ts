@@ -220,6 +220,57 @@ const connection = (imageService: string, model = "") => ({
   imageService,
   model,
 });
+
+{
+  const f = fixture();
+  Object.assign(f.world(), {
+    generateMissingZoneImages: true,
+    dynamicZoneImages: false,
+    automaticNightZoneImages: false,
+  });
+  f.zone().image = null;
+  f.zone().picture = { base: null };
+  f.zone().dayNight = true;
+  await f.enter();
+  assert.equal(f.calls.length, 1, "missing-only generates the day image");
+  assert.equal(f.zone().picture?.night, undefined);
+  f.advance(5 * 60_000);
+  f.world().automaticNightZoneImages = true;
+  await f.enter();
+  assert.equal(f.calls.length, 2, "night generation works without dynamic daytime updates");
+  assert.match(String(f.calls[1].prompt), /Relight reference 1/);
+  f.dirty("A new lamp.");
+  f.advance(5 * 60_000);
+  await f.enter();
+  assert.equal(f.calls.length, 2, "night generation does not authorize a daytime refresh");
+  f.world().automaticNightZoneImages = false;
+  f.world().dynamicZoneImages = true;
+  await f.enter();
+  assert.equal(f.calls.length, 3, "dynamic artwork can refresh only the day image");
+}
+
+{
+  const f = fixture();
+  f.world().automaticZonePictures = false;
+  await f.service.storeVillageVenueImage("home", "living", "day upload", "day");
+  await f.service.storeVillageVenueImage("home", "living", "night upload", "night");
+  assert.equal(f.calls.length, 0, "uploads make no generation requests");
+  assert.equal(f.zone().dayNight, false, "upload does not change the physical lighting inference");
+  const getZone = async () =>
+    (await f.ports.buildVillageSnapshot!()).settings.venues[0].zones!.find((zone) => zone.id === "living")!;
+  assert.equal((await getZone()).nightImage?.id, "render-0");
+  assert.equal(
+    (await getZone()).dayNight,
+    true,
+    "an uploaded nighttime image is available even in a constant-lighting Zone",
+  );
+  assert.equal(f.zone().picture?.night?.uploaded, true);
+  const nightImage = f.zone().picture?.night;
+  await f.service.storeVillageVenueImage("home", "living", "replacement day upload", "day");
+  assert.deepEqual(f.zone().picture?.night, nightImage, "a new daytime upload keeps the player's nighttime artwork");
+  await f.enter();
+  assert.equal(f.calls.length, 0);
+}
 {
   const f = fixture();
   f.zone().kind = "personal";
@@ -673,7 +724,11 @@ assert.equal(
   await createLocationImages(f.ports).requestZonePicture("home", "living");
   assert.equal(f.calls.length, 4, "the pending night stage survives a service restart");
   assert.deepEqual(f.calls[3].referenceImages, ["reference:render-3"]);
-  assert.equal(f.world().zonePictureBudget?.used, 2, "each automatic image consumes its own allowance");
+  assert.equal(
+    f.world().zonePictureBudget?.used,
+    3,
+    "the automated companion and automatic pair each spend an allowance",
+  );
 }
 {
   const f = fixture();
@@ -794,7 +849,7 @@ console.log(
   assert.equal(restored.image!.id, "render-0");
   assert.equal(restored.freezePicture, true);
   await f.service.generateVillageLocationImage("home", "living", undefined);
-  assert.equal(f.calls.length, 2, "explicit Generate still creates a replacement and night companion");
+  assert.equal(f.calls.length, 1, "explicit Generate can replace frozen artwork without an automatic companion");
   assert.equal(f.calls[0].referenceImages, undefined, "an upload does not become a hidden generation reference");
   assert.match(String(f.calls[0].prompt), /White walls/);
   assert.equal(f.zone().picture?.reference, undefined);

@@ -14,7 +14,7 @@ import { findLocation } from "./places.js";
 import { followingMovementParty } from "./resident-movement.js";
 import { contactPosition } from "./venue-contact.js";
 import { VillagesRequestError } from "./errors.js";
-import { zonePictureContext } from "./zone-picture.js";
+import { zoneImageEnabled, zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
@@ -231,6 +231,9 @@ export function villageSettings(
     sceneryArtStyle: village.sceneryArtStyle,
     sceneryStyleProfileId: village.sceneryStyleProfileId ?? null,
     automaticZonePictures: village.automaticZonePictures !== false,
+    generateMissingZoneImages: zoneImageEnabled(village, "generateMissingZoneImages"),
+    dynamicZoneImages: zoneImageEnabled(village, "dynamicZoneImages"),
+    automaticNightZoneImages: zoneImageEnabled(village, "automaticNightZoneImages"),
     personalizeVenueImagesByDefault: village.personalizeVenueImagesByDefault,
     loreTokenBudget: village.loreTokenBudget,
     loreTokenBudgetMin: MIN_LORE_TOKEN_BUDGET,
@@ -268,6 +271,7 @@ export function villageSettings(
       const liveVenue = liveSceneWorld && findLocation(liveSceneWorld, venue.id);
       const zones = venueZones(venue).map((originalZone) => {
         const visible = observedZone(originalZone, authoring);
+        const night = visible.picture?.night;
         const scene = residenceAccess?.placeId === venue.id ? residenceAccess : null;
         const escort = scene ? sceneMoveAccompanying(scene, venue, originalZone, village) : undefined;
         const party =
@@ -371,14 +375,17 @@ export function villageSettings(
             originalZone.observed.pictureContext !== originalZone.observed.context
           ),
           daylightReady: visible.picture?.daylight === true,
+          dayNight: night?.uploaded === true || visible.dayNight,
           nightImage:
-            visible.dayNight && visible.image && visible.picture?.night?.sourceId === visible.image.id
-              ? visible.picture!.night.image
+            night?.uploaded || (visible.dayNight && visible.image && night?.sourceId === visible.image.id)
+              ? night?.image
               : undefined,
           nightPending:
+            zoneImageEnabled(village, "automaticNightZoneImages") &&
             !originalZone.freezePicture &&
             visible.dayNight === true &&
-            (!visible.picture?.daylight || !visible.image || visible.picture?.night?.sourceId !== visible.image.id),
+            !night?.uploaded &&
+            (!visible.picture?.daylight || !visible.image || night?.sourceId !== visible.image.id),
           pictureRevision: undefined,
           pictureRetryAvailable:
             !!originalZone.observed &&

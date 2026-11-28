@@ -1,6 +1,6 @@
 import { rememberZoneArtwork, zoneObservationKey, observedPictureKey } from "../../domain/rules/zone-observation.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
-import { observableRoomDescription } from "../../domain/rules/zone-picture.js";
+import { observableRoomDescription, zoneImageEnabled } from "../../domain/rules/zone-picture.js";
 import { DAYTIME_IMAGE_INSTRUCTION } from "../../domain/rules/location-image-rules.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { createZonePictures } from "./zone-picture-service.js";
@@ -221,7 +221,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       if (
         !latestVenue ||
         !latestZone ||
-        latest.automaticZonePictures === false ||
+        !zoneImageEnabled(latest, "generateMissingZoneImages") ||
         latestZone.freezePicture ||
         latestZone.picture?.removed ||
         (fromObservation
@@ -250,7 +250,8 @@ export function createLocationImages(ports: LocationImagePorts) {
             ? observedPictureKey(latest, zone)
             : sceneryImageKey(latest, current, villageNow().toISOString(), zone.id)) !== expectedContext ||
           (guard && !guard(latest)) ||
-          (onlyIfEmpty && (latest.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed))
+          (onlyIfEmpty &&
+            (!zoneImageEnabled(latest, "generateMissingZoneImages") || zone.freezePicture || zone.picture?.removed))
         )
           throw conflict("The scenery changed before its image request. Generate again.");
         if (reference && (await ports.resolveVillageImageEditing!())?.signature !== support?.signature)
@@ -312,10 +313,17 @@ export function createLocationImages(ports: LocationImagePorts) {
   const generateFirstZoneImage = requestZonePicture;
   const updateZonePicture = pictures.updateZonePicture;
 
-  async function storeVillageVenueImage(venueId: string, zoneId: string, dataUrl: unknown): Promise<VillageSnapshot> {
+  async function storeVillageVenueImage(
+    venueId: string,
+    zoneId: string,
+    dataUrl: unknown,
+    slot?: "day" | "night",
+  ): Promise<VillageSnapshot> {
     const { village, venue } = await requireVenue(venueId);
     await assertVenueImageAccess(venueId, zoneId, true);
     const before = resolveVenueZone(venue, zoneId)!;
+    if (slot === "night" && (!before.image || before.observed?.image?.id !== before.image.id))
+      throw conflict("Upload a day image for this Zone first.");
     const revision = before.pictureRevision ?? 0;
     const observation = before.observed && zoneObservationKey(before.observed);
     const decoded = decodeImageDataUrl(dataUrl);
@@ -337,14 +345,29 @@ export function createLocationImages(ports: LocationImagePorts) {
         zoneObservationKey(zone.observed) !== observation
       )
         throw conflict("The Zone image changed. Upload again.");
+      zone.pictureRevision = revision + 1;
+      if (slot === "night") {
+        if (!zone.image || zone.observed.image?.id !== zone.image.id)
+          throw conflict("Upload a day image for this Zone first.");
+        zone.picture = {
+          ...zone.picture,
+          base: zone.picture?.base ?? zone.image,
+          failed: false,
+          problem: undefined,
+          claim: undefined,
+          night: { sourceId: zone.image.id, image, uploaded: true },
+        };
+        rememberZoneArtwork(zone, true);
+        return;
+      }
       zone.image = image;
       zone.freezePicture = true;
-      zone.pictureRevision = revision + 1;
       zone.picture = {
         base: image,
         context: zone.observed.context,
         baseline: zone.observed.context,
-        daylight: false,
+        daylight: slot === "day",
+        night: zone.picture?.night?.uploaded ? zone.picture.night : undefined,
         dirty: false,
         removed: false,
       };

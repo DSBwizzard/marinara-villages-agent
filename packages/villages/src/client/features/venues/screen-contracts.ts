@@ -26,7 +26,7 @@ export type VenueScreenController = {
   readonly drawPlaceImage: (venueId: string, zoneId: string) => Promise<void>;
   readonly dropPlaceImage: (venueId: string, zoneId: string) => Promise<void>;
   readonly homeBuildings: readonly import("../../../shared/contracts/village").VillageBuildingOption[];
-  readonly keepPlaceImage: (venueId: string, zoneId: string, file: File | undefined) => Promise<void>;
+  readonly keepPlaceImage: import("../../shared/ZoneImageControls.js").ZoneArtworkCommands["keepPlaceImage"];
   readonly leaveVenue: ReturnType<typeof useLeaveVenue>;
   readonly mobile: boolean;
   readonly movePrivateZoneId: VenuesState["movePrivateZoneId"];

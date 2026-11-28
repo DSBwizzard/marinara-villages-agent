@@ -568,15 +568,25 @@ async function checkPackage(width) {
   assert.deepEqual(scenerySaves[4].request().postDataJSON(), { sceneryArtStyle: "", sceneryStyleProfileId: "" });
   await acknowledge(4);
   await expect(style).toHaveCount(0);
-  const automatic = page.getByRole("checkbox", { name: "Dynamic Images", exact: true });
+  const automatic = page.getByRole("checkbox", { name: "Dynamic Zone Images", exact: true });
   await automatic.click();
   await expect.poll(() => scenerySaves.length).toBe(6);
-  assert.deepEqual(scenerySaves[5].request().postDataJSON(), { automaticZonePictures: false });
+  assert.deepEqual(scenerySaves[5].request().postDataJSON(), { dynamicZoneImages: false });
   await acknowledge(5);
   await expect(automatic).not.toBeChecked();
+  if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
+    await automatic.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-settings-${width}.png`),
+    });
+  }
+  await expect(page.getByRole("checkbox", { name: "Generate Missing Zone Images", exact: true })).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: "Automatically Generate Nighttime Zone Images", exact: true }),
+  ).toBeChecked();
   await automatic.click();
   await expect.poll(() => scenerySaves.length).toBe(7);
-  assert.deepEqual(scenerySaves[6].request().postDataJSON(), { automaticZonePictures: true });
+  assert.deepEqual(scenerySaves[6].request().postDataJSON(), { dynamicZoneImages: true });
   await acknowledge(6);
   await expect(automatic).toBeChecked();
   assert.equal(
@@ -664,10 +674,6 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: "Erase Village permanently", exact: true }).click();
   await expect.poll(() => heldReset !== null).toBe(true);
   await expect(page.getByRole("button", { name: "Erase Village permanently", exact: true })).toBeDisabled();
-  if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
-    await page.screenshot({
-      path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-settings-${width}.png`),
-    });
   assert.deepEqual(errors, []);
   await page.close();
 }

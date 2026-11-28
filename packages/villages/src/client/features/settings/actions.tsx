@@ -64,7 +64,14 @@ export function useSaveSettings(ports: {
 }
 
 export type ScenerySettingsPatch = Partial<
-  Pick<VillageSnapshot["settings"], "sceneryArtStyle" | "sceneryStyleProfileId" | "automaticZonePictures">
+  Pick<
+    VillageSnapshot["settings"],
+    | "sceneryArtStyle"
+    | "sceneryStyleProfileId"
+    | "generateMissingZoneImages"
+    | "dynamicZoneImages"
+    | "automaticNightZoneImages"
+  >
 >;
 
 /** One scenery save at a time; edits made during a request remain queued in the shell. */

@@ -1,3 +1,4 @@
+import { ZONE_IMAGE_SETTINGS, zoneImageEnabled } from "../../domain/rules/zone-picture.js";
 import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import type { VillageSnapshot, VillageState, VillageBackgroundPace } from "../../domain/models/world.js";
@@ -182,16 +183,22 @@ export function createVillageSettings({
     sceneryArtStyle?: unknown;
     sceneryStyleProfileId?: unknown;
     automaticZonePictures?: unknown;
+    generateMissingZoneImages?: unknown;
+    dynamicZoneImages?: unknown;
+    automaticNightZoneImages?: unknown;
     personalizeVenueImagesByDefault?: unknown;
     useVisualLoreByDefault?: unknown;
   }): Promise<VillageSnapshot> {
     await mutateVillageState((state) => {
       if (value.automaticZonePictures !== undefined) {
-        const enabled = readBool(value.automaticZonePictures);
-        if (enabled !== (state.automaticZonePictures !== false))
+        const previous = ZONE_IMAGE_SETTINGS.map((setting) => zoneImageEnabled(state, setting));
+        state.automaticZonePictures = readBool(value.automaticZonePictures);
+        for (const setting of ZONE_IMAGE_SETTINGS) state[setting] = state.automaticZonePictures;
+        if (ZONE_IMAGE_SETTINGS.some((setting, index) => zoneImageEnabled(state, setting) !== previous[index]))
           state.zonePictureEpoch = (state.zonePictureEpoch ?? 0) + 1;
-        state.automaticZonePictures = enabled;
       }
+      for (const setting of ZONE_IMAGE_SETTINGS)
+        if (value[setting] !== undefined) state[setting] = readBool(value[setting]);
       if (value.sceneryStyleProfileId !== undefined)
         state.sceneryStyleProfileId = readSceneryStyleProfileId(value.sceneryStyleProfileId);
       if (value.sceneryArtStyle !== undefined) state.sceneryArtStyle = readSceneryStyle(value.sceneryArtStyle);

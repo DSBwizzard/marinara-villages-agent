@@ -171,9 +171,12 @@ await withBrowser(browser, async () => {
         const zone = place.zones.find((zone) => zone.id === body.zoneId);
         if (zone) {
           if (request.method() === "PUT") {
-            zone.image = { id: "uploaded", url: mapImage + "#uploaded" };
-            zone.nightImage = undefined;
-            zone.freezePicture = true;
+            if (body.slot === "night") zone.nightImage = { id: "uploaded-night", url: mapImage + "#uploaded-night" };
+            else {
+              zone.image = { id: "uploaded", url: mapImage + "#uploaded" };
+              if (zone.nightImage?.id !== "uploaded-night") zone.nightImage = undefined;
+              zone.freezePicture = true;
+            }
           } else if (request.method() === "DELETE") {
             zone.image = null;
             zone.nightImage = undefined;
@@ -390,7 +393,7 @@ await withBrowser(browser, async () => {
     await chooseRoom("Main Bay");
     await expect(generate).toBeVisible();
     await expect(detail.getByLabel("Upload Main Bay image")).toHaveCount(1);
-    await expect(detail.getByRole("button", { name: "Upload image", exact: true })).toBeVisible();
+    await expect(detail.getByRole("button", { name: "Upload day image", exact: true })).toBeVisible();
     await expect(detail.getByRole("button", { name: "Lore activity", exact: true })).toHaveCount(0);
     const updates = detail.getByRole("switch", { name: "Automatic artwork updates", exact: true });
     await expect(updates).toBeChecked();
@@ -418,10 +421,11 @@ await withBrowser(browser, async () => {
       body: { venueId: place.id, zoneId: "bay" },
     });
     await expect(detail.getByRole("switch", { name: "Day & night", exact: true })).toHaveCount(0);
-    await expect(detail.getByRole("button", { name: "View night image", exact: true })).toHaveCount(0);
+    const viewNightImage = detail.getByRole("button", { name: "View night image", exact: true });
+    await expect(viewNightImage).toBeEnabled();
     await expect(detail.getByRole("button", { name: "Refresh picture", exact: true })).toHaveCount(0);
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
-      await detail.getByRole("button", { name: "Upload image", exact: true }).scrollIntoViewIfNeeded();
+      await detail.getByRole("button", { name: "Upload day image", exact: true }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `room-artwork-${width}.png`) });
     }
     await detail.getByLabel("Upload Main Bay image").setInputFiles({
@@ -434,12 +438,32 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => writes.at(-1)?.body.image?.startsWith("data:image/png")).toBe(true);
     assert.equal(writes.at(-1).body.zoneId, "bay");
+    assert.equal(writes.at(-1).body.slot, "day");
+    await expect(viewNightImage).toBeDisabled();
+    await detail.getByLabel("Upload Main Bay night image").setInputFiles({
+      name: "night.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB1cAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+    await expect(viewNightImage).toBeEnabled();
+    assert.equal(writes.at(-1).body.slot, "night");
+    await viewNightImage.click();
+    const nightViewer = page.getByRole("dialog", { name: "Main Bay", exact: true });
+    await expect(nightViewer.getByRole("img", { name: "Main Bay", exact: true })).toHaveAttribute(
+      "src",
+      mapImage + "#uploaded-night",
+    );
+    await page.keyboard.press("Escape");
+    await expect(nightViewer).toBeHidden();
     const artworkUrl = mapImage + "#uploaded";
     await expect(roomBackdrop).toHaveAttribute("src", artworkUrl);
     await expect(updates).not.toBeChecked();
     await expect(detail.getByRole("button", { name: "Remove image", exact: true })).toBeEnabled();
     const actionBoxes = await Promise.all(
-      ["Generate Image", "Upload image", "View fullsize", "Remove image"].map((name) =>
+      ["Generate Image", "Upload day image", "View fullsize", "Remove image"].map((name) =>
         detail.getByRole("button", { name, exact: true }).boundingBox(),
       ),
     );
@@ -467,7 +491,7 @@ await withBrowser(browser, async () => {
       "short artwork labels fit their buttons: " + JSON.stringify({ width, labels }),
     );
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
-      await actions.screenshot({
+      await detail.screenshot({
         path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-artwork-actions-${width}.png`),
       });
     await expect(detail.getByRole("textbox", { name: "Description", exact: true })).toHaveValue("An open living area.");

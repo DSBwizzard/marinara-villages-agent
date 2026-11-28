@@ -169,13 +169,18 @@ export function registerVenueImageRoutes(engine: FastifyInstance) {
       venueId?: unknown;
       image?: unknown;
       zoneId?: unknown;
+      slot?: unknown;
     };
   }>("/locations/venue/image", { bodyLimit: VENUE_IMAGE_BODY_LIMIT }, async (request, reply) => {
     try {
+      const slot = request.body?.slot;
+      if (slot !== undefined && slot !== "day" && slot !== "night")
+        return reply.code(400).send({ error: "Choose the day or night image." });
       return await storeVillageVenueImage(
         readVenueId(request.body?.venueId),
         readPlaceId(request.body?.zoneId),
         request.body?.image,
+        slot === "day" || slot === "night" ? slot : undefined,
       );
     } catch (error) {
       return fail(reply, error, "keeping a place's picture");

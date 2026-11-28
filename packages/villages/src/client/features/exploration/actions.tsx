@@ -143,7 +143,7 @@ export function useKeepPlaceImage(ports: {
 }) {
   const { placeBusyId, setPlaceBusyId, setPlaceProblem, setSettingsError, setSnapshot, snapshot } = ports;
   return useCallback(
-    async (venueId: string, zoneId: string, file: File | undefined) => {
+    async (venueId: string, zoneId: string, file: File | undefined, slot?: "day" | "night") => {
       if (!file || !snapshot || placeBusyId) return;
       setPlaceBusyId(venueId);
       setPlaceProblem(null);
@@ -163,7 +163,7 @@ export function useKeepPlaceImage(ports: {
         setSnapshot(
           await request<VillageSnapshot>("/locations/venue/image", {
             method: "PUT",
-            body: JSON.stringify({ venueId, zoneId, image }),
+            body: JSON.stringify({ venueId, zoneId, image, slot }),
           }),
         );
       } catch (cause) {

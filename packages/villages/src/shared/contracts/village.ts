@@ -536,6 +536,9 @@ export type VillageSettings = {
   sceneryArtStyle: string;
   sceneryStyleProfileId: string | null;
   automaticZonePictures: boolean;
+  generateMissingZoneImages: boolean;
+  dynamicZoneImages: boolean;
+  automaticNightZoneImages: boolean;
   personalizeVenueImagesByDefault: boolean;
   loreTokenBudget: number;
   loreTokenBudgetMin: number;

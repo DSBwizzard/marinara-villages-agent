@@ -205,6 +205,9 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       sceneryArtStyle?: unknown;
       sceneryStyleProfileId?: unknown;
       automaticZonePictures?: unknown;
+      generateMissingZoneImages?: unknown;
+      dynamicZoneImages?: unknown;
+      automaticNightZoneImages?: unknown;
       personalizeVenueImagesByDefault?: unknown;
       useVisualLoreByDefault?: unknown;
       useVisualLore?: unknown;
@@ -241,6 +244,9 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
         body.sceneryArtStyle !== undefined ||
         body.sceneryStyleProfileId !== undefined ||
         body.automaticZonePictures !== undefined ||
+        body.generateMissingZoneImages !== undefined ||
+        body.dynamicZoneImages !== undefined ||
+        body.automaticNightZoneImages !== undefined ||
         body.personalizeVenueImagesByDefault !== undefined ||
         body.useVisualLoreByDefault !== undefined
       )
