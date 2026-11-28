@@ -2,12 +2,7 @@ import { parseSceneObject } from "../../packages/villages/src/server/domain/rule
 
 /** Retain the same proposals in packaged fixtures when the active prompt asks for tagged text. */
 export function sceneFixtureText(messages: { content: string }[], content: string) {
-  const direction = messages.at(-1)?.content ?? "";
-  if (
-    !direction.includes("Put each lasting change on its own tag line.") &&
-    !direction.includes("At this entrance, use Narration:")
-  )
-    return content;
+  if (!messages.at(-1)?.content.includes("Put each lasting change on its own tag line.")) return content;
   const raw = parseSceneObject(content) as Record<string, any> | null;
   if (
     !raw ||

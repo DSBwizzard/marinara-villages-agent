@@ -37,7 +37,7 @@ export type NarrationReadset = {
   strictSceneReply?: true;
   taggedSceneReply?: true;
   authoritativeSceneBeats?: true;
-  entranceObservations?: true;
+  groundedEntrance?: true;
   terminalSceneRepair?: true;
   npcSpeakerNames?: Record<string, string>;
   explicitNpcIntroduction?: true;

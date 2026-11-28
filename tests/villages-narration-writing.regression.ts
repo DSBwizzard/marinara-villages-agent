@@ -692,8 +692,7 @@ await runCase("narration-writing/single-request", async () => {
     .messages()
     .map(({ content }) => content)
     .join("\n");
-  assert.match(taggedPrompt, /Narration: text/u);
-  assert.match(taggedPrompt, /\[speaker-id\]:/u);
+  assert.match(taggedPrompt, /Narration: text or \[speaker-id\]: spoken text/u);
   assert.doesNotMatch(taggedPrompt, /Begin with \{"segments":|Return "segments".*one JSON object/u);
   assert.equal(tagged.readset.taggedSceneReply, true);
   assert.deepEqual(fresh.formats, [undefined]);

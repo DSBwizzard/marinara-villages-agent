@@ -15,7 +15,6 @@ import {
   acceptedNarrationEpisode,
   narrationIsAbandoned,
   acceptNarrationContinuity,
-  SCENE_REPLY_NOT_PERCEIVED,
   type NarrationPublication,
 } from "./narration-acceptance.js";
 import { applyNarrationProject, applyNarrationProjectStart } from "./narration-project.js";
@@ -46,7 +45,7 @@ import { nativeCommand, readNarrationNativeCommand } from "./narration-command-c
 import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
 import { asRecord } from "./coerce.js";
-import { pruneTaggedSceneReply, quietEntranceReply } from "./tagged-scene-reply.js";
+import { pruneTaggedSceneReply } from "./tagged-scene-reply.js";
 import { isPlayerVisitInvitation } from "./scene-visit-speech.js";
 
 class TaggedNpcAdmissionFailure extends Error {
@@ -704,15 +703,6 @@ export function acceptNarration(
       if (!(error instanceof TaggedNpcAdmissionFailure)) throw error;
       admissionFailure = error;
       rejected = [{ id: error.effectId, reason: error.message }];
-    }
-    if (
-      publication.readset.entranceObservations &&
-      rejected.length === 1 &&
-      rejected[0].id === "visible-reply" &&
-      rejected[0].reason === SCENE_REPLY_NOT_PERCEIVED
-    ) {
-      raw = quietEntranceReply();
-      continue;
     }
     const reduced = pruneTaggedSceneReply(
       raw,
