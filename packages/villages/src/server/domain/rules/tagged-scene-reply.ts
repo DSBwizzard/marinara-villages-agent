@@ -34,7 +34,7 @@ const entranceObservations = new Map([
 export const ENTRANCE_OBSERVATION_FORMAT =
   "At this entrance, use Narration: " +
   [...entranceObservations.keys()].join(", Narration: ") +
-  ". Copy one whole line without adding prose. Use the sound or movement line for an observable cue whose source the player cannot identify. Use the empty Narration!: line and a supplied movement command for an actual crossing into view. An NPC admission also uses an empty Narration!: line. The game writes what the player sees.";
+  ". Copy one whole line without adding prose. Use sound or movement for an observable cue whose source the player cannot identify. Keep each character in their supplied Zone until a crossing changes it. Use an empty Narration!: line and a supplied movement command for a crossing in either direction, before any dialogue from the new position. An NPC admission also uses an empty Narration!: line. The game writes what the player sees.";
 
 export function quietEntranceReply() {
   return { segments: [{ id: "beat-1", kind: "narration", text: quietEntrance, requires: [] }] };

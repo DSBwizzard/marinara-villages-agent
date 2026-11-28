@@ -701,6 +701,42 @@ try {
   assert.deepEqual(steppedBack.participants, []);
   assert.equal(savedEntrance().doorwayContacts?.[0]?.characterZoneId, "terrace");
 
+  await restart(beforeAnswer);
+  const admittedShopkeeper = await entranceTurn(
+    "entrance-npc-admission",
+    "I tap the window and wait outside.",
+    [
+      "Narration!:",
+      '[command]: {"type":"npc.admit","localKey":"new:keeper","name":"Mera","label":"Shopkeeper","characterization":"A shopkeeper finishing her work."}',
+      "[new:keeper]: We shut at six.",
+    ].join("\n"),
+  );
+  assert.equal(admittedShopkeeper.activeIds.length, 1);
+  const [shopkeeper] = admittedShopkeeper.activeIds;
+  assert.match(shopkeeper, /^npc:/u);
+  const stillOutside = await entranceTurn(
+    "entrance-npc-follow-up",
+    "I raise the parcel toward the glass, keeping my feet outside.",
+    [
+      "Narration: The door gives a few inches, chain still on, and her voice comes through the gap.",
+      `[${shopkeeper}]: I can take the parcel here.`,
+    ].join("\n"),
+  );
+  assert.equal(stillOutside.zoneId, "exterior");
+  assert.deepEqual(stillOutside.activeIds, [shopkeeper]);
+  assert.deepEqual(stillOutside.doorwayContacts, []);
+  assert.equal(
+    savedEntrance().sceneAttendance?.occupants.find(({ characterId }) => characterId === shopkeeper)?.zoneId,
+    "exterior",
+  );
+  const followUp = episodeOf("entrance-npc-follow-up")!;
+  assert.equal(followUp.commandReceipts.length, 0);
+  assert.deepEqual(
+    followUp.segments.map(({ content, zoneId }) => [content, zoneId]),
+    [["I can take the parcel here.", "exterior"]],
+  );
+  assert(followUp.segments[0].heardBy.includes("player"));
+
   await restart(baseline);
   const validKeep = {
     id: "news",

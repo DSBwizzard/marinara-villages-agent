@@ -230,9 +230,6 @@ export function createSceneWriting({
       mode === "chat" &&
       !rememberFor &&
       scene.zoneId === "exterior" &&
-      !scene.sceneAttendance?.occupants.some(
-        ({ characterId }) => contactPosition(scene, characterId) === scene.zoneId,
-      ) &&
       contactNeighbors(venue, "exterior", scene).some((id) =>
         scene.sceneAttendance?.layout?.some((zone) => zone.id === id && zone.kind === "public"),
       );
