@@ -270,7 +270,7 @@ Starting a Project reserves **six hours of lead focus** before its completion de
 
 Pause or cancellation releases the reserved periods. Resume arranges the remaining focus within the remaining Project time. These are planned work periods at minute resolution; the completion clock remains 24 elapsed hours. No separate work history or effort meter is kept.
 
-If the lead withdraws or the necessary authority is lost, work pauses. **Resume** requires a willing lead and valid agreements and preserves the remaining time. Completion applies the agreed design automatically. To change the scope after work starts, finish or cancel first. Canceling an unfinished site leaves its captured Scenes available to conclude.
+If the lead withdraws or the necessary authority is lost, work pauses. **Resume** requires a willing lead and valid agreements and preserves the remaining time. Completion applies the saved design and Room edits without a model request. Worksite visits use saved artwork. To change the scope after work starts, finish or cancel first. Canceling an unfinished site leaves its captured Scenes available to conclude.
 
 A Venue supports up to six non-Entrance Zones. Its residents can share sleeping Zones without a separate Venue capacity setting. Each Zone retains the existing four-villager occupancy limit. Renovation can change its building form and Entrance details as well as selected interior Zones. Building changes require the affected people's agreement and preserve unrelated interiors. Renovation does not automatically move residents, assign jobs, or grant access.
 

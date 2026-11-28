@@ -222,6 +222,18 @@ const connection = (imageService: string, model = "") => ({
 });
 {
   const f = fixture();
+  f.zone("exterior").image = null;
+  f.zone("exterior").dayNight = false;
+  f.world().venues[0].constructionStatus = "worksite";
+  await f.enter("exterior");
+  assert.equal(f.calls.length, 0, "entering a worksite cannot buy an automatic image");
+  assert.equal(f.world().zonePictureBudget?.used, 0);
+  f.world().venues[0].constructionStatus = "complete";
+  await f.enter("exterior");
+  assert.equal(f.calls.length, 1, "an ordinary visit can generate art after construction finishes");
+}
+{
+  const f = fixture();
   f.zone().kind = "personal";
   f.zone().ownerId = "resident";
   let admissions = 0;

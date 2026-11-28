@@ -28,8 +28,6 @@ function projectDraftRequest(value: unknown) {
 export interface ProjectLifecyclePorts {
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   villagesDebugAgentsEnabled: typeof import("../../adapters/engine/runtime-host.js").villagesDebugAgentsEnabled;
-  outsideVenueOperation: typeof import("../../adapters/operations/operation-context.js").outsideVenueOperation;
-  preparePrivateSpaces: typeof import("../../jobs/private-space-preparation.js").preparePrivateSpaces;
   draftNewVenueProject: typeof import("./project-drafts.js").draftNewVenueProject;
   draftRenovationProject: typeof import("./project-drafts.js").draftRenovationProject;
 }

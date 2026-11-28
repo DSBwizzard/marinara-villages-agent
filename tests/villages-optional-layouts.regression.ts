@@ -437,6 +437,7 @@ async function main() {
           kind: "personal",
           ownerId: "",
           description: "",
+          roomSpecification: "A partition and a low bench surround a sleeping mat.",
           purpose: "A partitioned sleeping area",
         },
       ],
@@ -446,11 +447,12 @@ async function main() {
       (project) => project.kind === "renovation" && project.lifecycle?.phase !== "complete",
     )!;
     await finish(project.id);
-    await mutateVillageState((state) => {
-      const room = state.venues.find((v) => v.id === outside.id)!.zones!.find((z) => z.id === "private:nook")!;
-      room.preparation = { status: "ready" };
-      room.description = "A prepared sleeping nook";
-    });
+    current = await readVillageState({ memories: true });
+    const nook = current.venues
+      .find((venue) => venue.id === outside.id)!
+      .zones!.find((zone) => zone.id === "private:nook")!;
+    assert.equal(nook.preparation, undefined);
+    assert.equal(nook.description, "A partition and a low bench surround a sleeping mat.");
     await proposeVillageResidence("a", outside.id, "player", "", "private:nook");
     await residentAcceptsMove("a");
     await completeVillageResidence("a", true, new Date());
@@ -518,15 +520,8 @@ async function main() {
     const expanded = current.venues.find((venue) => venue.id === outside.id)!;
     const chamber = expanded.zones!.find((zone) => zone.kind === "personal")!;
     assert.equal(chamber.ownerId, undefined);
-    assert.equal(chamber.preparation?.status, "pending");
-    // The room stays closed during neutral preparation; later checks use a completed synthetic job.
-    assert.throws(() => assertResidencePrivateDestination(current, expanded, "player", chamber.id), /no longer vacant/);
-    chamber.preparation!.status = "ready";
-    await mutateVillageState((record) => {
-      for (const venue of record.venues)
-        for (const zone of venue.zones ?? [])
-          if (zone.preparation?.status === "pending") zone.preparation.status = "ready";
-    });
+    assert.equal(chamber.preparation, undefined, "a completed renovation seeds no private-room job");
+    assertResidencePrivateDestination(current, expanded, "player", chamber.id);
     assert.equal(
       canOccupyZone(expanded, chamber, "a"),
       false,
@@ -552,7 +547,9 @@ async function main() {
     await mutateVillageState((record) => {
       const unclaimed = record.venues.find((venue) => venue.id === privateOnly.id)!;
       unclaimed.access!.managerIds = [];
-      unclaimed.zones!.find((zone) => zone.id === "personal")!.access!.managerIds = null;
+      const existing = unclaimed.zones!.find((zone) => zone.id === "personal")!;
+      existing.access!.managerIds = null;
+      existing.preparation = { status: "ready" };
     });
     await movePlayerToResidence(privateOnly.id, "personal");
     current = await readVillageState({ memories: true });
@@ -630,6 +627,11 @@ async function main() {
         destination.zones!.length,
         1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both"),
       );
+      for (const room of destination.zones!.filter((zone) => zone.kind === "personal")) {
+        assert.equal(room.preparation, undefined, "a completed build seeds no private-room job");
+        assert.equal(room.description, opening.privateSpaces![0]!.description);
+        assert.equal(room.seen, false, "finishing the design does not reveal a private room");
+      }
     }
     await removeVillager("b");
     current = await readVillageState({ memories: true });

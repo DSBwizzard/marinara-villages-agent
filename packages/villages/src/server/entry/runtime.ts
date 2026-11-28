@@ -491,8 +491,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createProjectLifecycle({
       mutateVillageState: mutateVillageMemoryState,
       villagesDebugAgentsEnabled,
-      outsideVenueOperation: operations.outsideVenueOperation,
-      preparePrivateSpaces,
       draftNewVenueProject,
       draftRenovationProject,
     }),
