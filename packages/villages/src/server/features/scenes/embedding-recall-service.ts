@@ -4,12 +4,13 @@ import type { RecallRanking } from "../../domain/rules/text-recall.js";
 
 const MAX_CACHE = 512;
 const MAX_BATCH = 8;
-const LOCAL_QUERY_MS = 125;
-const CONNECTION_QUERY_MS = 450;
+const QUERY_MS = 450;
+const LOCAL_RETRY_MS = 10_000;
 const CONNECTION_RETRY_MS = 60_000;
 const MAX_TEXT = 1400;
 
 type EmbeddingHost = NonNullable<Awaited<ReturnType<NonNullable<CapabilityRuntimeHost["embeddingsFor"]>>>>;
+type EmbeddingAvailability = EmbeddingHost | "preparing" | null;
 
 function unitVector(vector: number[] | undefined, dimension: number) {
   if (!vector || !dimension || dimension > 4096 || vector.length !== dimension || !vector.every(Number.isFinite))
@@ -30,14 +31,15 @@ function within<T>(work: Promise<T>, signal: AbortSignal): Promise<T | undefined
 
 /** A bounded, disposable index over projected text. Native memories do not depend on it. */
 export function createEmbeddingRecall(
-  resolveHost?: (id: string | null, signal: AbortSignal) => Promise<EmbeddingHost | null>,
+  resolveHost?: (choice: Exclude<VillageEmbeddingChoice, "off">, signal: AbortSignal) => Promise<EmbeddingAvailability>,
 ) {
   const cache = new Map<string, Float32Array>();
   const queued = new Map<string, AbortSignal | undefined>();
   let choice: VillageEmbeddingChoice = "off";
   let scope = new AbortController();
-  let local: EmbeddingHost | undefined;
   let status: VillageEmbeddingStatus | undefined;
+  let checking = false;
+  let checkLocalAfter = 0;
   let retryAfter = 0;
   let dimension = 0;
   let space = "";
@@ -55,68 +57,49 @@ export function createEmbeddingRecall(
     timer = undefined;
   }
 
-  function unavailable() {
-    status = "unavailable";
-    resetIndex();
+  function setStatus(next: VillageEmbeddingStatus) {
+    status = next;
+    checkLocalAfter = Date.now() + (next === "unavailable" ? 15_000 : 2_000);
+    if (next !== "ready") resetIndex();
   }
 
   function select(next: VillageEmbeddingChoice, retry = false) {
-    if (choice === next && (!retry || status !== "unavailable")) return status;
-    scope.abort();
-    scope = new AbortController();
-    choice = next;
-    retryAfter = 0;
-    active = undefined;
-    status = undefined;
-    local = undefined;
-    resetIndex();
+    if (choice !== next) {
+      scope.abort();
+      scope = new AbortController();
+      choice = next;
+      retryAfter = 0;
+      checkLocalAfter = 0;
+      active = undefined;
+      checking = false;
+      status = undefined;
+      resetIndex();
+    } else if (checking || (!(retry && status === "unavailable") && (next !== "local" || Date.now() < checkLocalAfter)))
+      return status;
     if (next === "off") return;
     if (!resolveHost) {
-      unavailable();
+      setStatus("unavailable");
       return status;
     }
-    status = "preparing";
-    const signal = AbortSignal.any([scope.signal, AbortSignal.timeout(next === "local" ? 90_000 : 5_000)]);
-    const selected = scope;
+    if (!status || retry) status = "preparing";
+    checking = true;
+    const selected = scope.signal;
+    const signal = AbortSignal.any([selected, AbortSignal.timeout(5_000)]);
     void (async () => {
-      const host = await within(
-        Promise.resolve().then(() => resolveHost(next === "local" ? null : next.slice("connection:".length), signal)),
-        signal,
-      );
-      if (selected.signal.aborted) return;
-      if (!host?.spaceId || host.spaceId.startsWith("local:") !== (next === "local")) {
-        unavailable();
-        return;
-      }
-      if (next === "local") {
-        const raw = (
-          await within(
-            Promise.resolve().then(() => host.embed(["Village memory"], signal, "query")),
-            signal,
-          )
-        )?.[0];
-        if (selected.signal.aborted) return;
-        if (!unitVector(raw, raw?.length ?? 0)) {
-          unavailable();
-          return;
-        }
-        dimension = raw!.length;
-        space = host.spaceId;
-        local = host;
-      }
-      status = "ready";
+      const host = await currentHost(next, signal);
+      if (selected.aborted) return;
+      checking = false;
+      setStatus(host === "preparing" ? "preparing" : host?.spaceId ? "ready" : "unavailable");
     })();
     return status;
   }
 
   async function currentHost(selectedChoice: VillageEmbeddingChoice, signal: AbortSignal) {
-    if (selectedChoice === "local") return local;
     if (selectedChoice === "off" || !resolveHost) return;
-    const host = await within(
-      Promise.resolve().then(() => resolveHost(selectedChoice.slice("connection:".length), signal)),
+    return within(
+      Promise.resolve().then(() => resolveHost(selectedChoice, signal)),
       signal,
     );
-    return host?.spaceId && !host.spaceId.startsWith("local:") ? host : undefined;
   }
 
   function schedule() {
@@ -138,12 +121,12 @@ export function createEmbeddingRecall(
         worldScope.signal,
         ...entries.flatMap(([, request]) => (request ? [request] : [])),
       ]);
-      const signal = AbortSignal.any([canceled, AbortSignal.timeout(15_000)]);
+      const signal = AbortSignal.any([canceled, AbortSignal.timeout(selectedChoice === "local" ? 60_000 : 15_000)]);
       try {
         const host = await currentHost(selectedChoice, signal);
-        if (signal.aborted || world !== currentWorld) return;
-        if (!host) {
-          unavailable();
+        if (canceled.aborted || world !== currentWorld) return;
+        if (!host || host === "preparing") {
+          setStatus(host === "preparing" ? "preparing" : "unavailable");
           return;
         }
         if (host.spaceId !== currentSpace) {
@@ -156,21 +139,21 @@ export function createEmbeddingRecall(
         );
         if (canceled.aborted || world !== currentWorld) return;
         if (signal.aborted || vectors?.length !== texts.length) {
-          unavailable();
+          setStatus("unavailable");
           return;
         }
         dimension ||= vectors[0]?.length ?? 0;
         for (const [index, text] of texts.entries()) {
           const vector = unitVector(vectors[index], dimension);
           if (!vector) {
-            unavailable();
+            setStatus("unavailable");
             return;
           }
           cache.set(text, vector);
           if (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value!);
         }
       } catch {
-        if (!canceled.aborted && world === currentWorld) unavailable();
+        if (!canceled.aborted && world === currentWorld) setStatus("unavailable");
       } finally {
         if (active === operation) active = undefined;
         schedule();
@@ -180,7 +163,11 @@ export function createEmbeddingRecall(
   }
 
   async function ranking(input: string, worldId: string, request?: AbortSignal): Promise<RecallRanking["semantic"]> {
-    if (choice === "off" || status !== "ready" || request?.aborted) return;
+    if (choice === "off" || request?.aborted) return;
+    if (status !== "ready") {
+      if (choice === "local") select(choice);
+      return;
+    }
     if (world !== worldId) {
       world = worldId;
       worldScope.abort();
@@ -191,20 +178,18 @@ export function createEmbeddingRecall(
     const selected = scope,
       selectedChoice = choice;
     const canceled = AbortSignal.any([selected.signal, worldScope.signal, ...(request ? [request] : [])]);
-    const signal = AbortSignal.any([
-      canceled,
-      AbortSignal.timeout(selectedChoice === "local" ? LOCAL_QUERY_MS : CONNECTION_QUERY_MS),
-    ]);
+    const signal = AbortSignal.any([canceled, AbortSignal.timeout(QUERY_MS)]);
     const operation = (active = Symbol());
     let host: EmbeddingHost | undefined;
     let vector: Float32Array | undefined;
     try {
-      host = await currentHost(selectedChoice, signal);
+      const resolved = await currentHost(selectedChoice, signal);
       if (signal.aborted || world !== worldId) return;
-      if (!host) {
-        unavailable();
+      if (!resolved || resolved === "preparing") {
+        setStatus(resolved === "preparing" ? "preparing" : "unavailable");
         return;
       }
+      host = resolved;
       if (space !== host.spaceId) {
         resetIndex();
         space = host.spaceId;
@@ -219,12 +204,12 @@ export function createEmbeddingRecall(
         )?.[0];
         if (canceled.aborted) return;
         if (signal.aborted) {
-          if (selectedChoice !== "local") retryAfter = Date.now() + CONNECTION_RETRY_MS;
+          retryAfter = Date.now() + (selectedChoice === "local" ? LOCAL_RETRY_MS : CONNECTION_RETRY_MS);
           return;
         }
         vector = unitVector(raw, dimension);
         if (!vector) {
-          unavailable();
+          setStatus("unavailable");
           return;
         }
       }

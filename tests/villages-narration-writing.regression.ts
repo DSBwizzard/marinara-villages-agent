@@ -2118,7 +2118,7 @@ await runCase("narration-writing/required-evidence-bound", async () => {
 await runCase("narration-writing/ambiguous-recall-fallback", async () => {
   const off = fixture();
   const failed = createEmbeddingRecall(async () => null);
-  failed.select("connection:fixture");
+  failed.select("local");
   const fallback = fixture(undefined, "fixture", failed.ranking);
   for (const f of [off, fallback]) {
     f.respondWith({ segments: [{ kind: "dialogue", speakerId: f.id, text: "Which promise did you mean?" }] });

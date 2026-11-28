@@ -947,7 +947,7 @@ export async function verifyFoundingLayout(group) {
           assert.equal(modelSelection.embedding, "connection:talk");
           await embedding.click();
           await picker.getByRole("button", { name: "Engine local model" }).click();
-          await expect(embedding).toContainText("May download on first use");
+          await expect(embedding).toContainText("Preparing local model");
           await expect(modelGate.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
           if (view.width === 390) {
             modelSelection.embeddingStatus = "unavailable";

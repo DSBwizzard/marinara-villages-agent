@@ -791,7 +791,7 @@ export const VILLAGES_FORGING_STYLES = `
   background:var(--founding-control,#514157); border-color:var(--founding-accent,#d4a9ae);
 }
 .villages-founding-connections :is(.marinara-capability-villages-model-icon,.marinara-capability-villages-model-chevron,
-  .marinara-capability-villages-model-assignment small:not([data-needs-review],[data-embedding-preparing])) { display:none; }
+  .marinara-capability-villages-model-assignment small:not([data-needs-review])) { display:none; }
 .villages-founding-connections .marinara-capability-villages-model-row small { color:var(--founding-accent,#e9bec6); font-size:.75rem; }
 .villages-founding-connections .marinara-capability-villages-model-assignment {
   display:block; margin-top:.3rem; font-size:.8rem;

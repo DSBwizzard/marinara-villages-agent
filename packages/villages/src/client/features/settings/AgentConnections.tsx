@@ -406,9 +406,6 @@ export function AgentConnectionsControls({
                     <strong>{value}</strong>
                     {selected?.detail ? <small>{selected.detail}</small> : null}
                     {selected?.needsReview ? <small data-needs-review>Needs Engine review</small> : null}
-                    {semantic && id === "local" && availability === "preparing" ? (
-                      <small data-embedding-preparing>May download on first use</small>
-                    ) : null}
                     {founding || availability ? (
                       <span className={`${P}-model-readiness`} data-valid={valid || undefined}>
                         {status}
