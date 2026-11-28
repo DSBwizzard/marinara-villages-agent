@@ -410,15 +410,8 @@ export function acceptNarrationContinuity(
       const echo = asRecord(keeps[0]);
       const ref = Array.isArray(echo.source) && echo.source.length === 1 ? asRecord(echo.source[0]) : {};
       const ground = asRecord(ref.ground);
-      if (
+      const exactSource =
         echo.id === "remember-fact" &&
-        Object.keys(echo).every((key) => ["id", "for", "class", "text", "source"].includes(key)) &&
-        echo.class === "information" &&
-        typeof echo.text === "string" &&
-        echo.text.trim() &&
-        Array.isArray(echo.for) &&
-        echo.for.length === 1 &&
-        echo.for[0] === recipientId &&
         Object.keys(ref).every((key) => key === "input" || key === "ground") &&
         typeof ref.input === "string" &&
         ref.input.replace(/[.!]+$/u, "") === fact &&
@@ -426,9 +419,28 @@ export function acceptNarrationContinuity(
         ground.kind === "spoken" &&
         Array.isArray(ground.to) &&
         ground.to.length === 1 &&
-        ground.to[0] === recipientId
-      )
+        ground.to[0] === recipientId;
+      const abbreviatedSource =
+        typeof echo.id === "string" &&
+        /^(?:remember-fact|k-[A-Za-z0-9][A-Za-z0-9_-]{0,44})$/u.test(echo.id) &&
+        Object.keys(ref).length === 2 &&
+        ref.excerpt === fact &&
+        ref.ground === "spoken";
+      if (
+        Object.keys(echo).every((key) => ["id", "for", "class", "text", "source"].includes(key)) &&
+        echo.class === "information" &&
+        typeof echo.text === "string" &&
+        echo.text.trim() &&
+        Array.isArray(echo.for) &&
+        echo.for.length === 1 &&
+        echo.for[0] === recipientId &&
+        (exactSource || abbreviatedSource)
+      ) {
+        // An acknowledgement may name the duplicate. The alias can only depend on the exact code-bound effect.
+        const { id } = readNarrationEffectHeader(echo, "remember-fact");
+        if (id !== "remember-fact") effects.push({ id, requires: ["remember-fact"] });
         keeps.pop();
+      }
     }
     memoryRequire(!keeps.some((raw) => asRecord(raw).id === "remember-fact"), "automatic memory effect ID is reserved");
     keeps.push({

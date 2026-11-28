@@ -417,6 +417,38 @@ await runCase("narration-acceptance/requested-memory", () => {
   assert.equal(collision.state.continuity.versions[0].text, "Player said: " + fact);
   assert.equal(saved.episode?.segments[1].presentation, "aside");
   assert.deepEqual(echoed.raw.keep, [echo]);
+
+  const retainedWords = "my brother Rowan taught me to sharpen chisels";
+  const retained = fixture("Mara, please remember this: " + retainedWords + ".");
+  const alias = "k-ellis-chisel";
+  const abbreviated = {
+    ...echo,
+    id: alias,
+    for: [retained.id],
+    text: "Ellis's brother Rowan taught Ellis to sharpen chisels.",
+    source: [{ excerpt: retainedWords, ground: "spoken" }],
+  };
+  const recovered = retained.publication(
+    { segments: retained.response([alias]), keep: [abbreviated] },
+    "observed-reply",
+    true,
+  );
+  recovered.readset.recoverCodeMemoryEcho = true;
+  const incompatible = {
+    ...recovered,
+    raw: { ...recovered.raw, keep: [{ ...abbreviated, source: [{ excerpt: "different words", ground: "spoken" }] }] },
+  };
+  assert.equal(acceptNarrationContinuity(retained.state, incompatible, "incompatible", later).held, true);
+  assert.equal(retained.state.continuity.versions.length, 0);
+  const reopened = acceptNarrationContinuity(retained.state, recovered, "observed-reply", later);
+  assert.equal(reopened.held, false);
+  assert.equal(retained.state.continuity.versions.length, 1);
+  assert.equal(retained.state.continuity.versions[0].text, "Player said: " + retainedWords);
+  assert.deepEqual(
+    retained.state.continuity.versions[0].sources[0].perceptions.map(({ actorId }) => actorId),
+    [retained.id],
+  );
+  assert.deepEqual(recovered.raw.keep, [abbreviated]);
 });
 
 await runCase("narration-acceptance/ordinary-dialogue", () => {
