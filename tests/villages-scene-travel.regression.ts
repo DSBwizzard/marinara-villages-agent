@@ -835,7 +835,6 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     assert.equal((options as { responseFormat?: unknown }).responseFormat, undefined);
     const prompt = messages.map(({ content }) => content).join("\n");
     assert.match(prompt, /\[mara\] \[to player\]: text/);
-    assert.match(prompt, /Start with a brief Narration: beat of what the player can observe from their side/);
     const choices = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]);
     const choice = choices.find(
       (row: { actorId: string; zoneId: string }) => row.actorId === "mara" && row.zoneId === "common",
@@ -848,7 +847,7 @@ await runCase("scene-travel/doorway-after-hours", async () => {
           : calls === 4
             ? `[action ${choice.option}]: Come into the Common room.`
             : [
-                "Narration: Water drips from the eaves.",
+                "Narration: sound",
                 (calls === 2 ? "[!mara]" : "[!mara] [to player]") + ": Come into the Common room.",
                 "[visit]: " + (calls === 1 ? "unlisted" : choice.option),
               ].join("\n"),
@@ -879,21 +878,22 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     assert.equal(declined.statusCode, 200, declined.body);
     assert.deepEqual(
       declined.json().session.lines.map((line: { content: string }) => line.content),
-      ["Water drips from the eaves."],
+      ["A sound carries to the entrance."],
     );
     assert.deepEqual((await world()).venues[0].access!.permissions, []);
     const unheard = await send("unheard-doorway-invitation");
     assert.equal(unheard.statusCode, 200, unheard.body);
     assert.deepEqual(
       unheard.json().session.lines.map((line: { content: string }) => line.content),
-      ["Water drips from the eaves."],
+      ["A sound carries to the entrance."],
     );
     assert.deepEqual((await world()).venues[0].access!.permissions, []);
     const silent = await send("unheard-doorway-dialogue");
-    assert.equal(silent.statusCode, 502, silent.body);
-    assert.deepEqual(silent.json().sceneFailure.diagnostic.checks, [
-      { code: "no_perceived_scene_lines", path: ["segments"] },
-    ]);
+    assert.equal(silent.statusCode, 200, silent.body);
+    assert.deepEqual(
+      silent.json().session.lines.map(({ content }: { content: string }) => content),
+      ["No one comes into view."],
+    );
     assert(!silent.body.includes("Quiet words spoken elsewhere."));
     assert.deepEqual((await world()).venues[0].access!.permissions, []);
     const invitation = input();

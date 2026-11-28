@@ -88,10 +88,14 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
     const ids = [
       ...new Set([...scene.activeIds, ...(scene.sceneAttendance?.occupants ?? []).map((row) => row.characterId)]),
     ];
-    scene.activeIds = ids.filter(
-      (id) =>
-        contactPosition(scene, id) === scene.zoneId || scene.doorwayContacts!.some((row) => row.characterId === id),
-    );
+    scene.activeIds = ids.filter((id) => contactPosition(scene, id) === scene.zoneId);
+    for (const { characterId, name, doing } of scene.sceneAttendance?.occupants ?? []) {
+      if (
+        contactPosition(scene, characterId) === scene.zoneId &&
+        !scene.participants.some((person) => person.characterId === characterId)
+      )
+        scene.participants.push({ characterId, name, doing });
+    }
   }
   for (const receipt of episode.commandReceipts) {
     const departure = receipt.departure;

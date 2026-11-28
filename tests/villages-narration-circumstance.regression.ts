@@ -294,7 +294,7 @@ await runCase("narration-circumstance/room-damage", () => {
         }),
       "Narration: You leave the basin where it is, the warning still tacked by the stair.",
     ];
-  for (const variant of ["reopened", "other restriction", "incomplete"] as const) {
+  for (const variant of ["reopened", "other restriction", "incomplete", "entrance"] as const) {
     const taggedState = structuredClone(f.state);
     const { repairEntries: _repairEntries, ...otherRestriction } = conditions[0];
     if (variant === "other restriction")
@@ -303,12 +303,14 @@ await runCase("narration-circumstance/room-damage", () => {
         id: "other-restriction",
         observation: "The floorboards outside the work area need repair.",
       });
+    const entrance = variant === "entrance";
+    const variantReadset = entrance ? { ...repairReadset, entranceObservations: true as const } : repairReadset;
     const response = taggedReply.filter((_line, index) => variant !== "incomplete" || index !== 3).join("\n");
-    const taggedRepair = decodeTaggedSceneReply(response, repairReadset).value;
+    const taggedRepair = decodeTaggedSceneReply(response, variantReadset).value;
     assert(taggedRepair);
     const taggedResult = acceptNarration(
       taggedState,
-      { raw: taggedRepair, readset: repairReadset, responseDigest: memoryHash(response) },
+      { raw: taggedRepair, readset: variantReadset, responseDigest: memoryHash(response) },
       "repair-turn",
       repairAt,
     );
@@ -316,13 +318,13 @@ await runCase("narration-circumstance/room-damage", () => {
     const episode = readAcceptedEpisode(taggedResult.episode, taggedState.seed);
     assert.deepEqual(
       episode.segments.map(({ content }) => content),
-      variant === "incomplete" ? [beforeWork] : [beforeWork, work],
+      entrance ? ["The repair is complete."] : variant === "incomplete" ? [beforeWork] : [beforeWork, work],
     );
     assert.equal(taggedState.narrative!.conditions[0].clearedAt, variant === "incomplete" ? null : repairAt);
     const accessNotices = narrationSceneNotices(taggedState, episode, venue.id).filter(({ kind }) => kind === "venue");
     assert.deepEqual(
       accessNotices.map(({ text }) => text),
-      variant === "reopened"
+      variant === "reopened" || entrance
         ? ["Repair restriction lifted"]
         : variant === "other restriction"
           ? ["Ordinary use still restricted"]

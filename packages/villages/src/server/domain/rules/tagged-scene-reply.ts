@@ -10,14 +10,35 @@ import { isPlayerVisitInvitation } from "./scene-visit-speech.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { SceneReplyIssue } from "../../../shared/contracts/scene-failure-diagnostic.js";
 
-export const TAGGED_SCENE_FORMAT = [
-  "For a narration-only reply, write plain prose. When mixing narration, dialogue or effects, use one Scene beat per line: Narration: text or [speaker-id]: spoken text. A unique displayed speaker name also works in brackets. Omit code fences.",
-  "Put each character's actual words on their own speaker line, even for a brief greeting amid an action. For example, write Narration: She opens the door. Then on a new line write [speaker-id]: Come in.",
-  "[speaker-id] [whisper recipient-id]: text, [speaker-id] [shout]: text, and [speaker-id] [aside]: text are optional. An aside follows its main line.",
-  "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
-  "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
-  "Do not repeat an outcome in other prose. Player movement and Village time come from the game. Show what people attempt and how they react.",
-].join("\n");
+export const taggedSceneFormat = (entrance: boolean) =>
+  [
+    entrance
+      ? ENTRANCE_OBSERVATION_FORMAT + " Use one beat per line and omit code fences."
+      : "For a narration-only reply, write plain prose. When mixing narration, dialogue or effects, use one Scene beat per line: Narration: text or [speaker-id]: spoken text. A unique displayed speaker name also works in brackets. Omit code fences.",
+    entrance
+      ? "Put each character's actual words on their own [speaker-id]: line. Respect the supplied positions and doorway voice paths."
+      : "Put each character's actual words on their own speaker line, even for a brief greeting amid an action. For example, write Narration: She opens the door. Then on a new line write [speaker-id]: Come in.",
+    "[speaker-id] [whisper recipient-id]: text, [speaker-id] [shout]: text, and [speaker-id] [aside]: text are optional. An aside follows its main line.",
+    "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
+    "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
+    "Do not repeat an outcome in other prose. Player movement and Village time come from the game. Show what people attempt and how they react.",
+  ].join("\n");
+
+const quietEntrance = "No one comes into view.";
+const entranceObservations = new Map([
+  ["quiet", quietEntrance],
+  ["sound", "A sound carries to the entrance."],
+  ["movement", "Something shifts beyond the entrance."],
+]);
+
+export const ENTRANCE_OBSERVATION_FORMAT =
+  "At this entrance, use Narration: " +
+  [...entranceObservations.keys()].join(", Narration: ") +
+  ". Copy one whole line without adding prose. Use the sound or movement line for an observable cue whose source the player cannot identify. Use the empty Narration!: line and a supplied movement command for an actual crossing into view. An NPC admission also uses an empty Narration!: line. The game writes what the player sees.";
+
+export function quietEntranceReply() {
+  return { segments: [{ id: "beat-1", kind: "narration", text: quietEntrance, requires: [] }] };
+}
 
 const effectLabel = /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u;
 const isEffectLabel = (value: unknown): value is string =>
@@ -144,6 +165,7 @@ export function decodeTaggedSceneReply(
   let crossingAnchor: Beat | undefined;
   let marked = false;
   let effectIndex = 0;
+  let skippedEntranceProse = false;
   let issue: SceneReplyIssue | undefined;
   const parsePrivateRecord = (text: string) => {
     const record = modelJsonWithinBounds(text) ? parseSceneObject(text) : null;
@@ -303,7 +325,32 @@ export function decodeTaggedSceneReply(
         (proposal?.independent !== undefined && proposal.independent !== true);
       const effect: Record<string, unknown> = proposal && !invalid ? { ...proposal, id } : { id };
       const crossing = control === "command" && (effect.type === "move" || effect.type === "depart");
-      if (authoritative && anchor?.text === "" && !crossing) continue;
+      const condition =
+        Array.isArray(effect.conditions) && effect.conditions.length === 1 ? asRecord(effect.conditions[0]) : {};
+      const completesRepair =
+        readset.terminalSceneRepair &&
+        control === "command" &&
+        effect.type === "circumstance" &&
+        effect.situation === undefined &&
+        condition.clear === true &&
+        readset.repairs.some(({ id }) => id === condition.id);
+      const entranceAnchor = readset.entranceObservations && anchor?.text === "";
+      const entranceArrival = entranceAnchor && control === "command" && effect.type === "npc.admit";
+      const entranceRepair = entranceAnchor && completesRepair;
+      const entranceRepairKeep =
+        entranceAnchor &&
+        control === "keep" &&
+        effect.for === "room" &&
+        readset.repairs.some(({ entries }) => entries.includes(String(effect.replace)));
+      if (
+        authoritative &&
+        anchor?.text === "" &&
+        !crossing &&
+        !entranceArrival &&
+        !entranceRepair &&
+        !entranceRepairKeep
+      )
+        continue;
       const hasCommand = anchor && commands.some(({ at }) => at === anchor?.id);
       if (authoritative && control === "command" && anchor && hasCommand && crossing !== (anchor === crossingAnchor))
         continue;
@@ -322,13 +369,17 @@ export function decodeTaggedSceneReply(
       )
         continue;
       if (anchor && anchor !== actionAnchor && (control === "command" || marked)) bind(anchor, id);
+      if (entranceArrival && anchor) anchor.text = "Someone comes into view.";
+      if (entranceRepair && anchor) anchor.text = "The repair is complete.";
       if (authoritative && crossing && anchor?.kind === "narration") {
         const name = scene.participants.find(({ characterId }) => characterId === effect.who)?.name ?? "Someone";
         const outcome =
           effect.type === "depart"
             ? `${name} leaves.`
             : effect.to === scene.zoneId
-              ? `${name} steps into the room.`
+              ? scene.zoneId === "exterior"
+                ? `${name} steps out to the entrance.`
+                : `${name} steps into the room.`
               : `${name} steps away.`;
         anchor.text = anchor === crossingAnchor ? `${anchor.text} ${outcome}` : outcome;
         crossingAnchor = anchor;
@@ -372,18 +423,9 @@ export function decodeTaggedSceneReply(
       if (control === "command" && effect.type === "npc.admit")
         registerArrival(effect, id, "new:returning-" + effectIndex);
       list.push(effect);
-      if (
-        readset.terminalSceneRepair &&
-        control === "command" &&
-        anchor?.kind === "narration" &&
-        effect.type === "circumstance" &&
-        effect.situation === undefined &&
-        Array.isArray(effect.conditions) &&
-        effect.conditions.length === 1
-      ) {
-        const condition = asRecord(effect.conditions[0]);
+      if (completesRepair && anchor?.kind === "narration") {
         // The typed repair closes the reply. Access status comes from the committed room.
-        if (condition.clear === true && readset.repairs.some(({ id }) => id === condition.id)) break;
+        break;
       }
       // A malformed control may spill private text onto later lines.
       if (!proposal) break;
@@ -398,7 +440,7 @@ export function decodeTaggedSceneReply(
     const work = !!readset.explicitSceneEvidence && meta.includes("work");
     const returnId = readset.explicitNpcIntroduction && speaker?.startsWith("return ") && speaker.slice(7);
     const gameSpeech = authoritative && (introduction || reserved === "action");
-    const emptyAnchor = authoritative && narration === "!" && !text;
+    const emptyAnchor = authoritative && narration === "!" && (!text || readset.entranceObservations);
     if (
       (!text && !introduction && !appointment && !work && !returnId && !gameSpeech && !emptyAnchor) ||
       (!gameSpeech && (text.length > NARRATION_SEGMENT_CHARACTERS || (!(appointment || work) && /^[{`]/u.test(text))))
@@ -438,6 +480,13 @@ export function decodeTaggedSceneReply(
     }
     if (narration !== undefined) {
       if (introduction || appointment || work) continue;
+      if (readset.entranceObservations && !emptyAnchor) {
+        const observation = !marked && !meta.length ? entranceObservations.get(text) : undefined;
+        if (observation) {
+          segments.push({ id, kind: "narration", text: observation, requires: [] });
+        } else skippedEntranceProse = true;
+        continue;
+      }
       if (readset.explicitNpcIntroduction && /^\[[^\]\r\n]+\]\s*:/u.test(text)) {
         issue = "invalid_dialogue_tag";
         continue;
@@ -463,7 +512,12 @@ export function decodeTaggedSceneReply(
         const admission = newcomers.get(actor);
         if (admission && !requirements.includes(admission)) requirements.push(admission);
       }
-      const prose = handles.length ? text.replace(privateNpcHandle, "").trim() : text;
+      if (readset.entranceObservations && text) skippedEntranceProse = true;
+      const prose = readset.entranceObservations
+        ? ""
+        : handles.length
+          ? text.replace(privateNpcHandle, "").trim()
+          : text;
       if (!prose && !emptyAnchor) continue;
       anchor = { id, kind: "narration", text: prose, requires: requirements, ...(actors.length ? { actors } : {}) };
     } else {
@@ -672,6 +726,8 @@ export function decodeTaggedSceneReply(
         npcHandle.test(label),
     );
     const narration = plain.narration;
+    if (readset.entranceObservations && (narration || skippedEntranceProse))
+      return { value: quietEntranceReply(), repaired: true };
     if (narration) return { value: { segments: narration }, repaired: true };
     if (content.trimStart().startsWith("\x60\x60\x60")) issue = "fenced_reply";
     return { value: null, issue: issue ?? plain.issue ?? "no_playable_lines" };
