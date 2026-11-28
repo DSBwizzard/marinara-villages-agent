@@ -232,7 +232,10 @@ export function createNarrative(ports: Ports) {
       const grant = input.grant as NarrativeAdmission;
       const claimed = state.narrative?.claims?.some((row) => row.id === grant.id);
       const historical = input.catchupBatchId ? capturedReturn(state, input) : undefined;
-      if (input.catchupBatchId && !historical) throw conflict("The saved World opportunity needs recovery.");
+      if (input.catchupBatchId && !historical) {
+        if (claimed) throw conflict("The saved World opportunity needs recovery.");
+        return false;
+      }
       if (historical && !departureContinuityAvailable(historical.capture, state))
         throw new ReturnOpportunityUnavailable("The saved departure no longer matches Village continuity.");
       try {
