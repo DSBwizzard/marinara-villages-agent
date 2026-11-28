@@ -412,7 +412,7 @@ await withBrowser(browser, async () => {
         path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-freeze-${width}.png`),
       });
     }
-    const viewFullImage = detail.getByRole("button", { name: "View fullsize" });
+    const viewFullImage = detail.getByRole("button", { name: "View day image", exact: true });
     await expect(viewFullImage).toBeDisabled();
     await generate.click();
     await expect(generate).toBeEnabled();
@@ -459,11 +459,11 @@ await withBrowser(browser, async () => {
     await page.keyboard.press("Escape");
     await expect(nightViewer).toBeHidden();
     const artworkUrl = mapImage + "#uploaded";
-    await expect(roomBackdrop).toHaveAttribute("src", artworkUrl);
+    await expect(roomBackdrop).toHaveAttribute("src", night ? mapImage + "#uploaded-night" : artworkUrl);
     await expect(updates).not.toBeChecked();
     await expect(detail.getByRole("button", { name: "Remove image", exact: true })).toBeEnabled();
     const actionBoxes = await Promise.all(
-      ["Generate Image", "Upload day image", "View fullsize", "Remove image"].map((name) =>
+      ["Generate Image", "Upload day image", "View day image", "Remove image"].map((name) =>
         detail.getByRole("button", { name, exact: true }).boundingBox(),
       ),
     );

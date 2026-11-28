@@ -55,7 +55,7 @@ export function ZoneImageControls({
           </>
         )}
         <button type="button" disabled={!imageUrl} onClick={() => setFullImage(imageUrl ?? null)}>
-          View fullsize
+          {enableNightUpload ? "View day image" : "View fullsize"}
         </button>
         {editable && (
           <button type="button" disabled={disabled || !imageUrl} onClick={onRemove}>
