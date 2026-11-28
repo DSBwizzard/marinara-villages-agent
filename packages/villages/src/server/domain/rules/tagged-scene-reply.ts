@@ -13,7 +13,7 @@ import { contactPosition } from "./venue-contact.js";
 
 export const TAGGED_SCENE_FORMAT = [
   "Use the turn's narration format when supplied. Otherwise, for a narration-only reply write plain prose, and when mixing narration, dialogue or effects use Narration: text or [speaker-id]: spoken text. Use one Scene beat per line. A unique displayed speaker name also works in brackets. Omit code fences.",
-  "Put each character's actual words on their own speaker line, even for a brief greeting amid an action. For example, write Narration: She opens the door. Then on a new line write [speaker-id]: Come in.",
+  "Put each character's actual words on their own speaker line, even for a brief greeting amid an action. Describe the action in its own beat, then write [speaker-id]: Come in.",
   "[speaker-id] [whisper recipient-id]: text and [speaker-id] [shout]: text are optional. Put an aside on its own speaker line immediately after its main line. Use this two-line form.\n[speaker-id]: I'll be there.\n[speaker-id] [aside]: If I can find my boots.",
   "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
   "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
