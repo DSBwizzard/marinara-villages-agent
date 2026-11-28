@@ -223,6 +223,15 @@ await runCase("npc-admission/tagged-turn", () => {
       npcSpeakerNames: {},
     };
     assert(captured.npcCandidates.some((row) => row.npc.id === id && row.met));
+    const entrance = { ...captured, groundedEntrance: true as const };
+    assert.equal(decodeTaggedSceneReply(`[return ${id}]: Someone calls to [npc:private].`, entrance).value, null);
+    assert.deepEqual(
+      (
+        decodeTaggedSceneReply(`[return ${id}]: A familiar face appears in the entrance.`, entrance).value
+          ?.segments as { text: string }[]
+      ).map(({ text }) => text),
+      ["A familiar face appears in the entrance."],
+    );
     const compact = [
       `Narration: [${id}] waits near the doorway before admission.`,
       'Narration: ["Unknown Visitor"]: "I am secretly here."',

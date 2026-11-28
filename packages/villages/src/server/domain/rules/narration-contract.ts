@@ -357,9 +357,8 @@ export const CHARACTER_DIALOGUE_DIRECTION =
 const sceneTurnDirection = (tagged = false) =>
   "Reuse established people; never duplicate identities or nicknames. Place names imply no owners or attendance. Admit named newcomers before actions or speech. " +
   (tagged
-    ? "Identify actors in visible actions with Narration [actors id]: text. "
-    : "Tag actions with actors:[IDs]. ") +
-  "Quote a local passerby's one-off remark in observable narration. " +
+    ? "Identify actors in visible actions with Narration [actors id]: text. When the turn allows unadmitted passersby, quote a local passerby's one-off remark in observable narration. "
+    : "Tag actions with actors:[IDs]. Quote a local passerby's one-off remark in observable narration. ") +
   "Treat only quoted player text as spoken aloud. Unquoted text is action, narration, or internal thoughts that cannot be accessed by residents unless made observable. Never quote or speak for the player. " +
   sceneOutcomeDirection(tagged) +
   "Travel can cross open ground. Describe doors, gates, fences or other barriers only when established. " +

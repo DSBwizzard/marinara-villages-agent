@@ -835,7 +835,7 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     assert.equal((options as { responseFormat?: unknown }).responseFormat, undefined);
     const prompt = messages.map(({ content }) => content).join("\n");
     assert.match(prompt, /\[mara\] \[to player\]: text/);
-    assert.match(prompt, /Start with a brief Narration: beat of what the player can observe from their side/);
+    assert.match(prompt, /Describe what the player can observe from their side using the turn’s narration format/);
     const choices = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]);
     const choice = choices.find(
       (row: { actorId: string; zoneId: string }) => row.actorId === "mara" && row.zoneId === "common",
@@ -848,7 +848,7 @@ await runCase("scene-travel/doorway-after-hours", async () => {
           : calls === 4
             ? `[action ${choice.option}]: Come into the Common room.`
             : [
-                "Narration: Water drips from the eaves.",
+                "Narration [scene]: Water drips from the eaves.",
                 (calls === 2 ? "[!mara]" : "[!mara] [to player]") + ": Come into the Common room.",
                 "[visit]: " + (calls === 1 ? "unlisted" : choice.option),
               ].join("\n"),

@@ -128,6 +128,12 @@ export function applyNarrationMove(
     before[actor.id] && before[actor.id] !== command.to,
     "movement needs the actual prior position and a different destination",
   );
+  if (readset.groundedEntrance && before[actor.id] !== before.player)
+    memoryRequire(
+      readset.source.scene.contactGeneration?.actorIds?.includes(actor.id) &&
+        contactNeighbors(venue, before.player, context.scene).includes(before[actor.id]),
+      "an entrance arrival needs a resident offered from an adjacent Zone",
+    );
   if (actor.id === "player") {
     assertNarrationPlayerIntent(
       context,

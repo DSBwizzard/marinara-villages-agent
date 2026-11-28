@@ -708,6 +708,7 @@ export function acceptNarration(
       raw,
       new Set(rejected.map(({ id }) => id)),
       publication.readset.authoritativeSceneBeats,
+      publication.readset.groundedEntrance,
     );
     if (!reduced) {
       if (admissionFailure) throw admissionFailure.cause;

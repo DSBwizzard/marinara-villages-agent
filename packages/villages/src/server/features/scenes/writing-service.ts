@@ -73,7 +73,7 @@ import {
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure } from "../../domain/rules/work-failure.js";
 import { zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
-import { contactPosition } from "../../domain/rules/venue-contact.js";
+import { contactNeighbors, contactPosition } from "../../domain/rules/venue-contact.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
 import { capturedSceneCalendar } from "../../domain/rules/scene-calendar.js";
 import { decodeTaggedSceneReply, TAGGED_SCENE_FORMAT } from "../../domain/rules/tagged-scene-reply.js";
@@ -221,6 +221,14 @@ export function createSceneWriting({
       (mode === "greet" || (freshReply && mode === "chat"));
     const taggedReply = tagged || scene.visitorIntroduction;
     const leadSpeakerId = rememberFor ?? scene.contactGeneration?.leadSpeakerId;
+    const groundedEntrance =
+      tagged &&
+      mode === "chat" &&
+      !rememberFor &&
+      scene.zoneId === "exterior" &&
+      contactNeighbors(venue, "exterior", scene).some((id) =>
+        scene.sceneAttendance?.layout?.some((zone) => zone.id === id && zone.kind === "public"),
+      );
     const context = narrationContinuityContext(
       authority,
       scene,
@@ -475,7 +483,7 @@ export function createSceneWriting({
               ? "For ordinary doorway dialogue spoken to the player, copy a complete header: " +
                 scene.contactGeneration.doorwayVoiceIds.map((id) => "[" + id + "] [to player]: text").join(" or ") +
                 (sceneSpeechActions.length ? ". A numbered action already addresses the player" : "") +
-                ". Start with a brief Narration: beat of what the player can observe from their side, even if no one answers"
+                ". Describe what the player can observe from their side using the turn’s narration format, even if no one answers"
               : 'Doorway dialogue to the player: use targetId:"player" with these IDs: ' +
                 JSON.stringify(scene.contactGeneration.doorwayVoiceIds)) +
             ". They stay in their Zone. Hearing, an open door, and gestures grant no sight or entry. Use a listed invitation option for permission."
@@ -491,13 +499,13 @@ export function createSceneWriting({
           : "",
         residentMovesInReply && (!tagged || !context.codeRequestedMemory)
           ? tagged
-            ? 'An observed resident crossing uses an empty Narration!: line followed by [command]: {"type":"move","who":"resident-id","to":"zone-id"}. Use supplied routes; trespass:true needs an eligible unauthorized route. For leaving, use type:"depart" and who. The game supplies the outcome. Put this before any dialogue at the new position. Stay with the player.'
+            ? 'An observed resident crossing uses Narration!: followed by [command]: {"type":"move","who":"resident-id","to":"zone-id"}. Leave the narration empty by default. Follow the turn’s narration format when it asks for your own crossing prose. Use supplied routes; trespass:true needs an eligible unauthorized route. For leaving, use type:"depart" and who. Put the crossing before any dialogue at the new position. Stay with the player.'
             : 'Visible move: {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {"kind":"departure","who":"resident-id","text":"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
           : "",
         !npcIntroduction
           ? ""
           : tagged
-            ? 'Follow the player’s intent. A candidate is absent until admitted. For a familiar encounter use [return supplied-id]: with nothing after the colon and copy an npcReturnCandidate ID. The game renders the visible arrival. Follow it with [supplied-id]: their words. Never write IDs or speaker labels inside the prose. If the player seeks someone unfamiliar, use Narration!: arrival prose followed by [command]: {"type":"npc.admit","existingId":"supplied-id"} for an npcArrivalCandidate or [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."} for a fresh NPC, then use the same ID or localKey for their dialogue. A passerby can appear briefly in narration.'
+            ? 'Follow the player’s intent. A candidate is absent until admitted. For a familiar encounter use [return supplied-id]: and copy an npcReturnCandidate ID. Leave it empty unless the turn’s narration format asks for arrival prose. Follow it with [supplied-id]: their words. Never write IDs or speaker labels inside the prose. If the player seeks someone unfamiliar, use Narration!: arrival prose followed by [command]: {"type":"npc.admit","existingId":"supplied-id"} for an npcArrivalCandidate or [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."} for a fresh NPC, then use the same ID or localKey for their dialogue.'
             : nativeCommands
               ? NARRATION_NATIVE
               : narrationNpcCommands(positions),
@@ -592,7 +600,7 @@ export function createSceneWriting({
             ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
             : "",
           tagged && !requestedMemory && context.repairs.length
-            ? 'End the reply with any completed repair. For a supplied repair the player witnesses, use one Narration!: line showing only the work. Leave access warnings and reopening to the game. Follow the work with one [keep]: {"id":"repair-1","for":"room","replace":"supplied-room-entry-id","text":"The corrected Room detail."} per linked entry, with distinct keep IDs. Use text:null only when the affected detail is gone. Finish with [command]: {"type":"circumstance","conditions":[{"id":"supplied-condition-id","clear":true}],"requires":["repair-1"]} with every keep ID in requires. All lines cite the same work beat by default. Incomplete work leaves the restriction in effect.'
+            ? 'End the reply with any completed repair. For a supplied repair the player witnesses, use one Narration!: line showing only the work, with the narration tag required for this turn. Leave access warnings and reopening to the game. Follow the work with one [keep]: {"id":"repair-1","for":"room","replace":"supplied-room-entry-id","text":"The corrected Room detail."} per linked entry, with distinct keep IDs. Use text:null only when the affected detail is gone. Finish with [command]: {"type":"circumstance","conditions":[{"id":"supplied-condition-id","clear":true}],"requires":["repair-1"]} with every keep ID in requires. All lines cite the same work beat by default. Incomplete work leaves the restriction in effect.'
             : !nativeCommands && !tagged && context.repairs.length
               ? "For a lasting Room fact changed by repair, cite the actual observed work and use the affected supplied Room entry ID in replace."
               : "",
@@ -720,10 +728,20 @@ export function createSceneWriting({
           ? "Finish the departure and end before arrival. "
           : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. End crossing attempts before entry despite prior prose. `) +
         attendanceDirection +
+        (groundedEntrance
+          ? "Already beside the player on the entrance side: " +
+            JSON.stringify(
+              location.residents.filter(({ location }) => location === "with player").map(({ name }) => name),
+            ) +
+            ". Keep their actions and speech on this side even if the player addresses a door or window. Leave unseen reactions offscreen. An adjacent resident can answer through a supplied doorway voice path while staying in their Zone.\n"
+          : "") +
         (scene.visitorIntroduction
           ? `Use [${PROFESSOR_MARI_ID}]: text for the greeting and a separate final farewell. The game inserts the tutorial. Give only Mari’s ordinary speech and optional arrival narration or cues.`
           : tagged
-            ? "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. Put each lasting change on its own tag line." +
+            ? (groundedEntrance
+                ? "Use a header for every beat, even for narration alone. Write natural prose after the header. Narration [scene]: text is for observable surroundings only, with no people acting or speaking. Narration [actors id]: text is for visible actions by the listed IDs. Keep those tags on marked beats such as Narration! [scene]: text for a lasting Room change. For a crossing or newcomer admission, write Narration!: your prose and put the matching command on the next line. For a returning NPC, write [return supplied-id]: followed by your arrival prose. Admit anyone new before they act or speak, including a passerby. Put all character speech on [speaker-id]: lines. "
+                : "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. ") +
+              "Put each lasting change on its own tag line." +
               (canInviteForVisit
                 ? "\nVisit invitations available in this Scene: " + JSON.stringify(visitOptions)
                 : "") +
@@ -732,7 +750,7 @@ export function createSceneWriting({
                   JSON.stringify(followingMenu)
                 : "") +
               (sceneSpeechActions.length
-                ? "\nRead the player’s latest action before choosing. Choose a following number only for travelling together after the player uses Move. When a resident goes on their own while the player stays, use their movement command and let the game show the crossing. Keep movement out of spoken text. For a definite invitation or following decision, write [action N]: with the matching number and no other text. If none fits, leave the plan open. Use the dedicated command for outing-wide sneaking consent."
+                ? "\nRead the player’s latest action before choosing. Choose a following number only for travelling together after the player uses Move. When a resident goes on their own while the player stays, attach their movement command to the crossing beat. Keep movement out of spoken text. For a definite invitation or following decision, write [action N]: with the matching number and no other text. If none fits, leave the plan open. Use the dedicated command for outing-wide sneaking consent."
                 : "")
             : 'Return "segments" and any "keep" or "commands" in one JSON object.'),
     );
@@ -788,6 +806,7 @@ export function createSceneWriting({
             }
           : {}),
         ...(tagged && !requestedMemory && readset.repairs.length ? { terminalSceneRepair: true as const } : {}),
+        ...(groundedEntrance ? { groundedEntrance: true as const } : {}),
         ...(tagged
           ? {
               npcSpeakerNames,

@@ -587,6 +587,231 @@ try {
   await request("/rooms/greet", { sessionId: placeArrival.id });
   assert.equal(completions, beforeDisabled + 1, "the saved opening never dispatches again");
 
+  await setSpontaneousEvents(false);
+  const entranceId = placeArrival.id;
+  const savedEntrance = () => fixtureSceneState(records.get("villages-venue-visit-" + entranceId)!.data, records);
+  async function entranceTurn(submissionId: string, message: string, content: string, contact = false, status = 200) {
+    const { session: current } = await request("/rooms/active");
+    assert.equal(current.id, entranceId);
+    const payload = {
+      sessionId: entranceId,
+      submissionId,
+      message,
+      mode: contact ? "contact" : "chat",
+      expectedSceneRevision: current.sceneRevision,
+      ...(contact ? { targetId: "aqua", contact: { kind: "call", boundaryZoneId: "terrace" } } : {}),
+    };
+    answer = { content, finishReason: "stop" };
+    const before = completions;
+    const result = await request("/rooms/turn", payload, status);
+    if (status === 200) await request("/rooms/turn", payload);
+    assert.equal(completions, before + 1);
+    return status === 200 ? result.session : result;
+  }
+
+  const untagged = await entranceTurn(
+    "entrance-untagged",
+    "I throw a rock at the window.",
+    "Aqua opens the door and stands in the doorway.",
+    false,
+    502,
+  );
+  assert.doesNotMatch(JSON.stringify(untagged), /Aqua opens the door/);
+  assert.equal(episodeOf("entrance-untagged"), undefined);
+  assert.deepEqual(savedEntrance().activeIds, []);
+  assert.deepEqual(savedEntrance().doorwayContacts, []);
+  assert.equal(
+    savedEntrance().sceneAttendance?.occupants.find(({ characterId }) => characterId === "aqua")?.zoneId,
+    "terrace",
+  );
+
+  const unbound = await entranceTurn(
+    "entrance-unbound",
+    "I tap the window and wait.",
+    "Narration [scene]: The tap makes the glass rattle once.\nNarration: Aqua opens the door and stands beside you.",
+  );
+  assert.deepEqual(unbound.activeIds, []);
+  assert.match(JSON.stringify(unbound.lines), /The tap makes the glass rattle once/);
+  assert.doesNotMatch(JSON.stringify(unbound.lines), /Aqua/);
+  const cue = await entranceTurn(
+    "entrance-cue",
+    "Did anybody notice?",
+    "Narration [scene]: A floorboard creaks across the threshold.\nNarration: [actors aqua]: Aqua is still leaning beside you.",
+  );
+  assert.match(JSON.stringify(cue.lines), /A floorboard creaks across the threshold/);
+  assert.doesNotMatch(JSON.stringify(cue.lines), /Aqua|leaning/);
+  assert.deepEqual(savedEntrance().doorwayContacts, []);
+  assert.deepEqual(episodeOf("entrance-cue")!.segments[0].heardBy, ["player"]);
+
+  const inaudible = await entranceTurn(
+    "entrance-inaudible",
+    "I listen at the entrance.",
+    "[aqua]: Keep these words on the terrace.",
+    false,
+    502,
+  );
+  assert.deepEqual(inaudible.sceneFailure.diagnostic.checks, [
+    { code: "no_perceived_scene_lines", path: ["segments"] },
+  ]);
+  assert.doesNotMatch(JSON.stringify(inaudible), /Keep these words on the terrace/);
+  assert.equal(episodeOf("entrance-inaudible"), undefined);
+  assert.deepEqual(savedEntrance().doorwayContacts, []);
+
+  const offstage = await entranceTurn(
+    "entrance-offstage",
+    "I listen for movement.",
+    'Narration!: Distant Resident saunters up to you.\n[command]: {"type":"move","who":"distant","to":"exterior"}\n[distant]: You found me.',
+    false,
+    502,
+  );
+  assert.doesNotMatch(JSON.stringify(offstage), /Distant Resident|You found me/);
+  assert.equal(episodeOf("entrance-offstage"), undefined);
+
+  const blockedCrossing = await entranceTurn(
+    "entrance-invalid-crossing",
+    "I wait in the entrance.",
+    [
+      "Narration [scene]: Rain drips from the eaves.",
+      "Narration!: Aqua pushes past the threshold and stands next to you.",
+      '[command]: {"type":"move","who":"aqua","to":"exterior","trespass":true}',
+      "Narration [actors aqua]: Aqua shakes rain from an umbrella beside you.",
+      "[aqua]: I made it.",
+    ].join("\n"),
+  );
+  assert.deepEqual(blockedCrossing.activeIds, []);
+  assert.deepEqual(
+    blockedCrossing.lines.map(({ content }: { content: string }) => content),
+    ["Rain drips from the eaves."],
+  );
+  assert.equal(episodeOf("entrance-invalid-crossing")!.commandReceipts.length, 0);
+
+  const missingCrossingProse = await entranceTurn(
+    "entrance-crossing-without-prose",
+    "I wait outside the entrance.",
+    [
+      "Narration [scene]: Water drips off the entrance post.",
+      "Narration!:",
+      '[command]: {"type":"move","who":"aqua","to":"exterior"}',
+      "Narration [actors distant]: Distant Resident stops beside you.",
+      "[aqua]: I can talk out here.",
+    ].join("\n"),
+  );
+  assert.deepEqual(missingCrossingProse.activeIds, []);
+  assert.deepEqual(
+    missingCrossingProse.lines.map(({ content }: { content: string }) => content),
+    ["Water drips off the entrance post."],
+  );
+  assert.equal(episodeOf("entrance-crossing-without-prose")!.commandReceipts.length, 0);
+
+  const beforeAnswer = clone(records);
+  const contactAnswer = await entranceTurn(
+    "entrance-contact-answer",
+    'I call toward the terrace, "Is anyone there?"',
+    "Narration [scene]: The terrace falls quiet.\nNarration [actors aqua]: Aqua joins you at the entrance.\n[aqua] [to player]: I hear you from here.",
+    true,
+  );
+  assert.match(JSON.stringify(contactAnswer.lines), /I hear you from here/);
+  assert.match(JSON.stringify(contactAnswer.lines), /The terrace falls quiet/);
+  assert.doesNotMatch(JSON.stringify(contactAnswer.lines), /Aqua joins you/);
+  assert.deepEqual(contactAnswer.activeIds, []);
+  assert.equal(savedEntrance().doorwayContacts?.[0]?.characterZoneId, "terrace");
+  assert.equal(episodeOf("entrance-contact-answer")!.commandReceipts.length, 0);
+  const continuedAnswer = await entranceTurn(
+    "entrance-contact-continues",
+    'I ask, "Can you still hear me?"',
+    "Narration [actors aqua]: Aqua sits beside you.\n[aqua] [to player]: Yes, from the terrace.",
+  );
+  assert.doesNotMatch(JSON.stringify(continuedAnswer.lines), /Aqua sits beside you/);
+  assert.match(JSON.stringify(continuedAnswer.lines), /Yes, from the terrace/);
+  assert.deepEqual(continuedAnswer.activeIds, []);
+  await restart(beforeAnswer);
+
+  const steppedOut = await entranceTurn(
+    "entrance-crossing",
+    "I wait beside the entrance.",
+    [
+      "[aqua]: Words from before the crossing.",
+      "Narration!:",
+      '[command]: {"type":"move","who":"aqua","to":"exterior"}',
+      "Narration [actors aqua]: Aqua rounds the corner of the terrace and stops beside the entrance post.",
+      "[aqua]: I can talk out here.",
+      "Narration [actors aqua]: Aqua brushes dust from a sleeve.",
+      "Narration [actors distant]: Distant Resident joins the conversation.",
+    ].join("\n"),
+  );
+  assert.equal(steppedOut.zoneId, "exterior");
+  assert.deepEqual(steppedOut.activeIds, ["aqua"]);
+  assert.deepEqual(
+    steppedOut.participants.map((person: { characterId: string }) => person.characterId),
+    ["aqua"],
+  );
+  assert.match(
+    JSON.stringify(steppedOut.lines),
+    /Aqua rounds the corner of the terrace and stops beside the entrance post/,
+  );
+  assert.match(JSON.stringify(steppedOut.lines), /I can talk out here/);
+  assert.match(JSON.stringify(steppedOut.lines), /Aqua brushes dust from a sleeve/);
+  assert.doesNotMatch(JSON.stringify(steppedOut), /Words from before the crossing|Distant Resident/);
+  const crossing = episodeOf("entrance-crossing")!;
+  assert.equal(crossing.commandReceipts[0].movement?.from, "terrace");
+  assert.deepEqual(crossing.segments[0].heardBy.toSorted(), ["aqua", "feddy"]);
+  assert.deepEqual(crossing.segments[2].heardBy.toSorted(), ["aqua", "player"]);
+  assert.deepEqual(crossing.segments[3].heardBy.toSorted(), ["aqua", "player"]);
+  const steppedBack = await entranceTurn(
+    "entrance-crossing-back",
+    "I wait while Aqua heads back to the terrace.",
+    'Narration!: Aqua lifts a hand in farewell and heads back onto the terrace.\n[command]: {"type":"move","who":"aqua","to":"terrace"}',
+  );
+  assert.deepEqual(steppedBack.activeIds, []);
+  assert.deepEqual(steppedBack.participants, []);
+  assert.match(JSON.stringify(steppedBack.lines), /Aqua lifts a hand in farewell and heads back onto the terrace/);
+  assert.equal(savedEntrance().doorwayContacts?.[0]?.characterZoneId, "terrace");
+
+  await restart(beforeAnswer);
+  const admittedShopkeeper = await entranceTurn(
+    "entrance-npc-admission",
+    "I tap the window and wait outside.",
+    [
+      "Narration!: A shopkeeper comes around from the side of the building and stops by the window.",
+      '[command]: {"type":"npc.admit","localKey":"new:keeper","name":"Mera","label":"Shopkeeper","characterization":"A shopkeeper finishing her work."}',
+      "[new:keeper]: We shut at six.",
+    ].join("\n"),
+  );
+  assert.equal(admittedShopkeeper.activeIds.length, 1);
+  const [shopkeeper] = admittedShopkeeper.activeIds;
+  assert.match(shopkeeper, /^npc:/u);
+  const stillOutside = await entranceTurn(
+    "entrance-npc-follow-up",
+    "I raise the parcel toward the glass, keeping my feet outside.",
+    [
+      "Narration [scene]: The parcel catches the light from the window.",
+      "Narration: The shopkeeper slips behind the chained door.",
+      `Narration: [actors ${shopkeeper}]: She looks at the parcel, then at your face, and doesn't reach for it. Her cloth goes into her apron pocket.`,
+      "Mera: That's not from my shelves.",
+    ].join("\n"),
+  );
+  assert.equal(stillOutside.zoneId, "exterior");
+  assert.deepEqual(stillOutside.activeIds, [shopkeeper]);
+  assert.deepEqual(stillOutside.doorwayContacts, []);
+  assert.equal(
+    savedEntrance().sceneAttendance?.occupants.find(({ characterId }) => characterId === shopkeeper)?.zoneId,
+    "exterior",
+  );
+  const followUp = episodeOf("entrance-npc-follow-up")!;
+  assert.equal(followUp.commandReceipts.length, 0);
+  assert.deepEqual(
+    followUp.segments.map(({ content, zoneId }) => [content, zoneId]),
+    [
+      ["The parcel catches the light from the window.", "exterior"],
+      [
+        "She looks at the parcel, then at your face, and doesn't reach for it. Her cloth goes into her apron pocket.",
+        "exterior",
+      ],
+      ["That's not from my shelves.", "exterior"],
+    ],
+  );
+  assert(followUp.segments.every(({ heardBy }) => heardBy.includes("player") && heardBy.includes(shopkeeper)));
+
   await restart(baseline);
   const validKeep = {
     id: "news",
