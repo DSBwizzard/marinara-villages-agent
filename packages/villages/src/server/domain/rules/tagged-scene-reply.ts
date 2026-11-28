@@ -210,11 +210,16 @@ export function decodeTaggedSceneReply(
     }
     const [, narration, speaker, tags, body] = header;
     const meta = [...(tags ?? "").matchAll(/\[([^\]]+)\]/gu)].map((part) => part[1]);
+    const misplacedActors =
+      readset.groundedEntrance && narration !== undefined && !meta.length
+        ? /^\[(actors [^\]\r\n]+)\]\s*:\s*(.*)$/u.exec(body)
+        : null;
+    if (misplacedActors) meta.push(misplacedActors[1]);
     const introductionTag = "[introduce]:";
     const nestedIntroduction =
       readset.explicitNpcIntroduction && speaker && !meta.length && body.startsWith(introductionTag);
     if (nestedIntroduction) meta.push("introduce");
-    const text = nestedIntroduction ? body.slice(introductionTag.length).trimStart() : body;
+    const text = nestedIntroduction ? body.slice(introductionTag.length).trimStart() : (misplacedActors?.[2] ?? body);
     const control = speaker?.trim().toLowerCase();
     const reserved = reservedControl(speaker ?? "");
     if (reserved && reserved !== "action") {

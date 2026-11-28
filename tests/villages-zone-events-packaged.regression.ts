@@ -621,7 +621,7 @@ try {
   const cue = await entranceTurn(
     "entrance-cue",
     "Did anybody notice?",
-    "Narration: A floorboard creaks across the threshold.\nNarration [actors aqua]: Aqua is still leaning beside you.",
+    "Narration: A floorboard creaks across the threshold.\nNarration: [actors aqua]: Aqua is still leaning beside you.",
   );
   assert.match(JSON.stringify(cue.lines), /A floorboard creaks across the threshold/);
   assert.doesNotMatch(JSON.stringify(cue.lines), /Aqua|leaning/);
@@ -744,7 +744,7 @@ try {
     "I raise the parcel toward the glass, keeping my feet outside.",
     [
       "Narration: The parcel catches the light from the window.",
-      `Narration [actors ${shopkeeper}]: The shopkeeper looks down at the parcel and folds her cloth.`,
+      `Narration: [actors ${shopkeeper}]: She looks at the parcel, then at your face, and doesn't reach for it. Her cloth goes into her apron pocket.`,
       "Mera: That's not from my shelves.",
     ].join("\n"),
   );
@@ -761,7 +761,10 @@ try {
     followUp.segments.map(({ content, zoneId }) => [content, zoneId]),
     [
       ["The parcel catches the light from the window.", "exterior"],
-      ["The shopkeeper looks down at the parcel and folds her cloth.", "exterior"],
+      [
+        "She looks at the parcel, then at your face, and doesn't reach for it. Her cloth goes into her apron pocket.",
+        "exterior",
+      ],
       ["That's not from my shelves.", "exterior"],
     ],
   );
