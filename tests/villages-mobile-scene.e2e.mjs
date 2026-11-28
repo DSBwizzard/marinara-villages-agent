@@ -208,6 +208,9 @@ await withBrowser(browser, async () => {
     await expect(reading).toBeVisible();
     await expect(page.locator(".mari-home-browser-chrome")).toBeHidden();
     await expect(people).toHaveCount(count);
+    for (const castMember of await people.all()) {
+      await expect(castMember).toHaveCSS("opacity", "1");
+    }
     await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
     if (mobile) {
       await expect(reading).toContainText("The group gathers by the window.");
@@ -218,9 +221,7 @@ await withBrowser(browser, async () => {
         await expect
           .poll(() => person(castIds[i]).evaluate((el) => parseFloat(el.style.getPropertyValue("--cast-center")) / 100))
           .toBe(positions[i]);
-        await expect
-          .poll(() => person(castIds[i]).evaluate((el) => getComputedStyle(el).opacity))
-          .toBe(i === Math.min(2, count - 1) ? "1" : "0.72");
+        await expect(person(castIds[i])).toHaveCSS("opacity", "1");
       }
       const scene = await page.locator(`.${tag}-room-screen`).boundingBox();
       await expect(composer).toBeDisabled();
@@ -382,6 +383,6 @@ await withBrowser(browser, async () => {
     await page.close();
   }
   console.log(
-    "Mobile Scenes: visible toolbar, grouped scale, speaker opacity, portrait/initial/error fallbacks, dock edges, keyboard, drafts and staging passed",
+    "Mobile Scenes: visible toolbar, grouped scale, full cast opacity, portrait/initial/error fallbacks, dock edges, keyboard, drafts and staging passed",
   );
 });
