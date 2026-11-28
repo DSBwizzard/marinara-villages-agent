@@ -50,12 +50,12 @@ export function ZoneImageControls({
               Generate Image
             </button>
             <button type="button" disabled={disabled} onClick={() => upload.current?.click()}>
-              {enableNightUpload ? "Upload day image" : "Upload image"}
+              {enableNightUpload ? "Upload day" : "Upload image"}
             </button>
           </>
         )}
         <button type="button" disabled={!imageUrl} onClick={() => setFullImage(imageUrl ?? null)}>
-          {enableNightUpload ? "View day image" : "View fullsize"}
+          {enableNightUpload ? "View day" : "View fullsize"}
         </button>
         {editable && (
           <button type="button" disabled={disabled || !imageUrl} onClick={onRemove}>
@@ -80,10 +80,10 @@ export function ZoneImageControls({
       {editable && enableNightUpload && (
         <div className={`${P}-zone-image-actions`}>
           <button type="button" disabled={disabled || !canUploadNight} onClick={() => nightUpload.current?.click()}>
-            Upload night image
+            Upload night
           </button>
           <button type="button" disabled={!nightImageUrl} onClick={() => setFullImage(nightImageUrl ?? null)}>
-            View night image
+            View night
           </button>
           <input
             ref={nightUpload}

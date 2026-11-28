@@ -393,7 +393,7 @@ await withBrowser(browser, async () => {
     await chooseRoom("Main Bay");
     await expect(generate).toBeVisible();
     await expect(detail.getByLabel("Upload Main Bay image")).toHaveCount(1);
-    await expect(detail.getByRole("button", { name: "Upload day image", exact: true })).toBeVisible();
+    await expect(detail.getByRole("button", { name: "Upload day", exact: true })).toBeVisible();
     await expect(detail.getByRole("button", { name: "Lore activity", exact: true })).toHaveCount(0);
     const updates = detail.getByRole("switch", { name: "Automatic artwork updates", exact: true });
     await expect(updates).toBeChecked();
@@ -412,7 +412,7 @@ await withBrowser(browser, async () => {
         path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-freeze-${width}.png`),
       });
     }
-    const viewFullImage = detail.getByRole("button", { name: "View day image", exact: true });
+    const viewFullImage = detail.getByRole("button", { name: "View day", exact: true });
     await expect(viewFullImage).toBeDisabled();
     await generate.click();
     await expect(generate).toBeEnabled();
@@ -421,11 +421,11 @@ await withBrowser(browser, async () => {
       body: { venueId: place.id, zoneId: "bay" },
     });
     await expect(detail.getByRole("switch", { name: "Day & night", exact: true })).toHaveCount(0);
-    const viewNightImage = detail.getByRole("button", { name: "View night image", exact: true });
+    const viewNightImage = detail.getByRole("button", { name: "View night", exact: true });
     await expect(viewNightImage).toBeEnabled();
     await expect(detail.getByRole("button", { name: "Refresh picture", exact: true })).toHaveCount(0);
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
-      await detail.getByRole("button", { name: "Upload day image", exact: true }).scrollIntoViewIfNeeded();
+      await detail.getByRole("button", { name: "Upload day", exact: true }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `room-artwork-${width}.png`) });
     }
     await detail.getByLabel("Upload Main Bay image").setInputFiles({
@@ -463,7 +463,7 @@ await withBrowser(browser, async () => {
     await expect(updates).not.toBeChecked();
     await expect(detail.getByRole("button", { name: "Remove image", exact: true })).toBeEnabled();
     const actionBoxes = await Promise.all(
-      ["Generate Image", "Upload day image", "View day image", "Remove image"].map((name) =>
+      ["Generate Image", "Upload day", "View day", "Remove image"].map((name) =>
         detail.getByRole("button", { name, exact: true }).boundingBox(),
       ),
     );
