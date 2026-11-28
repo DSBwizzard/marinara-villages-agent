@@ -2,7 +2,9 @@ import { parseSceneObject } from "../../packages/villages/src/server/domain/rule
 
 /** Retain the same proposals in packaged fixtures when the active prompt asks for tagged text. */
 export function sceneFixtureText(messages: { content: string }[], content: string) {
-  if (!messages.at(-1)?.content.includes("Put each lasting change on its own tag line.")) return content;
+  const reminder = messages.at(-1)?.content ?? "";
+  if (!reminder.includes("Put each lasting change on its own tag line.")) return content;
+  const entrance = reminder.includes("Narration [scene]: text");
   const raw = parseSceneObject(content) as Record<string, any> | null;
   if (
     !raw ||
@@ -43,6 +45,16 @@ export function sceneFixtureText(messages: { content: string }[], content: strin
     const bound = notes.filter((row: any) => required.includes(row.id));
     bound.forEach((row: any) => spokenNotes.add(row));
     const bang = required.some((id) => id !== "remember-fact") ? "!" : "";
+    const commands = (raw.commands ?? []).filter((row: any) => index(row.at) === i);
+    if (line.kind === "crossing" || line.kind === "departure")
+      commands.push({
+        type: line.kind === "crossing" ? "move" : "depart",
+        who: line.who,
+        to: line.to,
+        trespass: line.trespass,
+      });
+    const nativeNarration =
+      entrance && commands.some(({ type }: any) => ["move", "depart", "npc.admit"].includes(type));
     const marking =
       line.kind === "dialogue"
         ? `[${bang}${line.speakerId}]` +
@@ -53,15 +65,15 @@ export function sceneFixtureText(messages: { content: string }[], content: strin
           (line.offerAppointment ? " [appointment]" : "") +
           (line.speakerLabel ? ` [name ${line.speakerLabel}]` : "") +
           (required.includes("remember-fact") ? " [remember]" : "")
-        : "Narration" + bang + (line.actors?.length ? ` [actors ${line.actors.join(" ")}]` : "");
-    const commands = (raw.commands ?? []).filter((row: any) => index(row.at) === i);
-    if (line.kind === "crossing" || line.kind === "departure")
-      commands.push({
-        type: line.kind === "crossing" ? "move" : "depart",
-        who: line.who,
-        to: line.to,
-        trespass: line.trespass,
-      });
+        : "Narration" +
+          (nativeNarration ? "!" : bang) +
+          (nativeNarration
+            ? ""
+            : line.actors?.length
+              ? ` [actors ${line.actors.join(" ")}]`
+              : entrance
+                ? " [scene]"
+                : "");
     if (line.follow) commands.push({ type: "move.decide", who: line.speakerId, ...line.follow });
     const cue = Object.fromEntries(
       ["sound", "staging", "expression", "look"].flatMap((key) => (line[key] === undefined ? [] : [[key, line[key]]])),

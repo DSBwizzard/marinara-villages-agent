@@ -12,7 +12,7 @@ import type { SceneReplyIssue } from "../../../shared/contracts/scene-failure-di
 import { contactPosition } from "./venue-contact.js";
 
 export const TAGGED_SCENE_FORMAT = [
-  "For a narration-only reply, write plain prose. When mixing narration, dialogue or effects, use one Scene beat per line: Narration: text or [speaker-id]: spoken text. A unique displayed speaker name also works in brackets. Omit code fences.",
+  "Use the turn's narration format when supplied. Otherwise, for a narration-only reply write plain prose, and when mixing narration, dialogue or effects use Narration: text or [speaker-id]: spoken text. Use one Scene beat per line. A unique displayed speaker name also works in brackets. Omit code fences.",
   "Put each character's actual words on their own speaker line, even for a brief greeting amid an action. For example, write Narration: She opens the door. Then on a new line write [speaker-id]: Come in.",
   "[speaker-id] [whisper recipient-id]: text and [speaker-id] [shout]: text are optional. Put an aside on its own speaker line immediately after its main line. Use this two-line form.\n[speaker-id]: I'll be there.\n[speaker-id] [aside]: If I can find my boots.",
   "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
@@ -144,6 +144,7 @@ export function decodeTaggedSceneReply(
   const segments: Beat[] = [],
     keep: Record<string, unknown>[] = [],
     commands: Record<string, unknown>[] = [];
+  const nativeAnchors = new Set<Beat>();
   const positionAtBeat = (actor: string): string => {
     const arrival = newcomers.get(actor);
     const crossing = commands.findLast(
@@ -210,16 +211,16 @@ export function decodeTaggedSceneReply(
     }
     const [, narration, speaker, tags, body] = header;
     const meta = [...(tags ?? "").matchAll(/\[([^\]]+)\]/gu)].map((part) => part[1]);
-    const misplacedActors =
+    const misplacedScope =
       readset.groundedEntrance && narration !== undefined && !meta.length
-        ? /^\[(actors [^\]\r\n]+)\]\s*:\s*(.*)$/u.exec(body)
+        ? /^\[(scene|actors [^\]\r\n]+)\]\s*:\s*(.*)$/u.exec(body)
         : null;
-    if (misplacedActors) meta.push(misplacedActors[1]);
+    if (misplacedScope) meta.push(misplacedScope[1]);
     const introductionTag = "[introduce]:";
     const nestedIntroduction =
       readset.explicitNpcIntroduction && speaker && !meta.length && body.startsWith(introductionTag);
     if (nestedIntroduction) meta.push("introduce");
-    const text = nestedIntroduction ? body.slice(introductionTag.length).trimStart() : (misplacedActors?.[2] ?? body);
+    const text = nestedIntroduction ? body.slice(introductionTag.length).trimStart() : (misplacedScope?.[2] ?? body);
     const control = speaker?.trim().toLowerCase();
     const reserved = reservedControl(speaker ?? "");
     if (reserved && reserved !== "action") {
@@ -328,6 +329,8 @@ export function decodeTaggedSceneReply(
         (proposal?.independent !== undefined && proposal.independent !== true);
       const effect: Record<string, unknown> = proposal && !invalid ? { ...proposal, id } : { id };
       const crossing = control === "command" && (effect.type === "move" || effect.type === "depart");
+      if (anchor && nativeAnchors.has(anchor) && !crossing && !(control === "command" && effect.type === "npc.admit"))
+        continue;
       if (authoritative && anchor?.text === "" && !crossing) continue;
       const hasCommand = anchor && commands.some(({ at }) => at === anchor?.id);
       if (authoritative && control === "command" && anchor && hasCommand && crossing !== (anchor === crossingAnchor))
@@ -348,16 +351,16 @@ export function decodeTaggedSceneReply(
         continue;
       if (anchor && anchor !== actionAnchor && (control === "command" || marked)) bind(anchor, id);
       if (authoritative && crossing && anchor?.kind === "narration") {
-        const name = scene.participants.find(({ characterId }) => characterId === effect.who)?.name ?? "Someone";
-        const outcome =
-          effect.type === "depart"
-            ? `${name} leaves.`
-            : effect.to === scene.zoneId
-              ? scene.zoneId === "exterior"
-                ? `${name} steps out to the entrance.`
-                : `${name} steps into the room.`
-              : `${name} steps away.`;
-        anchor.text = anchor === crossingAnchor ? `${anchor.text} ${outcome}` : outcome;
+        if (!readset.groundedEntrance) {
+          const name = scene.participants.find(({ characterId }) => characterId === effect.who)?.name ?? "Someone";
+          const outcome =
+            effect.type === "depart"
+              ? `${name} leaves.`
+              : effect.to === scene.zoneId
+                ? `${name} steps into the room.`
+                : `${name} steps away.`;
+          anchor.text = anchor === crossingAnchor ? `${anchor.text} ${outcome}` : outcome;
+        }
         crossingAnchor = anchor;
       }
       if (playerDecision && anchor) {
@@ -425,7 +428,7 @@ export function decodeTaggedSceneReply(
     const work = !!readset.explicitSceneEvidence && meta.includes("work");
     const returnId = readset.explicitNpcIntroduction && speaker?.startsWith("return ") && speaker.slice(7);
     const gameSpeech = authoritative && (introduction || reserved === "action");
-    const emptyAnchor = authoritative && narration === "!" && !text;
+    const emptyAnchor = authoritative && !readset.groundedEntrance && narration === "!" && !text;
     if (
       (!text && !introduction && !appointment && !work && !returnId && !gameSpeech && !emptyAnchor) ||
       (!gameSpeech && (text.length > NARRATION_SEGMENT_CHARACTERS || (!(appointment || work) && /^[{`]/u.test(text))))
@@ -440,6 +443,7 @@ export function decodeTaggedSceneReply(
       if (
         !candidate ||
         meta.length ||
+        (readset.groundedEntrance && (!text || text.match(privateNpcHandle))) ||
         newcomers.has(returnId) ||
         ids.has(effectId) ||
         commands.length + Number(!!visit) >= 16
@@ -458,7 +462,12 @@ export function decodeTaggedSceneReply(
       ids.add(effectId);
       commands.push(effect);
       registerArrival(effect, effectId, "new:" + effectId);
-      anchor = { id, kind: "narration", text: `${candidate.npc.label} comes into view.`, requires: [effectId] };
+      anchor = {
+        id,
+        kind: "narration",
+        text: readset.groundedEntrance ? text : `${candidate.npc.label} comes into view.`,
+        requires: [effectId],
+      };
       actionAnchor = anchor;
       segments.push(anchor);
       continue;
@@ -477,8 +486,12 @@ export function decodeTaggedSceneReply(
         continue;
       }
       const actors = meta[0]?.startsWith("actors ") ? meta[0].slice(7).trim().split(/\s+/u) : [];
+      const setting = readset.groundedEntrance && meta.length === 1 && meta[0] === "scene";
+      const nativeAnchor = readset.groundedEntrance && narration === "!" && !meta.length;
+      if (readset.groundedEntrance && !setting && !nativeAnchor && !actors.length) continue;
       if (
         meta.length &&
+        !setting &&
         (meta.length !== 1 ||
           !actors.length ||
           actors.length > 32 ||
@@ -489,7 +502,8 @@ export function decodeTaggedSceneReply(
       // A rejected crossing also drops later beats that assumed its tentative position.
       if (
         readset.groundedEntrance &&
-        [...actors, ...handles].some((actor) => positionAtBeat(actor) !== positionAtBeat("player"))
+        ((setting && handles.length) ||
+          [...actors, ...handles].some((actor) => positionAtBeat(actor) !== positionAtBeat("player")))
       )
         continue;
       for (const actor of [...actors, ...handles]) {
@@ -499,6 +513,7 @@ export function decodeTaggedSceneReply(
       const prose = handles.length ? text.replace(privateNpcHandle, "").trim() : text;
       if (!prose && !emptyAnchor) continue;
       anchor = { id, kind: "narration", text: prose, requires: requirements, ...(actors.length ? { actors } : {}) };
+      if (nativeAnchor) nativeAnchors.add(anchor);
     } else {
       const token = markedSpeaker ? speaker.slice(1) : speaker;
       const action =
@@ -694,6 +709,7 @@ export function decodeTaggedSceneReply(
   }
   const playable = authoritative ? segments.filter(({ text }) => text.length > 0) : segments;
   if (!playable.length && !halt) {
+    if (readset.groundedEntrance) return { value: null, issue: issue ?? "no_playable_lines" };
     const plain = plainNarration(
       content,
       readset.relaxedNarrationProse === true,
@@ -772,7 +788,12 @@ export function decodeTaggedSceneReply(
 }
 
 /** A failed crossing also invalidates later prose written against the tentative positions. */
-export function pruneTaggedSceneReply(raw: Record<string, unknown>, failed: Set<string>, showRejectedOutcome = false) {
+export function pruneTaggedSceneReply(
+  raw: Record<string, unknown>,
+  failed: Set<string>,
+  showRejectedOutcome = false,
+  authoredOnly = false,
+) {
   const commands = (raw.commands as Record<string, unknown>[]) ?? [];
   const keep = (raw.keep as Record<string, unknown>[]) ?? [];
   const segments = (raw.segments as Beat[]) ?? [];
@@ -812,7 +833,7 @@ export function pruneTaggedSceneReply(raw: Record<string, unknown>, failed: Set<
   const survives = new Set(retained.map((beat) => beat.id));
   const projected = segments.flatMap<Beat>((beat, index) => {
     if (survives.has(beat.id)) return [beat];
-    if (showRejectedOutcome && cut >= 0 && index > cut) return [];
+    if (authoredOnly || (showRejectedOutcome && cut >= 0 && index > cut)) return [];
     const rejected = beat.requires.some((id) => excluded.has(id));
     let text: string | undefined;
     if (rejected && beat.offerAppointment) text = "The appointment is still unsettled.";
