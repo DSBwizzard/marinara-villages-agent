@@ -201,8 +201,14 @@ assert.deepEqual(
   appearance(longZoneId).map((row) => row.version.text),
   [publicZones[0].description],
 );
-assert.equal(appearance(privateZones[0].id).length, 0, "private preparation owns its future authored description");
-assert.equal(built.zones!.find((zone) => zone.id === privateZones[0].id)?.observed, undefined);
+assert.deepEqual(
+  appearance(privateZones[0].id).map((row) => row.version.text),
+  [privateZones[0].description],
+  "completion saves the authored private interior",
+);
+const privateRoom = built.zones!.find((zone) => zone.id === privateZones[0].id)!;
+assert.equal(privateRoom.preparation, undefined, "the private room needs no generation");
+assert.equal(privateRoom.observed, undefined, "completion does not reveal an unvisited private interior");
 assert.equal(parsePlace({ ...founding, form: physicalDesign }, true).form, physicalDesign);
 console.log(
   "Six non-Entrance Zones across founding, new Venue plans, Renovations and current saves; direct capacity limits passed.",
