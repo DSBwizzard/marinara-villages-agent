@@ -174,13 +174,13 @@ ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat
   --cast-image-height: min(120cqw, 68cqh);
   --cast-lift: clamp(0px, calc(var(--villages-scene-resting-dock-height, 13.25rem) - min(30cqw, 17cqh) + var(--cast-depth, 0px)), 20cqh);
   left: calc(var(--cast-center) - var(--cast-display-width) / 2);
-  bottom: var(--cast-lift); height: var(--cast-image-height); opacity: .72; z-index: 1;
+  bottom: var(--cast-lift); height: var(--cast-image-height); z-index: 1;
 }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-sprite="true"] {
   /* Keep faces in the visible strip while preserving the art and background scale. */
   bottom: max(var(--cast-lift), calc(var(--villages-scene-dock-bottom, 0px) + var(--villages-scene-stage-offset, 0px) - var(--cast-image-height) + 8rem));
 }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-active="true"] { opacity: 1; z-index: 3; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-active="true"] { z-index: 3; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="true"] > span:not(.${tag}-avatar) { display: none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-sprite="false"] {
   width: 80px; height: auto; bottom: auto; top: max(0px, calc(100% - var(--cast-image-height) - var(--cast-lift) + min(10.5cqw, 10cqh)));

@@ -1969,14 +1969,14 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-stage { position: relative; top: auto; bottom: auto; left: auto; width: 100%; height: auto; min-height: 0; flex: 1 1 auto; padding: 3rem .75rem 0; box-sizing: border-box; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast { height: 100%; max-height: none; gap: clamp(.2rem, 1vw, 1rem); }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person,
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { position: relative; flex: 1 1 0; max-width: 25%; height: 100%; min-width: 0; opacity: .78; transition: transform .18s ease, opacity .18s ease, filter .18s ease; }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { z-index: 2; opacity: 1; filter: brightness(1.08); transform: scale(1.035); transform-origin: center bottom; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { position: relative; flex: 1 1 0; max-width: 25%; height: 100%; min-width: 0; transition: transform .18s ease, filter .18s ease; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { z-index: 2; filter: brightness(1.08); transform: scale(1.035); transform-origin: center bottom; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-sprite="false"] { justify-content: center; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > img { width: 100%; height: 100%; max-width: none; object-fit: contain; object-position: center bottom; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > .${ELEMENT_TAG}-avatar { width: min(8rem, 80%); }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > span:not(.${ELEMENT_TAG}-avatar) { position: absolute; bottom: .3rem; max-width: 95%; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person,
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { position: absolute; bottom: 0; left: var(--cast-left); width: var(--cast-width); flex: none; max-width: none; height: 100%; transition: left .22s ease, opacity .18s ease, filter .18s ease, transform .18s ease; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { position: absolute; bottom: 0; left: var(--cast-left); width: var(--cast-width); flex: none; max-width: none; height: 100%; transition: left .22s ease, filter .18s ease, transform .18s ease; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"][data-animate="false"] > .${ELEMENT_TAG}-chat-cast-person { transition: none; }
 @media (prefers-reduced-motion: reduce) {
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person { transition: none; }
