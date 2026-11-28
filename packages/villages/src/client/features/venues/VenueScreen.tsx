@@ -209,12 +209,15 @@ function ZoneArtwork({
   return (
     <ZoneImageControls
       name={zone.name}
-      imageUrl={artworkUrl}
+      imageUrl={editable ? zone.image?.url : artworkUrl}
       disabled={disabled}
       editable={editable}
       canGenerate={zone.pictureGenerateAvailable !== false}
       onGenerate={() => void drawPlaceImage(place.id, zone.id)}
-      onUpload={(file) => void keepPlaceImage(place.id, zone.id, file)}
+      enableNightUpload={editable}
+      onUpload={(file, slot) => void keepPlaceImage(place.id, zone.id, file, slot)}
+      canUploadNight={!!zone.image}
+      nightImageUrl={zone.nightImage?.url}
       onRemove={() => void dropPlaceImage(place.id, zone.id)}
     >
       {editable && (

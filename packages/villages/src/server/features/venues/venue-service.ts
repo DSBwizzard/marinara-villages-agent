@@ -13,7 +13,7 @@ import { resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js"
 import { readVenueImageContext } from "../../domain/rules/village-projections.js";
 import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
-import { zonePictureBaseline, zonePictureContext } from "../../domain/rules/zone-picture.js";
+import { zoneImageEnabled, zonePictureBaseline, zonePictureContext } from "../../domain/rules/zone-picture.js";
 import { applyVenueZoneLayout } from "../../domain/rules/venue-layout.js";
 export type VillageVenueDeletionDependencies = {
   venueId: string;
@@ -74,7 +74,10 @@ export function createVenueCommands({
         )
           throw conflict("The remembered artwork changed. Generate again.");
         const renderedContext = fromObservation ? zone.observed!.context : zonePictureContext(state, venue, zone, at);
-        if (onlyIfEmpty && (state.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed))
+        if (
+          onlyIfEmpty &&
+          (!zoneImageEnabled(state, "generateMissingZoneImages") || zone.freezePicture || zone.picture?.removed)
+        )
           return;
         if (onlyIfEmpty && zone.image) return;
         zone.image = image;
@@ -83,6 +86,7 @@ export function createVenueCommands({
           reference: image ? zone.picture?.reference : undefined,
           referenceAppliedId: image ? zone.picture?.reference?.id : undefined,
           base: image,
+          night: image && zone.picture?.night?.uploaded ? zone.picture.night : undefined,
           daylight: !!image && daylight,
           removed: !image,
           baseline: image ? zonePictureBaseline(renderedContext) : undefined,

@@ -1,3 +1,4 @@
+import { ZONE_IMAGE_SETTINGS } from "../../domain/rules/zone-picture.js";
 import { placeRegistry } from "../../domain/rules/places.js";
 import { cardCharacters, findCardCharacter } from "../../domain/rules/visitors.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
@@ -1422,6 +1423,10 @@ export function createRepairService(ports: RepairPorts) {
             key === "returnCatchup" && preserved[key] !== undefined
               ? structuredClone({ ...(preserved[key] as object), capture: undefined })
               : structuredClone(preserved[key]);
+      for (const key of ["automaticZonePictures", ...ZONE_IMAGE_SETTINGS]) {
+        if (typeof preserved[key] === "boolean") data[key] = preserved[key];
+        else delete data[key];
+      }
       if (!("returnCatchup" in preserved)) delete data.returnCatchup;
       // A restored world cannot use an absence capture from the world it replaced.
       if (data.returnCatchup && typeof data.returnCatchup === "object")

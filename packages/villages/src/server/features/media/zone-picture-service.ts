@@ -8,7 +8,7 @@ import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../../domain/rules/image-limit
 import { MAX_IMAGE_PROMPT_LENGTH } from "../../domain/rules/image-generation-rules.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { sceneryImageKey } from "../../domain/rules/scenery-context.js";
-import { zonePictureContext, zonePictureBaseline } from "../../domain/rules/zone-picture.js";
+import { zoneImageEnabled, zonePictureContext, zonePictureBaseline } from "../../domain/rules/zone-picture.js";
 import { resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import type { LocationImagePorts } from "./location-image-service.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
@@ -87,38 +87,49 @@ export function createZonePictures(
               zone.preparation?.status === "failed"))
         )
           return;
-        const eligible = (state: VillageState, current: VillageVenueZone) =>
-          !automatic ||
-          (state.automaticZonePictures !== false &&
-            !current.freezePicture &&
-            !current.picture?.removed &&
-            current.seen);
-        if (!eligible(village, zone)) return;
+        if (automatic && (zone.freezePicture || zone.picture?.removed || !zone.seen)) return;
         if (!(await ports.canGenerateZonePicture(venueId, zone.id, undefined, !automatic))) {
           if (!automatic && !canonical) throw conflict("Reload this Zone before generating its artwork.");
           return;
         }
         const referencePending =
           !!zone.picture?.reference && zone.picture.referenceAppliedId !== zone.picture.reference.id;
-        const regenerate = !!replacement || referencePending;
         const observed = automatic ? undefined : zone.observed;
         const source = observed ? observed.image : zone.image,
           base = observed ? source : (zone.picture?.base ?? source);
+        const daySetting = source ? "dynamicZoneImages" : "generateMissingZoneImages";
+        const regenerate = !!replacement || (referencePending && (!automatic || zoneImageEnabled(village, daySetting)));
         const at = villageNow().toISOString();
         const target = observed ? observed.context : zonePictureContext(village, venue, zone, at);
         const prior = observed ? observed.pictureContext : (zone.picture?.context ?? zone.picture?.baseline);
         const dayNight = observed ? observed.dayNight : zone.dayNight;
         const daylight = observed ? observed.daylight : zone.picture?.daylight;
         const same = !!prior && zonePictureBaseline(prior) === target;
-        const needsDaylight = dayNight !== false && !daylight;
+        const existingNight = observed ? observed.night : zone.picture?.night;
+        const needsDaylight =
+          dayNight !== false &&
+          !daylight &&
+          !existingNight?.uploaded &&
+          zoneImageEnabled(village, "automaticNightZoneImages");
         const night = !!(
           source &&
           same &&
           dayNight &&
           daylight &&
-          (observed ? observed.night : zone.picture?.night)?.sourceId !== source.id &&
-          !regenerate
+          !existingNight?.uploaded &&
+          existingNight?.sourceId !== source.id &&
+          !regenerate &&
+          ((!automatic && !canonical) || zoneImageEnabled(village, "automaticNightZoneImages"))
         );
+        const setting = night ? "automaticNightZoneImages" : daySetting;
+        const scheduled = automatic || !!canonical;
+        const eligible = (state: VillageState, current: VillageVenueZone) =>
+          !scheduled ||
+          (zoneImageEnabled(state, setting) &&
+            !current.freezePicture &&
+            !current.picture?.removed &&
+            (!automatic || current.seen));
+        if ((canonical && !night) || !eligible(village, zone)) return;
         const freshContext = automatic
           ? !source || regenerate
             ? sceneryImageKey(village, venue, at, zone.id)
@@ -268,7 +279,7 @@ export function createZonePictures(
             current.picture = { ...current.picture, base, problem };
             return;
           }
-          if (automatic) {
+          if (scheduled) {
             const stamp = now(),
               budget = state.zonePictureBudget;
             const sameWindow = budget && stamp - Date.parse(budget.startedAt) < HOUR;
@@ -422,6 +433,7 @@ export function createZonePictures(
               reference: current.picture?.reference,
               referenceAppliedId: current.picture?.referenceAppliedId,
               base,
+              night: current.picture?.night?.uploaded ? current.picture.night : undefined,
               daylight: true,
               baseline: observed ? target : (zone.picture?.baseline ?? target),
               context: target,
@@ -492,6 +504,7 @@ export function createZonePictures(
           : undefined;
     if (
       venue &&
+      zoneImageEnabled(village, "automaticNightZoneImages") &&
       JSON.stringify([village.seed, village.foundedAt]) === canonical.identity &&
       (village.zonePictureEpoch ?? 0) === canonical.epoch &&
       (zone?.pictureRevision ?? 0) === canonical.revision &&
@@ -502,6 +515,7 @@ export function createZonePictures(
       (automatic ? zone.dayNight : zone.observed?.dayNight) &&
       zone.image &&
       zone.picture?.daylight &&
+      !zone.picture.night?.uploaded &&
       zone.picture.night?.sourceId !== zone.image.id &&
       !zone.picture.failed &&
       zonePictureBaseline(zone.picture.context ?? zone.picture.baseline ?? "") === target

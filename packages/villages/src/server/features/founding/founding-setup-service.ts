@@ -251,6 +251,9 @@ export function createFoundingSetup({
       state.playerPersonaMissing = false;
       assertVillageVenueCapacity(state, venues);
       state.venues = venues;
+      state.generateMissingZoneImages ??= false;
+      state.dynamicZoneImages ??= false;
+      state.automaticNightZoneImages ??= false;
       if (input.sceneryStyleProfileId !== undefined)
         state.sceneryStyleProfileId = readSceneryStyleProfileId(input.sceneryStyleProfileId);
       if (input.sceneryArtStyle !== undefined) state.sceneryArtStyle = readSceneryStyle(input.sceneryArtStyle);

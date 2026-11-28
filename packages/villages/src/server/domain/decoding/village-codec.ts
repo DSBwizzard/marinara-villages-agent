@@ -587,7 +587,9 @@ function coerceVenue(value: unknown): VillageVenue | null {
         night: (() => {
           const night = asRecord(asRecord(row.picture).night);
           const image = coerceVenueImage(night.image);
-          return image && typeof night.sourceId === "string" ? { sourceId: night.sourceId, image } : undefined;
+          return image && typeof night.sourceId === "string"
+            ? { sourceId: night.sourceId, image, ...(night.uploaded === true ? { uploaded: true as const } : {}) }
+            : undefined;
         })(),
         operation:
           asRecord(row.picture).operation === "night"
@@ -755,7 +757,9 @@ function coerceVenue(value: unknown): VillageVenue | null {
         night: (() => {
           const night = asRecord(asRecord(row.picture).night);
           const image = coerceVenueImage(night.image);
-          return image && typeof night.sourceId === "string" ? { sourceId: night.sourceId, image } : undefined;
+          return image && typeof night.sourceId === "string"
+            ? { sourceId: night.sourceId, image, ...(night.uploaded === true ? { uploaded: true as const } : {}) }
+            : undefined;
         })(),
         operation:
           asRecord(row.picture).operation === "night"
@@ -1479,7 +1483,10 @@ function readZoneObservation(value: unknown): import("../models/world.js").ZoneO
     dayNight: row.dayNight !== false,
     daylight: row.daylight === true,
     pictureContext: asString(row.pictureContext) || undefined,
-    night: image && typeof night.sourceId === "string" ? { sourceId: night.sourceId, image } : undefined,
+    night:
+      image && typeof night.sourceId === "string"
+        ? { sourceId: night.sourceId, image, ...(night.uploaded === true ? { uploaded: true as const } : {}) }
+        : undefined,
   };
 }
 
@@ -1554,6 +1561,11 @@ export function coerceVillageState(
         ? raw.sceneryStyleProfileId
         : null,
     automaticZonePictures: raw.automaticZonePictures !== false,
+    generateMissingZoneImages:
+      typeof raw.generateMissingZoneImages === "boolean" ? raw.generateMissingZoneImages : undefined,
+    dynamicZoneImages: typeof raw.dynamicZoneImages === "boolean" ? raw.dynamicZoneImages : undefined,
+    automaticNightZoneImages:
+      typeof raw.automaticNightZoneImages === "boolean" ? raw.automaticNightZoneImages : undefined,
     zonePictureBudget: {
       startedAt: asIsoString(asRecord(raw.zonePictureBudget).startedAt) ?? "",
       used: Math.max(0, Math.min(6, Math.floor(Number(asRecord(raw.zonePictureBudget).used) || 0))),

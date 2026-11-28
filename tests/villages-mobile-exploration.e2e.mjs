@@ -479,7 +479,7 @@ await withBrowser(browser, async () => {
       const roomBackdrop = venue.locator("." + P + "-venue-zone-photo");
       await expect(roomBackdrop).toHaveAttribute("src", roomImage.url);
       await expect(editor.locator("img")).toHaveCount(0);
-      const viewFullImage = editor.getByRole("button", { name: "View fullsize" });
+      const viewFullImage = editor.getByRole("button", { name: "View day", exact: true });
       await viewFullImage.tap();
       const viewer = page.getByRole("dialog", { name: "Room 1", exact: true });
       await expect(viewer.getByRole("img")).toHaveAttribute("src", roomImage.url);

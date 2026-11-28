@@ -34,22 +34,28 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
         <>
           <SpriteVisualSettings settings={spriteVisualSettings} disabled={busy} />
           <section className={ELEMENT_TAG + "-venue-card"}>
-            <label>
-              <input
-                autoComplete="off"
-                type="checkbox"
-                disabled={busy && !scenerySettings.saving}
-                aria-describedby={`${ELEMENT_TAG}-dynamic-images-help`}
-                checked={
-                  scenerySettings.draft.automaticZonePictures ?? snapshot.settings.automaticZonePictures !== false
-                }
-                onChange={(event) => void scenerySettings.save({ automaticZonePictures: event.target.checked })}
-              />
-              Dynamic Images
-            </label>
-            <small id={`${ELEMENT_TAG}-dynamic-images-help`} className={`${ELEMENT_TAG}-hint`}>
-              Refresh Zone pictures after lasting changes. Uses image generation.
-            </small>
+            {(
+              [
+                ["generateMissingZoneImages", "Generate Missing Zone Images"],
+                ["dynamicZoneImages", "Dynamic Zone Images"],
+                ["automaticNightZoneImages", "Automatically Generate Nighttime Zone Images"],
+              ] as const
+            ).map(([setting, label]) => (
+              <label key={setting}>
+                <input
+                  autoComplete="off"
+                  type="checkbox"
+                  disabled={busy && !scenerySettings.saving}
+                  checked={
+                    scenerySettings.draft[setting] ??
+                    snapshot.settings[setting] ??
+                    snapshot.settings.automaticZonePictures !== false
+                  }
+                  onChange={(event) => void scenerySettings.save({ [setting]: event.target.checked })}
+                />
+                {label}
+              </label>
+            ))}
             <SceneryStyleFields
               disabled={busy && !scenerySettings.saving}
               hint="Used for new map and Venue artwork. Existing pictures stay unchanged."

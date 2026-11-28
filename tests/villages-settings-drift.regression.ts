@@ -86,6 +86,9 @@ const app = scope.run(() => Fastify());
 // The public HTTP surface is explicit: adding a saved-world field must not expose it.
 const publicFields = [
   "automaticZonePictures",
+  "generateMissingZoneImages",
+  "dynamicZoneImages",
+  "automaticNightZoneImages",
   "characterSpeechColors",
   "menuAppearance",
   "lorebookChipsEnabled",
@@ -224,6 +227,13 @@ try {
   assert.equal(updated.sceneryArtStyle, "Watercolor");
   assert.equal(updated.sceneryStyleProfileId, "watercolor");
   assert.equal(updated.automaticZonePictures, false);
+  assert.equal(updated.generateMissingZoneImages, false);
+  assert.equal(updated.dynamicZoneImages, false);
+  assert.equal(updated.automaticNightZoneImages, false);
+  const nightOnly = await scope.run(() => request("PATCH", { automaticNightZoneImages: true }));
+  assert.equal(nightOnly.generateMissingZoneImages, false);
+  assert.equal(nightOnly.dynamicZoneImages, false);
+  assert.equal(nightOnly.automaticNightZoneImages, true);
   assert.equal(updated.personalizeVenueImagesByDefault, false);
   assert.equal(Object.hasOwn(updated, "useVisualLoreByDefault"), false, "Retired image Lorebook preference is ignored");
   assert.equal(updated.playerBackground, "A cartographer");

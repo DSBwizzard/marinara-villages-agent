@@ -228,7 +228,7 @@ export type ZonePicture = {
   failed?: boolean;
   dirty?: boolean;
   daylight?: boolean;
-  night?: { sourceId: string; image: VillageVenueImage };
+  night?: { sourceId: string; image: VillageVenueImage; uploaded?: true };
   operation?: "update" | "replace" | "night";
   problem?: string;
   lastAutomaticAt?: string;
@@ -628,6 +628,9 @@ export type VillageState = {
   sceneryArtStyle: string;
   sceneryStyleProfileId?: string | null;
   automaticZonePictures?: boolean;
+  generateMissingZoneImages?: boolean;
+  dynamicZoneImages?: boolean;
+  automaticNightZoneImages?: boolean;
   zonePictureBudget?: { startedAt: string; used: number };
   zonePictureEpoch?: number;
   personalizeVenueImagesByDefault: boolean;
