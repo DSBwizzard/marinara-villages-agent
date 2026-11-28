@@ -1,4 +1,4 @@
-// Test cases: scene-text/order, scene-text/private-witnesses, scene-text/rejection
+// Test cases: scene-text/order, scene-text/inline-aside, scene-text/private-witnesses, scene-text/rejection
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { lineStagingCues } from "../packages/villages/src/shared/helpers/scene-staging.js";
@@ -10,6 +10,8 @@ import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zon
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { groupSceneMoments } from "../packages/villages/src/shared/helpers/scene-speech.js";
+import { decodeTaggedSceneReply } from "../packages/villages/src/server/domain/rules/tagged-scene-reply.js";
+import type { NarrationReadset } from "../packages/villages/src/server/domain/models/narration-model.js";
 const actors = ["reserved", "outgoing", "bystander"],
   venue = venueFixture({ id: "home", name: "Home" });
 const people = actors.map((characterId) => ({ characterId, name: characterId, doing: "Talking", zoneId: "common" }));
@@ -89,6 +91,52 @@ await runCase("scene-text/private-witnesses", () => {
   assert.equal(visible[1].line.content, "Three.");
   assert.equal(visible[1].line.delivery, "whisper");
   assert.deepEqual(visible[1].line.heardBy.toSorted(), ["player", "reserved"]);
+});
+await runCase("scene-text/inline-aside", () => {
+  const parse = (reply: string) =>
+    decodeTaggedSceneReply(reply, {
+      source: { scene },
+      npcCandidates: [],
+      authoritativeSceneBeats: true,
+    } as NarrationReadset).value!;
+  const privateLine = '[reserved] [whisper outgoing]: "Just us." [aside] "Keep this close."';
+  const literal = '[reserved]: "I wrote [aside] in the margin."';
+  const cited = '[reserved]: "The rail is oak." [aside] "I know the carpenter."';
+  const keep = '[keep]: {"for":["reserved"],"class":"information","text":"The rail is oak.","source":[{"segment":3}]}';
+  const result = parse([privateLine, literal, cited, keep].join("\n"));
+  const lines = route(result.segments as unknown[]);
+  assert.deepEqual(
+    lines.map((line) => line.content),
+    [
+      '"Just us."',
+      '"Keep this close."',
+      '"I wrote [aside] in the margin."',
+      '"The rail is oak." [aside] "I know the carpenter."',
+    ],
+  );
+  assert.equal(lines[1].presentation, "aside");
+  assert.deepEqual(lines[1].heardBy.toSorted(), ["outgoing", "reserved"]);
+  assert.deepEqual(lines[1].heardBy, lines[0].heardBy);
+  assert.deepEqual((result.keep as { source: unknown }[])[0].source, [{ segment: "beat-3" }]);
+  assert.equal((result.segments as { id: string }[])[3].id, "beat-3");
+  for (const segment of [2, "beat-1-aside"]) {
+    const unresolved = keep.replace('"segment":3', '"segment":' + JSON.stringify(segment));
+    const reply = parse([cited, unresolved].join("\n"));
+    assert.equal((reply.segments as unknown[]).length, 1);
+    assert.deepEqual((reply.keep as { source: unknown }[])[0].source, [{ segment }]);
+  }
+
+  const next = "[reserved]: The rail is oak.";
+  assert.deepEqual(
+    route(parse([next, "[reserved] [aside]: I know the carpenter."].join("\n")).segments as unknown[]).map(
+      ({ content, presentation }) => [content, presentation],
+    ),
+    [
+      ["The rail is oak.", undefined],
+      ["I know the carpenter.", "aside"],
+    ],
+  );
+  assert.equal((parse(Array(24).fill(privateLine).join("\n")).segments as unknown[]).length, 24);
 });
 await runCase("scene-text/rejection", () => {
   for (const reply of [
