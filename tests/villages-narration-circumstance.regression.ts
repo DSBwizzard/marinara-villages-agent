@@ -381,6 +381,38 @@ await runCase("narration-circumstance/room-damage", () => {
 });
 
 await runCase("narration-circumstance/room-damage-holds", () => {
+  const discovery = roomDamage();
+  discovery.readset.atomicRoomOutcomes = true;
+  discovery.readset.taggedSceneReply = true;
+  discovery.readset.authoritativeSceneBeats = true;
+  discovery.readset.sceneRoomChangeTargets = [];
+  const replacement =
+    "Narration!:\n[keep]: " + JSON.stringify({ for: "room", replace: discovery.window.id, text: "A cracked window." });
+  const denied = decodeTaggedSceneReply(replacement, discovery.readset);
+  assert.equal(denied.value, null);
+  assert.equal(denied.issue, "invalid_private_record");
+  discovery.readset.sceneRoomChangeTargets.push(discovery.window.id);
+  const secondKeep = replacement + '\n[keep]: {"for":"room","text":"Glass on the floor."}';
+  assert.equal(decodeTaggedSceneReply(secondKeep, discovery.readset).issue, "invalid_private_record");
+  const privateHandle = replacement.replace("A cracked window.", "A cracked window beside [npc:private].");
+  assert.equal(decodeTaggedSceneReply(privateHandle, discovery.readset).issue, "invalid_private_record");
+  const observed = decodeTaggedSceneReply(replacement, discovery.readset);
+  assert(observed.value);
+  const accepted = acceptNarration(
+    discovery.state,
+    { ...discovery.publication(), raw: observed.value, responseDigest: memoryHash(observed.value) },
+    "circumstance-turn",
+    at,
+  );
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
+  assert.equal(accepted.episode?.segments[0]?.content, "A cracked window.");
+  assert.equal(
+    currentRoomViews(discovery.state.continuity, discovery.state.episodes, discovery.room, at).find(
+      (view) => view.id === discovery.window.id,
+    )?.version.text,
+    "A cracked window.",
+  );
+
   const optional = fixture();
   optional.raw.segments[0].requires = [];
   optional.raw.commands[0].independent = true;

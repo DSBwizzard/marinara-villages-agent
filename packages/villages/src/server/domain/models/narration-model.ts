@@ -38,6 +38,7 @@ export type NarrationReadset = {
   taggedSceneReply?: true;
   authoritativeSceneBeats?: true;
   atomicRoomOutcomes?: true;
+  sceneRoomChangeTargets?: string[];
   terminalSceneRepair?: true;
   npcSpeakerNames?: Record<string, string>;
   explicitNpcIntroduction?: true;

@@ -84,7 +84,7 @@ await withBrowser({ close: server.stop }, async () => {
         return {
           finishReason: "stop",
           content:
-            'Narration!: The pane cracks and glass scatters across the floor.\n[keep]: {"for":"room","text":"The window is cracked, with glass scattered across the floor."}',
+            'Narration!:\n[keep]: {"for":"room","text":"The window is cracked, with glass scattered across the floor."}',
         };
       if (rejected === "expression")
         return {
@@ -392,11 +392,12 @@ await withBrowser({ close: server.stop }, async () => {
 
     await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
     rejectFirstReply = "saved-room";
-    await composer.fill("I strike the window pane with a stone.");
+    await composer.fill("I look closer and see that the window is cracked.");
     await send.click();
     await expect.poll(() => turns.length).toBe(roomAttempt + 1);
     assert.equal(turns.at(-1).response.statusCode, 200);
-    await expect(page.getByText("The pane cracks and glass scatters across the floor.", { exact: true })).toBeVisible();
+    const savedDamage = "The window is cracked, with glass scattered across the floor.";
+    await expect(page.getByText(savedDamage, { exact: true })).toBeVisible();
     assert.notDeepEqual(server.records.get("villages-village").data.memoryHead, beforeRoom);
     const savedRoom = server.village();
     const roomKey = JSON.stringify(["room", "mill", "common"]);
@@ -405,12 +406,7 @@ await withBrowser({ close: server.stop }, async () => {
         row.heads[roomKey]?.current ? [row.heads[roomKey].versionId] : [],
       ),
     );
-    assert(
-      savedRoom.continuity.versions.some(
-        (row) =>
-          roomVersions.has(row.id) && row.text === "The window is cracked, with glass scattered across the floor.",
-      ),
-    );
+    assert(savedRoom.continuity.versions.some((row) => roomVersions.has(row.id) && row.text === savedDamage));
     assert.equal(server.scene().submissions.at(-1)?.acceptance.status, "applied");
   });
 });

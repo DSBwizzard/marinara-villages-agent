@@ -60,6 +60,7 @@ export const narrationSourceSchema = z.union([
 const sources = z.array(narrationSourceSchema).min(1).max(8);
 export type NarrationSource = z.infer<typeof narrationSourceSchema>;
 export const NARRATION_SEGMENT_CHARACTERS = 2000;
+export const ROOM_RESULT_EFFECT_PREFIX = "room-result-";
 const segmentText = z.string().min(1).max(NARRATION_SEGMENT_CHARACTERS);
 export const residentReflectionSchema = z.object({ actorId: id, text: segmentText }).strict();
 const segment = z.discriminatedUnion("kind", [
